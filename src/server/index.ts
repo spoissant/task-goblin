@@ -1,16 +1,25 @@
-const port = Number(process.env.PORT) || 3001;
+import { createRouter } from "./router";
+import { routes } from "./routes";
+import { withCors, handleCors, withErrorBoundary } from "./middleware";
+
+const port = Number(process.env.PORT) || 3456;
+const router = createRouter(routes);
 
 Bun.serve({
   port,
-  fetch(req) {
-    const url = new URL(req.url);
-
-    if (url.pathname.startsWith("/api/v1")) {
-      return Response.json({ message: "Task Goblin API" });
+  async fetch(req) {
+    // Handle CORS preflight
+    const corsResponse = handleCors(req);
+    if (corsResponse) {
+      return corsResponse;
     }
 
-    return new Response("Not Found", { status: 404 });
-  }
+    // Route request with error boundary
+    const response = await withErrorBoundary(() => router.route(req));
+
+    // Add CORS headers to response
+    return withCors(response);
+  },
 });
 
-console.log(`API running on :${port}`);
+console.log(`Task Goblin API running on :${port}`);
