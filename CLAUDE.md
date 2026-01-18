@@ -21,7 +21,9 @@ Single-user, local only. No auth. Credentials stored in `.env`.
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Start dev server
+bun run dev          # Start all dev servers
+bun run dev:api      # Start API server only (port 3456)
+bun run dev:web      # Start frontend only
 bun run build        # Build for production
 bun test             # Run all tests
 bun test <file>      # Run single test file
@@ -39,16 +41,29 @@ bun test <file>      # Run single test file
 
 ### Folder Structure
 ```
-/prompts          ← shared prompt templates
-/plans            ← task plan files (markdown, gitignored except .gitkeep)
-/src/server       ← Bun API backend
-/src/client       ← React frontend
-/src/db           ← SQLite schema and queries (drizzle-orm)
-/src/shared       ← shared types/utilities
+/prompts              ← shared prompt templates
+/plans                ← task plan files (markdown, gitignored except .gitkeep)
+/src/server           ← Bun API backend
+  /routes             ← route handlers (tasks.ts, todos.ts, etc.)
+  /lib                ← errors.ts, timestamp.ts
+  router.ts           ← pattern-matching router (no framework)
+  middleware.ts       ← CORS, error boundary
+  response.ts         ← json(), created(), error() helpers
+/src/client           ← React frontend
+/src/db               ← SQLite schema, relations, db client
+/src/shared           ← shared types/utilities
 ```
 
 ### API Pattern
-All endpoints: `/api/v1/*`. Timestamps use ISO 8601 format throughout DB and API.
+All endpoints: `/api/v1/*`. Default port: 3456. Timestamps use ISO 8601 format throughout DB and API.
+
+Response formats:
+- Success: `{ ...resource }` or `{ items: [], total: N }`
+- Error: `{ error: { code, message } }`
+
+### Environment Variables
+- `PORT` - API server port (default: 3456)
+- `DATABASE_URL` - SQLite path (default: `task-goblin.db`, tests use `:memory:`)
 
 ### Key Models
 - **Task** - workflow-level task with status, notes, planFile
