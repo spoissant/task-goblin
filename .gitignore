@@ -20,6 +20,8 @@ logs
 
 # SQLite databases
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 
@@ -37,3 +39,6 @@ Thumbs.db
 # Local working files
 plans/
 !plans/.gitkeep
+
+# Claude Code local settings
+.claude/settings.local.json
