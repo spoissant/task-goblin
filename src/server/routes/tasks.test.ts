@@ -22,8 +22,10 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,
       done TEXT,
-      parent_id INTEGER,
-      parent_type TEXT,
+      task_id INTEGER REFERENCES tasks(id),
+      branch_id INTEGER REFERENCES branches(id),
+      jira_item_id INTEGER REFERENCES jira_items(id),
+      pull_request_id INTEGER REFERENCES pull_requests(id),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -76,10 +78,11 @@ beforeAll(() => {
 
     CREATE TABLE IF NOT EXISTS blocked_by (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      blocked_id INTEGER NOT NULL,
-      blocked_type TEXT NOT NULL,
-      blocker_id INTEGER NOT NULL,
-      blocker_type TEXT NOT NULL
+      blocked_task_id INTEGER REFERENCES tasks(id),
+      blocked_branch_id INTEGER REFERENCES branches(id),
+      blocker_task_id INTEGER REFERENCES tasks(id),
+      blocker_todo_id INTEGER REFERENCES todos(id),
+      blocker_branch_id INTEGER REFERENCES branches(id)
     );
 
     CREATE TABLE IF NOT EXISTS settings (

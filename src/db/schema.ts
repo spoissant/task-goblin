@@ -10,13 +10,15 @@ export const tasks = sqliteTable("tasks", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// 2. Todo - Checklist items with polymorphic parent
+// 2. Todo - Checklist items with explicit FK relations
 export const todos = sqliteTable("todos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   content: text("content").notNull(),
   done: text("done"), // ISO timestamp when completed, null if pending
-  parentId: integer("parent_id"), // polymorphic parent id
-  parentType: text("parent_type"), // task | branch | jira_item | pull_request
+  taskId: integer("task_id").references(() => tasks.id),
+  branchId: integer("branch_id").references(() => branches.id),
+  jiraItemId: integer("jira_item_id").references(() => jiraItems.id),
+  pullRequestId: integer("pull_request_id").references(() => pullRequests.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -77,13 +79,16 @@ export const pullRequests = sqliteTable("pull_requests", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// 7. BlockedBy - Polymorphic blocking relationships
+// 7. BlockedBy - Explicit FK blocking relationships
 export const blockedBy = sqliteTable("blocked_by", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  blockedId: integer("blocked_id").notNull(), // id of blocked entity
-  blockedType: text("blocked_type").notNull(), // task | branch
-  blockerId: integer("blocker_id").notNull(), // id of blocker entity
-  blockerType: text("blocker_type").notNull(), // task | todo | branch
+  // What is blocked (one must be set)
+  blockedTaskId: integer("blocked_task_id").references(() => tasks.id),
+  blockedBranchId: integer("blocked_branch_id").references(() => branches.id),
+  // What is blocking (one must be set)
+  blockerTaskId: integer("blocker_task_id").references(() => tasks.id),
+  blockerTodoId: integer("blocker_todo_id").references(() => todos.id),
+  blockerBranchId: integer("blocker_branch_id").references(() => branches.id),
 });
 
 // 8. Settings - Key-value config store

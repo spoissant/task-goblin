@@ -18,8 +18,20 @@ export const tasksRelations = relations(tasks, ({ many }) => ({
 
 export const todosRelations = relations(todos, ({ one }) => ({
   task: one(tasks, {
-    fields: [todos.parentId],
+    fields: [todos.taskId],
     references: [tasks.id],
+  }),
+  branch: one(branches, {
+    fields: [todos.branchId],
+    references: [branches.id],
+  }),
+  jiraItem: one(jiraItems, {
+    fields: [todos.jiraItemId],
+    references: [jiraItems.id],
+  }),
+  pullRequest: one(pullRequests, {
+    fields: [todos.pullRequestId],
+    references: [pullRequests.id],
   }),
 }));
 
@@ -59,9 +71,27 @@ export const jiraItemsRelations = relations(jiraItems, ({ one }) => ({
 }));
 
 export const blockedByRelations = relations(blockedBy, ({ one }) => ({
+  // What is blocked
   blockedTask: one(tasks, {
-    fields: [blockedBy.blockedId],
+    fields: [blockedBy.blockedTaskId],
     references: [tasks.id],
+  }),
+  blockedBranch: one(branches, {
+    fields: [blockedBy.blockedBranchId],
+    references: [branches.id],
+  }),
+  // What is blocking
+  blockerTask: one(tasks, {
+    fields: [blockedBy.blockerTaskId],
+    references: [tasks.id],
+  }),
+  blockerTodo: one(todos, {
+    fields: [blockedBy.blockerTodoId],
+    references: [todos.id],
+  }),
+  blockerBranch: one(branches, {
+    fields: [blockedBy.blockerBranchId],
+    references: [branches.id],
   }),
 }));
 

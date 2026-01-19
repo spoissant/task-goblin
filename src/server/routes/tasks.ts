@@ -1,4 +1,4 @@
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, branches, blockedBy, jiraItems } from "../../db/schema";
 import { json, created, noContent } from "../response";
@@ -26,17 +26,12 @@ export const taskRoutes: Routes = {
         conditions.push(eq(tasks.status, status));
       }
       if (blocked === "true") {
-        // Get task IDs that have blockers
-        const blockedTaskIds = db
-          .select({ id: blockedBy.blockedId })
-          .from(blockedBy)
-          .where(eq(blockedBy.blockedType, "task"));
         conditions.push(
-          sql`${tasks.id} IN (SELECT blocked_id FROM blocked_by WHERE blocked_type = 'task')`
+          sql`${tasks.id} IN (SELECT blocked_task_id FROM blocked_by WHERE blocked_task_id IS NOT NULL)`
         );
       } else if (blocked === "false") {
         conditions.push(
-          sql`${tasks.id} NOT IN (SELECT blocked_id FROM blocked_by WHERE blocked_type = 'task')`
+          sql`${tasks.id} NOT IN (SELECT blocked_task_id FROM blocked_by WHERE blocked_task_id IS NOT NULL)`
         );
       }
 
@@ -95,7 +90,7 @@ export const taskRoutes: Routes = {
       const taskTodos = await db
         .select()
         .from(todos)
-        .where(and(eq(todos.parentId, id), eq(todos.parentType, "task")));
+        .where(eq(todos.taskId, id));
 
       const taskBranches = await db
         .select()
@@ -110,7 +105,7 @@ export const taskRoutes: Routes = {
       const taskBlockedBy = await db
         .select()
         .from(blockedBy)
-        .where(and(eq(blockedBy.blockedId, id), eq(blockedBy.blockedType, "task")));
+        .where(eq(blockedBy.blockedTaskId, id));
 
       return json({
         ...task,
@@ -194,13 +189,11 @@ export const taskRoutes: Routes = {
       // Cascade delete: blockedBy, branches, todos
       await db
         .delete(blockedBy)
-        .where(
-          and(eq(blockedBy.blockedId, id), eq(blockedBy.blockedType, "task"))
-        );
+        .where(eq(blockedBy.blockedTaskId, id));
       await db.delete(branches).where(eq(branches.taskId, id));
       await db
         .delete(todos)
-        .where(and(eq(todos.parentId, id), eq(todos.parentType, "task")));
+        .where(eq(todos.taskId, id));
 
       // Orphan jiraItems (set taskId = null)
       await db

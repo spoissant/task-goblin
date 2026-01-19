@@ -1,12 +1,9 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { blockedBy } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import type { Routes } from "../router";
-
-const VALID_BLOCKED_TYPES = ["task", "branch"];
-const VALID_BLOCKER_TYPES = ["task", "todo", "branch"];
 
 async function getBody(req: Request) {
   return req.json();
@@ -16,23 +13,27 @@ export const blockedByRoutes: Routes = {
   "/api/v1/blocked-by": {
     async GET(req) {
       const url = new URL(req.url);
-      const blockedId = url.searchParams.get("blockedId");
-      const blockedType = url.searchParams.get("blockedType");
-      const blockerId = url.searchParams.get("blockerId");
-      const blockerType = url.searchParams.get("blockerType");
+      const blockedTaskId = url.searchParams.get("blockedTaskId");
+      const blockedBranchId = url.searchParams.get("blockedBranchId");
+      const blockerTaskId = url.searchParams.get("blockerTaskId");
+      const blockerTodoId = url.searchParams.get("blockerTodoId");
+      const blockerBranchId = url.searchParams.get("blockerBranchId");
 
       const conditions = [];
-      if (blockedId) {
-        conditions.push(eq(blockedBy.blockedId, parseInt(blockedId, 10)));
+      if (blockedTaskId) {
+        conditions.push(eq(blockedBy.blockedTaskId, parseInt(blockedTaskId, 10)));
       }
-      if (blockedType) {
-        conditions.push(eq(blockedBy.blockedType, blockedType));
+      if (blockedBranchId) {
+        conditions.push(eq(blockedBy.blockedBranchId, parseInt(blockedBranchId, 10)));
       }
-      if (blockerId) {
-        conditions.push(eq(blockedBy.blockerId, parseInt(blockerId, 10)));
+      if (blockerTaskId) {
+        conditions.push(eq(blockedBy.blockerTaskId, parseInt(blockerTaskId, 10)));
       }
-      if (blockerType) {
-        conditions.push(eq(blockedBy.blockerType, blockerType));
+      if (blockerTodoId) {
+        conditions.push(eq(blockedBy.blockerTodoId, parseInt(blockerTodoId, 10)));
+      }
+      if (blockerBranchId) {
+        conditions.push(eq(blockedBy.blockerBranchId, parseInt(blockerBranchId, 10)));
       }
 
       const items =
@@ -49,30 +50,36 @@ export const blockedByRoutes: Routes = {
     async POST(req) {
       const body = await getBody(req);
 
-      if (!body.blockedId || typeof body.blockedId !== "number") {
-        throw new ValidationError("blockedId is required and must be a number");
-      }
-      if (!body.blockedType || !VALID_BLOCKED_TYPES.includes(body.blockedType)) {
+      // Validate: exactly one blocked entity must be set
+      const blockedCount = [body.blockedTaskId, body.blockedBranchId].filter(
+        (v) => v !== undefined && v !== null
+      ).length;
+      if (blockedCount !== 1) {
         throw new ValidationError(
-          `blockedType must be one of: ${VALID_BLOCKED_TYPES.join(", ")}`
+          "Exactly one of blockedTaskId or blockedBranchId must be set"
         );
       }
-      if (!body.blockerId || typeof body.blockerId !== "number") {
-        throw new ValidationError("blockerId is required and must be a number");
-      }
-      if (!body.blockerType || !VALID_BLOCKER_TYPES.includes(body.blockerType)) {
+
+      // Validate: exactly one blocker entity must be set
+      const blockerCount = [
+        body.blockerTaskId,
+        body.blockerTodoId,
+        body.blockerBranchId,
+      ].filter((v) => v !== undefined && v !== null).length;
+      if (blockerCount !== 1) {
         throw new ValidationError(
-          `blockerType must be one of: ${VALID_BLOCKER_TYPES.join(", ")}`
+          "Exactly one of blockerTaskId, blockerTodoId, or blockerBranchId must be set"
         );
       }
 
       const result = await db
         .insert(blockedBy)
         .values({
-          blockedId: body.blockedId,
-          blockedType: body.blockedType,
-          blockerId: body.blockerId,
-          blockerType: body.blockerType,
+          blockedTaskId: body.blockedTaskId || null,
+          blockedBranchId: body.blockedBranchId || null,
+          blockerTaskId: body.blockerTaskId || null,
+          blockerTodoId: body.blockerTodoId || null,
+          blockerBranchId: body.blockerBranchId || null,
         })
         .returning();
 

@@ -7,12 +7,6 @@ export type TaskStatus =
   | "done"
   | "blocked";
 
-// Todo parent type enum
-export type TodoParentType = "task" | "branch" | "jira_item" | "pull_request";
-
-// BlockedBy types
-export type BlockedType = "task" | "branch";
-export type BlockerType = "task" | "todo" | "branch";
 
 // PR state
 export type PullRequestState = "open" | "closed" | "merged";
@@ -46,22 +40,27 @@ export interface PatchTaskRequest {
 export interface CreateTodoRequest {
   content: string;
   done?: string | null;
-  parentId?: number | null;
-  parentType?: TodoParentType | null;
+  taskId?: number | null;
+  branchId?: number | null;
+  jiraItemId?: number | null;
+  pullRequestId?: number | null;
 }
 
 export interface UpdateTodoRequest {
   content: string;
   done?: string | null;
-  parentId?: number | null;
-  parentType?: TodoParentType | null;
+  taskId?: number | null;
+  branchId?: number | null;
+  jiraItemId?: number | null;
+  pullRequestId?: number | null;
 }
 
 export interface CreateBlockedByRequest {
-  blockedId: number;
-  blockedType: BlockedType;
-  blockerId: number;
-  blockerType: BlockerType;
+  blockedTaskId?: number | null;
+  blockedBranchId?: number | null;
+  blockerTaskId?: number | null;
+  blockerTodoId?: number | null;
+  blockerBranchId?: number | null;
 }
 
 export interface CreateBranchRequest {
@@ -116,18 +115,21 @@ export interface Todo {
   id: number;
   content: string;
   done: string | null;
-  parentId: number | null;
-  parentType: string | null;
+  taskId: number | null;
+  branchId: number | null;
+  jiraItemId: number | null;
+  pullRequestId: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface BlockedByRecord {
   id: number;
-  blockedId: number;
-  blockedType: string;
-  blockerId: number;
-  blockerType: string;
+  blockedTaskId: number | null;
+  blockedBranchId: number | null;
+  blockerTaskId: number | null;
+  blockerTodoId: number | null;
+  blockerBranchId: number | null;
 }
 
 export interface Branch {

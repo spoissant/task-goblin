@@ -1,12 +1,10 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { todos } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
-
-const VALID_PARENT_TYPES = ["task", "branch", "jira_item", "pull_request"];
 
 async function getBody(req: Request) {
   return req.json();
@@ -16,19 +14,27 @@ export const todoRoutes: Routes = {
   "/api/v1/todos": {
     async GET(req) {
       const url = new URL(req.url);
-      const parentId = url.searchParams.get("parentId");
-      const parentType = url.searchParams.get("parentType");
+      const taskId = url.searchParams.get("taskId");
+      const branchId = url.searchParams.get("branchId");
+      const jiraItemId = url.searchParams.get("jiraItemId");
+      const pullRequestId = url.searchParams.get("pullRequestId");
       const done = url.searchParams.get("done");
 
       const conditions = [];
-      if (parentId) {
-        conditions.push(eq(todos.parentId, parseInt(parentId, 10)));
+      if (taskId) {
+        conditions.push(eq(todos.taskId, parseInt(taskId, 10)));
       }
-      if (parentType) {
-        conditions.push(eq(todos.parentType, parentType));
+      if (branchId) {
+        conditions.push(eq(todos.branchId, parseInt(branchId, 10)));
+      }
+      if (jiraItemId) {
+        conditions.push(eq(todos.jiraItemId, parseInt(jiraItemId, 10)));
+      }
+      if (pullRequestId) {
+        conditions.push(eq(todos.pullRequestId, parseInt(pullRequestId, 10)));
       }
       if (done === "true") {
-        conditions.push(isNull(todos.done).not());
+        conditions.push(isNotNull(todos.done));
       } else if (done === "false") {
         conditions.push(isNull(todos.done));
       }
@@ -51,20 +57,16 @@ export const todoRoutes: Routes = {
         throw new ValidationError("content is required");
       }
 
-      if (body.parentType && !VALID_PARENT_TYPES.includes(body.parentType)) {
-        throw new ValidationError(
-          `parentType must be one of: ${VALID_PARENT_TYPES.join(", ")}`
-        );
-      }
-
       const timestamp = now();
       const result = await db
         .insert(todos)
         .values({
           content: body.content,
           done: body.done || null,
-          parentId: body.parentId || null,
-          parentType: body.parentType || null,
+          taskId: body.taskId || null,
+          branchId: body.branchId || null,
+          jiraItemId: body.jiraItemId || null,
+          pullRequestId: body.pullRequestId || null,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -94,12 +96,6 @@ export const todoRoutes: Routes = {
         throw new ValidationError("content is required");
       }
 
-      if (body.parentType && !VALID_PARENT_TYPES.includes(body.parentType)) {
-        throw new ValidationError(
-          `parentType must be one of: ${VALID_PARENT_TYPES.join(", ")}`
-        );
-      }
-
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
         throw new NotFoundError("Todo", id);
@@ -110,8 +106,10 @@ export const todoRoutes: Routes = {
         .set({
           content: body.content,
           done: body.done ?? null,
-          parentId: body.parentId ?? null,
-          parentType: body.parentType ?? null,
+          taskId: body.taskId ?? null,
+          branchId: body.branchId ?? null,
+          jiraItemId: body.jiraItemId ?? null,
+          pullRequestId: body.pullRequestId ?? null,
           updatedAt: now(),
         })
         .where(eq(todos.id, id))
@@ -124,12 +122,6 @@ export const todoRoutes: Routes = {
       const id = parseInt(params.id, 10);
       const body = await getBody(req);
 
-      if (body.parentType && !VALID_PARENT_TYPES.includes(body.parentType)) {
-        throw new ValidationError(
-          `parentType must be one of: ${VALID_PARENT_TYPES.join(", ")}`
-        );
-      }
-
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
         throw new NotFoundError("Todo", id);
@@ -138,8 +130,10 @@ export const todoRoutes: Routes = {
       const updates: Record<string, unknown> = { updatedAt: now() };
       if (body.content !== undefined) updates.content = body.content;
       if (body.done !== undefined) updates.done = body.done;
-      if (body.parentId !== undefined) updates.parentId = body.parentId;
-      if (body.parentType !== undefined) updates.parentType = body.parentType;
+      if (body.taskId !== undefined) updates.taskId = body.taskId;
+      if (body.branchId !== undefined) updates.branchId = body.branchId;
+      if (body.jiraItemId !== undefined) updates.jiraItemId = body.jiraItemId;
+      if (body.pullRequestId !== undefined) updates.pullRequestId = body.pullRequestId;
 
       const result = await db
         .update(todos)
