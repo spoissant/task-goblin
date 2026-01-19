@@ -4,15 +4,17 @@ import { get, post, del, type Todo, type ListResponse } from "../client.js";
 
 export function registerTodoTools(server: McpServer) {
   // list_todos
-  server.tool(
+  server.registerTool(
     "list_todos",
-    "List todos with optional filters",
     {
-      taskId: z.number().optional().describe("Filter by parent task ID"),
-      branchId: z.number().optional().describe("Filter by parent branch ID"),
-      jiraItemId: z.number().optional().describe("Filter by parent Jira item ID"),
-      pullRequestId: z.number().optional().describe("Filter by parent pull request ID"),
-      done: z.boolean().optional().describe("Filter by completion status"),
+      description: "List todos with optional filters",
+      inputSchema: {
+        taskId: z.number().optional().describe("Filter by parent task ID"),
+        branchId: z.number().optional().describe("Filter by parent branch ID"),
+        jiraItemId: z.number().optional().describe("Filter by parent Jira item ID"),
+        pullRequestId: z.number().optional().describe("Filter by parent pull request ID"),
+        done: z.boolean().optional().describe("Filter by completion status"),
+      },
     },
     async ({ taskId, branchId, jiraItemId, pullRequestId, done }) => {
       const params = new URLSearchParams();
@@ -31,15 +33,17 @@ export function registerTodoTools(server: McpServer) {
   );
 
   // create_todo
-  server.tool(
+  server.registerTool(
     "create_todo",
-    "Create a new todo item",
     {
-      content: z.string().describe("Todo content/text"),
-      taskId: z.number().optional().describe("Parent task ID"),
-      branchId: z.number().optional().describe("Parent branch ID"),
-      jiraItemId: z.number().optional().describe("Parent Jira item ID"),
-      pullRequestId: z.number().optional().describe("Parent pull request ID"),
+      description: "Create a new todo item",
+      inputSchema: {
+        content: z.string().describe("Todo content/text"),
+        taskId: z.number().optional().describe("Parent task ID"),
+        branchId: z.number().optional().describe("Parent branch ID"),
+        jiraItemId: z.number().optional().describe("Parent Jira item ID"),
+        pullRequestId: z.number().optional().describe("Parent pull request ID"),
+      },
     },
     async ({ content, taskId, branchId, jiraItemId, pullRequestId }) => {
       try {
@@ -59,11 +63,13 @@ export function registerTodoTools(server: McpServer) {
   );
 
   // toggle_todo
-  server.tool(
+  server.registerTool(
     "toggle_todo",
-    "Toggle a todo's completion status",
     {
-      id: z.number().describe("Todo ID to toggle"),
+      description: "Toggle a todo's completion status",
+      inputSchema: {
+        id: z.number().describe("Todo ID to toggle"),
+      },
     },
     async ({ id }) => {
       try {
@@ -77,11 +83,13 @@ export function registerTodoTools(server: McpServer) {
   );
 
   // delete_todo
-  server.tool(
+  server.registerTool(
     "delete_todo",
-    "Delete a todo item",
     {
-      id: z.number().describe("Todo ID to delete"),
+      description: "Delete a todo item",
+      inputSchema: {
+        id: z.number().describe("Todo ID to delete"),
+      },
     },
     async ({ id }) => {
       try {

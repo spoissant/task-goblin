@@ -14,15 +14,17 @@ import {
 
 export function registerTaskTools(server: McpServer) {
   // list_tasks
-  server.tool(
+  server.registerTool(
     "list_tasks",
-    "List all tasks with optional filters",
     {
-      status: z.string().optional().describe("Filter by status (todo, in_progress, code_review, qa, done, blocked)"),
-      blocked: z.boolean().optional().describe("Filter by blocked state"),
-      jiraKey: z.string().optional().describe("Filter by linked Jira key"),
-      prNumber: z.number().optional().describe("Filter by linked PR number"),
-      prRepo: z.string().optional().describe("Repository for PR filter (owner/repo format)"),
+      description: "List all tasks with optional filters",
+      inputSchema: {
+        status: z.string().optional().describe("Filter by status (todo, in_progress, code_review, qa, done, blocked)"),
+        blocked: z.boolean().optional().describe("Filter by blocked state"),
+        jiraKey: z.string().optional().describe("Filter by linked Jira key"),
+        prNumber: z.number().optional().describe("Filter by linked PR number"),
+        prRepo: z.string().optional().describe("Repository for PR filter (owner/repo format)"),
+      },
     },
     async ({ status, blocked, jiraKey, prNumber, prRepo }) => {
       // Handle jiraKey filter - find task through Jira item
@@ -70,14 +72,16 @@ export function registerTaskTools(server: McpServer) {
   );
 
   // get_task
-  server.tool(
+  server.registerTool(
     "get_task",
-    "Get a single task by ID, Jira key, or PR number. Returns task with todos, branches, Jira items, and blockers.",
     {
-      id: z.number().optional().describe("Task ID"),
-      jiraKey: z.string().optional().describe("Jira key to look up task"),
-      prNumber: z.number().optional().describe("PR number to look up task"),
-      prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
+      description: "Get a single task by ID, Jira key, or PR number. Returns task with todos, branches, Jira items, and blockers.",
+      inputSchema: {
+        id: z.number().optional().describe("Task ID"),
+        jiraKey: z.string().optional().describe("Jira key to look up task"),
+        prNumber: z.number().optional().describe("PR number to look up task"),
+        prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
+      },
     },
     async ({ id, jiraKey, prNumber, prRepo }) => {
       try {
@@ -92,16 +96,18 @@ export function registerTaskTools(server: McpServer) {
   );
 
   // create_task
-  server.tool(
+  server.registerTool(
     "create_task",
-    "Create a new task, optionally linking it to a Jira issue or GitHub PR",
     {
-      title: z.string().describe("Task title"),
-      description: z.string().optional().describe("Task description"),
-      status: z.string().optional().describe("Task status (default: todo)"),
-      jiraKey: z.string().optional().describe("Jira key to link to the new task"),
-      prNumber: z.number().optional().describe("PR number to link to the new task"),
-      prRepo: z.string().optional().describe("Repository for PR (owner/repo format)"),
+      description: "Create a new task, optionally linking it to a Jira issue or GitHub PR",
+      inputSchema: {
+        title: z.string().describe("Task title"),
+        description: z.string().optional().describe("Task description"),
+        status: z.string().optional().describe("Task status (default: todo)"),
+        jiraKey: z.string().optional().describe("Jira key to link to the new task"),
+        prNumber: z.number().optional().describe("PR number to link to the new task"),
+        prRepo: z.string().optional().describe("Repository for PR (owner/repo format)"),
+      },
     },
     async ({ title, description, status, jiraKey, prNumber, prRepo }) => {
       try {
@@ -145,27 +151,29 @@ export function registerTaskTools(server: McpServer) {
   );
 
   // update_task
-  server.tool(
+  server.registerTool(
     "update_task",
-    "Update an existing task by ID, Jira key, or PR number",
     {
-      id: z.number().optional().describe("Task ID"),
-      jiraKey: z.string().optional().describe("Jira key to look up task"),
-      prNumber: z.number().optional().describe("PR number to look up task"),
-      prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
-      title: z.string().optional().describe("New task title"),
-      description: z.string().optional().describe("New task description"),
-      status: z.string().optional().describe("New task status"),
-      blockedBy: z
-        .array(
-          z.object({
-            taskId: z.number().optional(),
-            todoId: z.number().optional(),
-            branchId: z.number().optional(),
-          })
-        )
-        .optional()
-        .describe("Array of blockers to add (each must have exactly one of taskId, todoId, or branchId)"),
+      description: "Update an existing task by ID, Jira key, or PR number",
+      inputSchema: {
+        id: z.number().optional().describe("Task ID"),
+        jiraKey: z.string().optional().describe("Jira key to look up task"),
+        prNumber: z.number().optional().describe("PR number to look up task"),
+        prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
+        title: z.string().optional().describe("New task title"),
+        description: z.string().optional().describe("New task description"),
+        status: z.string().optional().describe("New task status"),
+        blockedBy: z
+          .array(
+            z.object({
+              taskId: z.number().optional(),
+              todoId: z.number().optional(),
+              branchId: z.number().optional(),
+            })
+          )
+          .optional()
+          .describe("Array of blockers to add (each must have exactly one of taskId, todoId, or branchId)"),
+      },
     },
     async ({ id, jiraKey, prNumber, prRepo, title, description, status, blockedBy }) => {
       try {
