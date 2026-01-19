@@ -2,7 +2,9 @@ import { eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { jiraItems, tasks } from "../../db/schema";
 import { json, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors";
+import { JiraConfigError } from "../lib/jira-client";
+import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
 import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
 
@@ -51,6 +53,34 @@ export const jiraRoutes: Routes = {
 
       if (result.length === 0) {
         throw new NotFoundError("JiraItem", id);
+      }
+
+      const item = result[0];
+
+      // Get linked task if any
+      let task = null;
+      if (item.taskId) {
+        const taskResult = await db
+          .select()
+          .from(tasks)
+          .where(eq(tasks.id, item.taskId));
+        task = taskResult[0] || null;
+      }
+
+      return json({ ...item, task });
+    },
+  },
+
+  "/api/v1/jira/items/key/:key": {
+    async GET(req, params) {
+      const { key } = params;
+      const result = await db
+        .select()
+        .from(jiraItems)
+        .where(eq(jiraItems.key, key));
+
+      if (result.length === 0) {
+        throw new NotFoundError("JiraItem", key);
       }
 
       const item = result[0];
@@ -127,11 +157,42 @@ export const jiraRoutes: Routes = {
     },
   },
 
-  // Sync stub - returns zeros for now
   "/api/v1/refresh/jira": {
     async POST() {
-      // TODO: Implement actual Jira sync
-      return json({ synced: 0, new: 0, updated: 0 });
+      try {
+        const result = await syncJiraItems();
+        return json(result);
+      } catch (err) {
+        if (err instanceof JiraConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof JiraApiError) {
+          const statusCode = err.code === "JIRA_AUTH_FAILED" ? 401 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
+    },
+  },
+
+  "/api/v1/refresh/jira/:key": {
+    async POST(req, params) {
+      const { key } = params;
+      try {
+        const result = await syncJiraItemByKey(key);
+        return json(result);
+      } catch (err) {
+        if (err instanceof JiraConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof JiraApiError) {
+          const statusCode =
+            err.code === "JIRA_AUTH_FAILED" ? 401 :
+            err.code === "JIRA_ISSUE_NOT_FOUND" ? 404 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
     },
   },
 };
