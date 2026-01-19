@@ -1,8 +1,14 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../../db";
 import { pullRequests, branches, repositories } from "../../db/schema";
 import { json, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors";
+import { GitHubConfigError } from "../lib/github-client";
+import {
+  syncGitHubPullRequests,
+  syncGitHubPullRequestByNumber,
+  GitHubApiError,
+} from "../services/github-sync";
 import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
 
@@ -143,11 +149,91 @@ export const githubRoutes: Routes = {
     },
   },
 
-  // Sync stub - returns zeros for now
+  "/api/v1/github/repos/:owner/:repo/pull-requests/:number": {
+    async GET(req, params) {
+      const { owner, repo, number } = params;
+      const prNumber = parseInt(number, 10);
+
+      // Find repository
+      const repoResult = await db
+        .select()
+        .from(repositories)
+        .where(and(eq(repositories.owner, owner), eq(repositories.repo, repo)));
+
+      if (repoResult.length === 0) {
+        throw new NotFoundError("Repository", `${owner}/${repo}`);
+      }
+
+      const repository = repoResult[0];
+
+      // Find PR
+      const result = await db
+        .select()
+        .from(pullRequests)
+        .where(
+          and(
+            eq(pullRequests.repositoryId, repository.id),
+            eq(pullRequests.number, prNumber)
+          )
+        );
+
+      if (result.length === 0) {
+        throw new NotFoundError("PullRequest", `${owner}/${repo}#${prNumber}`);
+      }
+
+      const pr = result[0];
+
+      // Get linked branches
+      const linkedBranches = await db
+        .select()
+        .from(branches)
+        .where(eq(branches.pullRequestId, pr.id));
+
+      return json({ ...pr, repository, branches: linkedBranches });
+    },
+  },
+
   "/api/v1/refresh/github": {
     async POST() {
-      // TODO: Implement actual GitHub sync
-      return json({ synced: 0, new: 0, updated: 0 });
+      try {
+        const result = await syncGitHubPullRequests();
+        return json(result);
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof GitHubApiError) {
+          const statusCode =
+            err.code === "GITHUB_AUTH_FAILED" ? 401 :
+            err.code === "GITHUB_FORBIDDEN" ? 403 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
+    },
+  },
+
+  "/api/v1/refresh/github/:owner/:repo/:number": {
+    async POST(req, params) {
+      const { owner, repo, number } = params;
+      const prNumber = parseInt(number, 10);
+
+      try {
+        const result = await syncGitHubPullRequestByNumber(owner, repo, prNumber);
+        return json(result);
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof GitHubApiError) {
+          const statusCode =
+            err.code === "GITHUB_AUTH_FAILED" ? 401 :
+            err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
+            err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
     },
   },
 };
