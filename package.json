@@ -9,9 +9,11 @@
     "build": "vite build",
     "test": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "mcp": "bun run src/mcp/index.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "@octokit/rest": "^21.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "better-sqlite3": "^12.6.2",
