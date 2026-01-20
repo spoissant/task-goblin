@@ -48,6 +48,16 @@ function parseChecksDetails(checksDetails: string | null): CheckDetail[] {
   }
 }
 
+function countChecks(details: CheckDetail[]): { passed: number; total: number } {
+  const total = details.length;
+  const passed = details.filter(
+    (check) =>
+      check.status === "completed" &&
+      (check.conclusion === "success" || check.conclusion === "skipped" || check.conclusion === "neutral")
+  ).length;
+  return { passed, total };
+}
+
 export function ChecksStatusCell({ checksStatus, checksDetails }: ChecksStatusCellProps) {
   const icon = getStatusIcon(checksStatus);
   if (!icon) {
@@ -55,6 +65,8 @@ export function ChecksStatusCell({ checksStatus, checksDetails }: ChecksStatusCe
   }
 
   const details = parseChecksDetails(checksDetails);
+  const { passed, total } = countChecks(details);
+  const countText = total > 0 ? `${passed}/${total}` : null;
 
   if (details.length === 0) {
     return icon;
@@ -63,13 +75,14 @@ export function ChecksStatusCell({ checksStatus, checksDetails }: ChecksStatusCe
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" className="cursor-default">
+        <span className="inline-flex items-center gap-1 cursor-default">
           {icon}
-        </button>
+          {countText && <span className="text-xs">{countText}</span>}
+        </span>
       </TooltipTrigger>
       <TooltipContent side="left" className="max-w-xs">
         <div className="space-y-1">
-          <div className="font-medium text-xs mb-1">CI Checks</div>
+          <div className="font-medium text-xs mb-1">CI Checks ({passed}/{total})</div>
           {details.map((check, idx) => (
             <div key={idx} className="flex items-center gap-2 text-xs">
               {getCheckIcon(check.status, check.conclusion)}
