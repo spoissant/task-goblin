@@ -1,6 +1,7 @@
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
 import { db } from "../../db";
-import { jiraItems } from "../../db/schema";
+import { tasks } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
 
@@ -48,48 +49,57 @@ interface IssueFields {
   parent?: unknown;
 }
 
-function mapIssueToItemData(issue: { key?: string; fields: IssueFields }) {
+function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }) {
   const fields = issue.fields;
+  const timestamp = now();
   return {
-    key: issue.key!,
-    summary: fields.summary || "",
+    jiraKey: issue.key!,
+    title: fields.summary || issue.key!,
     description: stringifyDescription(fields.description),
-    status: fields.status?.name || "Unknown",
+    status: fields.status?.name || "todo",
     type: fields.issuetype?.name || null,
     assignee: fields.assignee?.displayName || null,
     priority: fields.priority?.name || null,
     sprint: null, // Custom field, skip for v1
     epicKey: extractEpicKey({ fields: fields as Record<string, unknown> }),
     lastComment: null, // Requires separate API call, skip for v1
-    updatedAt: now(),
+    jiraSyncedAt: timestamp,
+    updatedAt: timestamp,
   };
 }
 
-async function upsertJiraItem(itemData: ReturnType<typeof mapIssueToItemData>): Promise<"new" | "updated"> {
+async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated"> {
   const existing = await db
-    .select({ id: jiraItems.id })
-    .from(jiraItems)
-    .where(sql`${jiraItems.key} = ${itemData.key}`);
+    .select({ id: tasks.id, prNumber: tasks.prNumber })
+    .from(tasks)
+    .where(eq(tasks.jiraKey, taskData.jiraKey));
 
   if (existing.length > 0) {
+    // Update existing task, preserve PR fields if already merged
     await db
-      .update(jiraItems)
+      .update(tasks)
       .set({
-        summary: itemData.summary,
-        description: itemData.description,
-        status: itemData.status,
-        type: itemData.type,
-        assignee: itemData.assignee,
-        priority: itemData.priority,
-        sprint: itemData.sprint,
-        epicKey: itemData.epicKey,
-        lastComment: itemData.lastComment,
-        updatedAt: itemData.updatedAt,
+        title: taskData.title,
+        description: taskData.description,
+        status: taskData.status,
+        type: taskData.type,
+        assignee: taskData.assignee,
+        priority: taskData.priority,
+        sprint: taskData.sprint,
+        epicKey: taskData.epicKey,
+        lastComment: taskData.lastComment,
+        jiraSyncedAt: taskData.jiraSyncedAt,
+        updatedAt: taskData.updatedAt,
       })
-      .where(sql`${jiraItems.key} = ${itemData.key}`);
+      .where(eq(tasks.jiraKey, taskData.jiraKey));
     return "updated";
   } else {
-    await db.insert(jiraItems).values(itemData);
+    // Create new Jira-only task
+    const timestamp = now();
+    await db.insert(tasks).values({
+      ...taskData,
+      createdAt: timestamp,
+    });
     return "new";
   }
 }
@@ -108,15 +118,14 @@ export async function syncJiraItems(): Promise<SyncResult> {
   let updatedCount = 0;
 
   const maxResults = 50;
-  let startAt = 0;
-  let hasMore = true;
+  let pageToken: string | undefined = undefined;
 
   try {
-    while (hasMore) {
-      const response = await client.issueSearch.searchForIssuesUsingJql({
+    while (true) {
+      const response: SearchAndReconcileResults = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
         jql,
-        startAt,
         maxResults,
+        nextPageToken: pageToken,
         fields: [
           "summary",
           "description",
@@ -130,22 +139,21 @@ export async function syncJiraItems(): Promise<SyncResult> {
 
       const issues = response.issues || [];
       if (issues.length === 0) {
-        hasMore = false;
         break;
       }
 
       for (const issue of issues) {
-        const itemData = mapIssueToItemData(issue as { key?: string; fields: IssueFields });
-        const result = await upsertJiraItem(itemData);
+        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+        const result = await upsertTask(taskData);
         if (result === "new") newCount++;
         else updatedCount++;
         synced++;
       }
 
-      // Check if there are more results
-      const total = response.total || 0;
-      startAt += issues.length;
-      hasMore = startAt < total;
+      if (!response.nextPageToken) {
+        break;
+      }
+      pageToken = response.nextPageToken;
     }
   } catch (err: unknown) {
     if (err instanceof JiraConfigError) {
@@ -187,8 +195,8 @@ export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | 
       ],
     });
 
-    const itemData = mapIssueToItemData(issue as { key?: string; fields: IssueFields });
-    const status = await upsertJiraItem(itemData);
+    const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+    const status = await upsertTask(taskData);
     return { status };
   } catch (err: unknown) {
     if (err instanceof JiraConfigError) {

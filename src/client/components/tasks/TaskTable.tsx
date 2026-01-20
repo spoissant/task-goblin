@@ -1,0 +1,269 @@
+import { useMemo } from "react";
+import { Link } from "react-router";
+import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
+import { Skeleton } from "@/client/components/ui/skeleton";
+import { Badge } from "@/client/components/ui/badge";
+import { Button } from "@/client/components/ui/button";
+import { TooltipProvider } from "@/client/components/ui/tooltip";
+import { StatusBadge } from "./StatusBadge";
+import { ChecksStatusCell } from "./ChecksStatusCell";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/client/components/ui/table";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import type { Task, Repository } from "@/client/lib/types";
+
+// Status category definitions for filtering
+export const STATUS_CATEGORIES: Record<string, string[]> = {
+  todo: ["todo", "to do", "accepted", "backlog", "on hold"],
+  in_progress: ["in_progress", "in progress"],
+  code_review: ["code_review", "code review"],
+  qa: ["qa", "ready for test", "ready to test"],
+  done: ["done", "ready to merge", "ready to prod", "closed", "cancelled", "canceled"],
+  blocked: ["blocked"],
+};
+
+function matchesCategory(status: string, category: string): boolean {
+  const patterns = STATUS_CATEGORIES[category];
+  if (!patterns) return false;
+  const s = status.toLowerCase();
+  return patterns.some((p) => s === p || s.includes(p));
+}
+
+// Build Jira URL
+function getJiraUrl(jiraKey: string, jiraHost?: string): string {
+  const host = jiraHost || "hivebrite.atlassian.net";
+  return `https://${host}/browse/${jiraKey}`;
+}
+
+// Review status emoji with count
+function getReviewDisplay(approvedCount: number | null): string {
+  if (approvedCount === null) return "";
+  if (approvedCount >= 2) return `✅ ${approvedCount}`;
+  if (approvedCount === 1) return "⏳ 1";
+  return "❌ 0";
+}
+
+interface TaskTableProps {
+  statusFilter?: string;
+}
+
+export function TaskTable({ statusFilter }: TaskTableProps) {
+  // Fetch all tasks (no server-side status filter for category-based filtering)
+  const { data, isLoading, error } = useTasksQuery({});
+  const { data: reposData } = useRepositoriesQuery();
+
+  // Build a map of repositoryId -> Repository for quick lookups
+  const repoMap = useMemo(() => {
+    const map = new Map<number, Repository>();
+    if (reposData?.items) {
+      for (const repo of reposData.items) {
+        map.set(repo.id, repo);
+      }
+    }
+    return map;
+  }, [reposData?.items]);
+
+  // Client-side filtering by category
+  const filteredTasks = useMemo(() => {
+    if (!data?.items) return [];
+    if (!statusFilter) return data.items;
+    return data.items.filter((task) => matchesCategory(task.status, statusFilter));
+  }, [data?.items, statusFilter]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        Failed to load tasks
+      </div>
+    );
+  }
+
+  if (!filteredTasks.length) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        No tasks found
+      </div>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[40px]"></TableHead>
+            <TableHead className="w-[100px]">Status</TableHead>
+            <TableHead className="w-[80px]">Type</TableHead>
+            <TableHead className="w-[100px]">Key</TableHead>
+            <TableHead>Title</TableHead>
+            <TableHead className="w-[120px]">Repo</TableHead>
+            <TableHead className="w-[150px]">Branch</TableHead>
+            <TableHead className="w-[60px]">PR</TableHead>
+            <TableHead className="w-[50px]">Checks</TableHead>
+            <TableHead className="w-[60px]">Reviews</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredTasks.map((task) => (
+            <TaskRow key={task.id} task={task} repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined} />
+          ))}
+        </TableBody>
+      </Table>
+    </TooltipProvider>
+  );
+}
+
+interface TaskRowProps {
+  task: Task;
+  repo?: Repository;
+}
+
+function TaskRow({ task, repo }: TaskRowProps) {
+  const syncTask = useSyncTask();
+
+  // Build GitHub PR URL if we have repo info
+  const prUrl = repo && task.prNumber
+    ? `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`
+    : null;
+
+  // Only show sync if task has Jira or PR
+  const canSync = task.jiraKey || task.prNumber;
+
+  const handleSync = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    syncTask.mutate({ task, repo });
+  };
+
+  return (
+    <TableRow>
+      {/* Sync */}
+      <TableCell>
+        {canSync && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleSync}
+            disabled={syncTask.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
+          </Button>
+        )}
+      </TableCell>
+
+      {/* Status */}
+      <TableCell>
+        <StatusBadge status={task.status} />
+      </TableCell>
+
+      {/* Type */}
+      <TableCell>
+        {task.type ? (
+          <Badge variant="outline" className="text-xs">{task.type}</Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Jira Key */}
+      <TableCell>
+        {task.jiraKey ? (
+          <a
+            href={getJiraUrl(task.jiraKey)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline font-mono text-xs"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {task.jiraKey}
+          </a>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Title */}
+      <TableCell className="max-w-[300px]">
+        <Link
+          to={`/tasks/${task.id}`}
+          className="hover:underline truncate block"
+          title={task.title}
+        >
+          {task.title}
+        </Link>
+      </TableCell>
+
+      {/* Repository */}
+      <TableCell className="text-xs text-muted-foreground">
+        {repo ? repo.repo : task.repositoryId ? `#${task.repositoryId}` : "—"}
+      </TableCell>
+
+      {/* Branch */}
+      <TableCell className="font-mono text-xs max-w-[150px] truncate" title={task.headBranch || undefined}>
+        {task.headBranch ? (
+          <button
+            type="button"
+            className="hover:text-blue-600 cursor-pointer text-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(task.headBranch!);
+              toast.success("Branch copied to clipboard");
+            }}
+          >
+            {task.headBranch}
+          </button>
+        ) : (
+          "—"
+        )}
+      </TableCell>
+
+      {/* PR Number */}
+      <TableCell>
+        {task.prNumber ? (
+          prUrl ? (
+            <a
+              href={prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs text-blue-600 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              #{task.prNumber}
+            </a>
+          ) : (
+            <span className="font-mono text-xs">#{task.prNumber}</span>
+          )
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Checks */}
+      <TableCell>
+        <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} />
+      </TableCell>
+
+      {/* Review */}
+      <TableCell>
+        {getReviewDisplay(task.approvedReviewCount)}
+      </TableCell>
+    </TableRow>
+  );
+}

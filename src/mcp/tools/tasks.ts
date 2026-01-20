@@ -4,12 +4,14 @@ import {
   get,
   post,
   patch,
-  getOrSyncJira,
-  getOrSyncPR,
   resolveTaskId,
   type Task,
   type TaskWithRelations,
   type ListResponse,
+  type SyncResult,
+  type MergeResult,
+  type SplitResult,
+  type AutoMatchResult,
 } from "../client.js";
 
 export function registerTaskTools(server: McpServer) {
@@ -17,52 +19,20 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "list_tasks",
     {
-      description: "List all tasks with optional filters",
+      description: "List all tasks with optional filters. Can filter by status, orphan type (jira-only or pr-only tasks), or linked (both jira and pr).",
       inputSchema: {
         status: z.string().optional().describe("Filter by status (todo, in_progress, code_review, qa, done, blocked)"),
-        blocked: z.boolean().optional().describe("Filter by blocked state"),
-        jiraKey: z.string().optional().describe("Filter by linked Jira key"),
-        prNumber: z.number().optional().describe("Filter by linked PR number"),
-        prRepo: z.string().optional().describe("Repository for PR filter (owner/repo format)"),
+        orphanJira: z.boolean().optional().describe("If true, return only Jira orphan tasks (have jiraKey but no prNumber)"),
+        orphanPr: z.boolean().optional().describe("If true, return only PR orphan tasks (have prNumber but no jiraKey)"),
+        linked: z.boolean().optional().describe("If true, return only linked tasks (have both jiraKey and prNumber, or manual tasks)"),
       },
     },
-    async ({ status, blocked, jiraKey, prNumber, prRepo }) => {
-      // Handle jiraKey filter - find task through Jira item
-      if (jiraKey) {
-        try {
-          const jiraItem = await getOrSyncJira(jiraKey);
-          if (!jiraItem.taskId) {
-            return { content: [{ type: "text", text: JSON.stringify({ items: [], total: 0 }) }] };
-          }
-          const task = await get<TaskWithRelations>(`/api/v1/tasks/${jiraItem.taskId}`);
-          return { content: [{ type: "text", text: JSON.stringify({ items: [task], total: 1 }) }] };
-        } catch {
-          return { content: [{ type: "text", text: JSON.stringify({ items: [], total: 0 }) }] };
-        }
-      }
-
-      // Handle prNumber+prRepo filter - find task through PR's branch
-      if (prNumber && prRepo) {
-        const [owner, repo] = prRepo.split("/");
-        if (!owner || !repo) {
-          return { content: [{ type: "text", text: "Error: prRepo must be in format 'owner/repo'" }], isError: true };
-        }
-        try {
-          const pr = await getOrSyncPR(owner, repo, prNumber);
-          if (!pr.branches || pr.branches.length === 0 || !pr.branches[0].taskId) {
-            return { content: [{ type: "text", text: JSON.stringify({ items: [], total: 0 }) }] };
-          }
-          const task = await get<TaskWithRelations>(`/api/v1/tasks/${pr.branches[0].taskId}`);
-          return { content: [{ type: "text", text: JSON.stringify({ items: [task], total: 1 }) }] };
-        } catch {
-          return { content: [{ type: "text", text: JSON.stringify({ items: [], total: 0 }) }] };
-        }
-      }
-
-      // Standard API filter
+    async ({ status, orphanJira, orphanPr, linked }) => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
-      if (blocked !== undefined) params.set("blocked", String(blocked));
+      if (orphanJira) params.set("orphanJira", "true");
+      if (orphanPr) params.set("orphanPr", "true");
+      if (linked) params.set("linked", "true");
       const queryString = params.toString();
       const path = `/api/v1/tasks${queryString ? `?${queryString}` : ""}`;
 
@@ -75,17 +45,15 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "get_task",
     {
-      description: "Get a single task by ID, Jira key, or PR number. Returns task with todos, branches, Jira items, and blockers.",
+      description: "Get a single task by ID or Jira key. Returns task with todos and blockers.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("PR number to look up task"),
-        prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
       },
     },
-    async ({ id, jiraKey, prNumber, prRepo }) => {
+    async ({ id, jiraKey }) => {
       try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, prRepo });
+        const taskId = await resolveTaskId({ id, jiraKey });
         const task = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(task) }] };
       } catch (err) {
@@ -99,48 +67,21 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "create_task",
     {
-      description: "Create a new task, optionally linking it to a Jira issue or GitHub PR",
+      description: "Create a new manual task",
       inputSchema: {
         title: z.string().describe("Task title"),
         description: z.string().optional().describe("Task description"),
         status: z.string().optional().describe("Task status (default: todo)"),
-        jiraKey: z.string().optional().describe("Jira key to link to the new task"),
-        prNumber: z.number().optional().describe("PR number to link to the new task"),
-        prRepo: z.string().optional().describe("Repository for PR (owner/repo format)"),
       },
     },
-    async ({ title, description, status, jiraKey, prNumber, prRepo }) => {
+    async ({ title, description, status }) => {
       try {
-        // Create the task
         const task = await post<Task>("/api/v1/tasks", {
           title,
           description,
           status: status || "todo",
         });
 
-        // Link to Jira if provided
-        if (jiraKey) {
-          const jiraItem = await getOrSyncJira(jiraKey);
-          await post(`/api/v1/jira/items/${jiraItem.id}/link`, { taskId: task.id });
-        }
-
-        // Link to PR if provided
-        if (prNumber && prRepo) {
-          const [owner, repo] = prRepo.split("/");
-          if (!owner || !repo) {
-            return { content: [{ type: "text", text: "Error: prRepo must be in format 'owner/repo'" }], isError: true };
-          }
-          const pr = await getOrSyncPR(owner, repo, prNumber);
-          // Create a branch linking the task and PR
-          await post("/api/v1/branches", {
-            name: pr.headBranch,
-            repositoryId: pr.repositoryId,
-            taskId: task.id,
-            pullRequestId: pr.id,
-          });
-        }
-
-        // Return the full task with relations
         const fullTask = await get<TaskWithRelations>(`/api/v1/tasks/${task.id}`);
         return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
       } catch (err) {
@@ -154,12 +95,10 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "update_task",
     {
-      description: "Update an existing task by ID, Jira key, or PR number",
+      description: "Update an existing task by ID or Jira key",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("PR number to look up task"),
-        prRepo: z.string().optional().describe("Repository for PR lookup (owner/repo format)"),
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
@@ -168,43 +107,132 @@ export function registerTaskTools(server: McpServer) {
             z.object({
               taskId: z.number().optional(),
               todoId: z.number().optional(),
-              branchId: z.number().optional(),
             })
           )
           .optional()
-          .describe("Array of blockers to add (each must have exactly one of taskId, todoId, or branchId)"),
+          .describe("Array of blockers to add (each must have exactly one of taskId or todoId)"),
       },
     },
-    async ({ id, jiraKey, prNumber, prRepo, title, description, status, blockedBy }) => {
+    async ({ id, jiraKey, title, description, status, blockedBy }) => {
       try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, prRepo });
+        const taskId = await resolveTaskId({ id, jiraKey });
 
-        // Build update payload
         const updates: Record<string, unknown> = {};
         if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status;
 
-        // Apply updates if any
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
         }
 
-        // Add blockedBy relations
         if (blockedBy && blockedBy.length > 0) {
           for (const blocker of blockedBy) {
             await post("/api/v1/blocked-by", {
               blockedTaskId: taskId,
               blockerTaskId: blocker.taskId || null,
               blockerTodoId: blocker.todoId || null,
-              blockerBranchId: blocker.branchId || null,
             });
           }
         }
 
-        // Return the updated task with relations
         const fullTask = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // merge_tasks
+  server.registerTool(
+    "merge_tasks",
+    {
+      description: "Merge two orphan tasks (one Jira, one PR) into a single linked task. The target task receives fields from the source, and the source is deleted.",
+      inputSchema: {
+        targetId: z.number().describe("ID of the target task (will be kept)"),
+        sourceId: z.number().describe("ID of the source task (will be deleted after merge)"),
+      },
+    },
+    async ({ targetId, sourceId }) => {
+      try {
+        const result = await post<MergeResult>(`/api/v1/tasks/${targetId}/merge`, { sourceId });
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // split_task
+  server.registerTool(
+    "split_task",
+    {
+      description: "Split a merged task back into two orphan tasks. Creates a new PR orphan task from the PR fields and clears PR fields from the original.",
+      inputSchema: {
+        id: z.number().describe("ID of the merged task to split"),
+      },
+    },
+    async ({ id }) => {
+      try {
+        const result = await post<SplitResult>(`/api/v1/tasks/${id}/split`);
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // auto_match_orphans
+  server.registerTool(
+    "auto_match_orphans",
+    {
+      description: "Find potential matches between Jira orphan tasks and PR orphan tasks by looking for Jira keys in PR branch names and titles. Returns matches but does not merge them.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await post<AutoMatchResult>("/api/v1/tasks/auto-match");
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // refresh_jira
+  server.registerTool(
+    "refresh_jira",
+    {
+      description: "Trigger a sync from Jira API to refresh Jira tasks",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await post<SyncResult>("/api/v1/refresh/jira");
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // refresh_github
+  server.registerTool(
+    "refresh_github",
+    {
+      description: "Trigger a sync from GitHub API to refresh PR tasks",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await post<SyncResult>("/api/v1/refresh/github");
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

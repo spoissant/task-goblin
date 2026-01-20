@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `approved_review_count` integer;

@@ -7,6 +7,7 @@ const router = createRouter(routes);
 
 Bun.serve({
   port,
+  idleTimeout: 120, // 2 minutes for slow API operations
   async fetch(req) {
     // Handle CORS preflight
     const corsResponse = handleCors(req);

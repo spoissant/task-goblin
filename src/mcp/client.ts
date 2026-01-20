@@ -56,7 +56,7 @@ export async function del<T>(path: string): Promise<T> {
   return handleResponse<T>(res);
 }
 
-// Types
+// Types - Unified Task model
 export interface Task {
   id: number;
   title: string;
@@ -64,59 +64,26 @@ export interface Task {
   status: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface TaskWithRelations extends Task {
-  todos: Todo[];
-  branches: Branch[];
-  jiraItems: JiraItem[];
-  blockedBy: BlockedByRecord[];
-}
-
-export interface Todo {
-  id: number;
-  content: string;
-  done: string | null;
-  taskId: number | null;
-  branchId: number | null;
-  jiraItemId: number | null;
-  pullRequestId: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Branch {
-  id: number;
-  name: string;
-  repositoryId: number;
-  taskId: number | null;
-  pullRequestId: number | null;
-}
-
-export interface JiraItem {
-  id: number;
-  key: string;
-  summary: string;
-  status: string | null;
+  // Jira fields (nullable)
+  jiraKey: string | null;
+  type: string | null;
   assignee: string | null;
-  taskId: number | null;
-  createdAt: string;
-  updatedAt: string;
-  task?: Task | null;
-}
-
-export interface PullRequest {
-  id: number;
-  number: number;
-  title: string;
-  state: string;
-  headBranch: string;
-  baseBranch: string;
-  repositoryId: number;
-  createdAt: string;
-  updatedAt: string;
-  repository?: Repository | null;
-  branches?: Branch[];
+  priority: string | null;
+  sprint: string | null;
+  epicKey: string | null;
+  lastComment: string | null;
+  jiraSyncedAt: string | null;
+  // GitHub/PR fields (nullable)
+  prNumber: number | null;
+  repositoryId: number | null;
+  headBranch: string | null;
+  baseBranch: string | null;
+  prState: string | null;
+  prAuthor: string | null;
+  isDraft: number | null;
+  checksStatus: string | null;
+  reviewStatus: string | null;
+  prSyncedAt: string | null;
 }
 
 export interface Repository {
@@ -125,13 +92,29 @@ export interface Repository {
   repo: string;
 }
 
+export interface TaskWithRepository extends Task {
+  repository?: Repository | null;
+}
+
+export interface Todo {
+  id: number;
+  content: string;
+  done: string | null;
+  taskId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BlockedByRecord {
   id: number;
   blockedTaskId: number | null;
-  blockedBranchId: number | null;
   blockerTaskId: number | null;
   blockerTodoId: number | null;
-  blockerBranchId: number | null;
+}
+
+export interface TaskWithRelations extends TaskWithRepository {
+  todos: Todo[];
+  blockedBy: BlockedByRecord[];
 }
 
 export interface ListResponse<T> {
@@ -139,74 +122,39 @@ export interface ListResponse<T> {
   total: number;
 }
 
-// Jira sync helpers
-export async function getOrSyncJira(key: string): Promise<JiraItem> {
-  try {
-    return await get<JiraItem>(`/api/v1/jira/items/key/${key}`);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      // Sync from Jira API and retry
-      await post(`/api/v1/refresh/jira/${key}`);
-      return await get<JiraItem>(`/api/v1/jira/items/key/${key}`);
-    }
-    throw err;
-  }
+export interface SyncResult {
+  synced: number;
+  errors: string[];
 }
 
-// GitHub PR sync helpers
-export async function getOrSyncPR(
-  owner: string,
-  repo: string,
-  number: number
-): Promise<PullRequest> {
-  try {
-    return await get<PullRequest>(
-      `/api/v1/github/repos/${owner}/${repo}/pull-requests/${number}`
-    );
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      // Sync from GitHub API and retry
-      await post(`/api/v1/refresh/github/${owner}/${repo}/${number}`);
-      return await get<PullRequest>(
-        `/api/v1/github/repos/${owner}/${repo}/pull-requests/${number}`
-      );
-    }
-    throw err;
-  }
+export interface MergeResult {
+  merged: Task;
+}
+
+export interface SplitResult {
+  original: Task;
+  newPrTask: Task;
+}
+
+export interface AutoMatchResult {
+  matches: Array<{ jiraTaskId: number; prTaskId: number; jiraKey: string }>;
+  total: number;
 }
 
 // Resolve task ID from various identifiers
 export async function resolveTaskId(params: {
   id?: number;
   jiraKey?: string;
-  prNumber?: number;
-  prRepo?: string;
 }): Promise<number> {
   if (params.id) {
     return params.id;
   }
 
   if (params.jiraKey) {
-    const jiraItem = await getOrSyncJira(params.jiraKey);
-    if (!jiraItem.taskId) {
-      throw new Error(`Jira item ${params.jiraKey} is not linked to a task`);
-    }
-    return jiraItem.taskId;
+    // Use the new endpoint that looks up task by jiraKey
+    const task = await get<Task>(`/api/v1/tasks/by-jira-key/${encodeURIComponent(params.jiraKey)}`);
+    return task.id;
   }
 
-  if (params.prNumber && params.prRepo) {
-    const [owner, repo] = params.prRepo.split("/");
-    if (!owner || !repo) {
-      throw new Error("prRepo must be in format 'owner/repo'");
-    }
-    const pr = await getOrSyncPR(owner, repo, params.prNumber);
-    if (!pr.branches || pr.branches.length === 0 || !pr.branches[0].taskId) {
-      throw new Error(
-        `PR ${params.prRepo}#${params.prNumber} is not linked to a task`
-      );
-    }
-    return pr.branches[0].taskId;
-  }
-
-  throw new Error("One of id, jiraKey, or prNumber+prRepo is required");
+  throw new Error("One of id or jiraKey is required");
 }

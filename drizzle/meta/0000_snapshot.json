@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "73cc157e-815f-4b76-8b85-44da7041694c",
+  "id": "b237157f-3f64-4415-b2a8-a3914c4ff824",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "blocked_by": {
@@ -21,8 +21,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "blocked_branch_id": {
-          "name": "blocked_branch_id",
+        "blocked_pull_request_id": {
+          "name": "blocked_pull_request_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -42,8 +42,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "blocker_branch_id": {
-          "name": "blocker_branch_id",
+        "blocker_pull_request_id": {
+          "name": "blocker_pull_request_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -65,12 +65,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "blocked_by_blocked_branch_id_branches_id_fk": {
-          "name": "blocked_by_blocked_branch_id_branches_id_fk",
+        "blocked_by_blocked_pull_request_id_pull_requests_id_fk": {
+          "name": "blocked_by_blocked_pull_request_id_pull_requests_id_fk",
           "tableFrom": "blocked_by",
-          "tableTo": "branches",
+          "tableTo": "pull_requests",
           "columnsFrom": [
-            "blocked_branch_id"
+            "blocked_pull_request_id"
           ],
           "columnsTo": [
             "id"
@@ -104,97 +104,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "blocked_by_blocker_branch_id_branches_id_fk": {
-          "name": "blocked_by_blocker_branch_id_branches_id_fk",
+        "blocked_by_blocker_pull_request_id_pull_requests_id_fk": {
+          "name": "blocked_by_blocker_pull_request_id_pull_requests_id_fk",
           "tableFrom": "blocked_by",
-          "tableTo": "branches",
-          "columnsFrom": [
-            "blocker_branch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "branches": {
-      "name": "branches",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "repository_id": {
-          "name": "repository_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "task_id": {
-          "name": "task_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pull_request_id": {
-          "name": "pull_request_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "branches_repository_id_repositories_id_fk": {
-          "name": "branches_repository_id_repositories_id_fk",
-          "tableFrom": "branches",
-          "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "branches_task_id_tasks_id_fk": {
-          "name": "branches_task_id_tasks_id_fk",
-          "tableFrom": "branches",
-          "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "branches_pull_request_id_pull_requests_id_fk": {
-          "name": "branches_pull_request_id_pull_requests_id_fk",
-          "tableFrom": "branches",
           "tableTo": "pull_requests",
           "columnsFrom": [
-            "pull_request_id"
+            "blocker_pull_request_id"
           ],
           "columnsTo": [
             "id"
@@ -344,7 +259,7 @@
           "name": "number",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "repository_id": {
@@ -354,18 +269,25 @@
           "notNull": true,
           "autoincrement": false
         },
+        "task_id": {
+          "name": "task_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "title": {
           "name": "title",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "state": {
           "name": "state",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "author": {
@@ -379,7 +301,7 @@
           "name": "head_branch",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "base_branch": {
@@ -427,6 +349,19 @@
           "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pull_requests_task_id_tasks_id_fk": {
+          "name": "pull_requests_task_id_tasks_id_fk",
+          "tableFrom": "pull_requests",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
           ],
           "columnsTo": [
             "id"
@@ -586,13 +521,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "branch_id": {
-          "name": "branch_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "jira_item_id": {
           "name": "jira_item_id",
           "type": "integer",
@@ -630,19 +558,6 @@
           "tableTo": "tasks",
           "columnsFrom": [
             "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "todos_branch_id_branches_id_fk": {
-          "name": "todos_branch_id_branches_id_fk",
-          "tableFrom": "todos",
-          "tableTo": "branches",
-          "columnsFrom": [
-            "branch_id"
           ],
           "columnsTo": [
             "id"
