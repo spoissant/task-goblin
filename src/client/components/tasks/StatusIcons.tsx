@@ -7,21 +7,24 @@ import {
 
 interface ReviewStatusIconProps {
   approvedCount: number | null;
+  prUrl?: string | null;
 }
 
-export function ReviewStatusIcon({ approvedCount }: ReviewStatusIconProps) {
+export function ReviewStatusIcon({ approvedCount, prUrl }: ReviewStatusIconProps) {
   if (approvedCount === null) {
     return <span className="text-muted-foreground">—</span>;
   }
 
   const required = 2;
   const countText = `${approvedCount}/${required}`;
+  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
+  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
 
   if (approvedCount >= required) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 cursor-default">
+          <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
             <CheckCircle className="h-4 w-4 text-green-500" />
             <span className="text-xs">{countText}</span>
           </span>
@@ -37,7 +40,7 @@ export function ReviewStatusIcon({ approvedCount }: ReviewStatusIconProps) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 cursor-default">
+          <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
             <CheckCircle className="h-4 w-4 text-yellow-500" />
             <span className="text-xs">{countText}</span>
           </span>
@@ -52,7 +55,7 @@ export function ReviewStatusIcon({ approvedCount }: ReviewStatusIconProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 cursor-default">
+        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
           <XCircle className="h-4 w-4 text-red-500" />
           <span className="text-xs">{countText}</span>
         </span>
@@ -116,18 +119,22 @@ export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
 
 interface UnresolvedCommentsIconProps {
   count: number | null;
+  prUrl?: string | null;
 }
 
-export function UnresolvedCommentsIcon({ count }: UnresolvedCommentsIconProps) {
+export function UnresolvedCommentsIcon({ count, prUrl }: UnresolvedCommentsIconProps) {
   if (count === null) {
     return <span className="text-muted-foreground">—</span>;
   }
+
+  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
+  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
 
   if (count === 0) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex items-center cursor-default">
+          <span className={`inline-flex items-center ${cursorClass}`} onClick={handleClick}>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </span>
         </TooltipTrigger>
@@ -139,7 +146,7 @@ export function UnresolvedCommentsIcon({ count }: UnresolvedCommentsIconProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 cursor-default">
+        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
           <MessageSquare className="h-4 w-4 text-yellow-500" />
           <span className="text-xs">{count}</span>
         </span>

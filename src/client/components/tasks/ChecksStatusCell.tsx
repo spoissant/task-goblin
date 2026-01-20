@@ -9,6 +9,7 @@ import type { CheckDetail } from "@/client/lib/types";
 interface ChecksStatusCellProps {
   checksStatus: string | null;
   checksDetails: string | null;
+  prUrl?: string | null;
 }
 
 function getCheckIcon(status: string, conclusion: string | null) {
@@ -58,7 +59,7 @@ function countChecks(details: CheckDetail[]): { passed: number; total: number } 
   return { passed, total };
 }
 
-export function ChecksStatusCell({ checksStatus, checksDetails }: ChecksStatusCellProps) {
+export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksStatusCellProps) {
   const icon = getStatusIcon(checksStatus);
   if (!icon) {
     return <span className="text-muted-foreground">-</span>;
@@ -67,15 +68,21 @@ export function ChecksStatusCell({ checksStatus, checksDetails }: ChecksStatusCe
   const details = parseChecksDetails(checksDetails);
   const { passed, total } = countChecks(details);
   const countText = total > 0 ? `${passed}/${total}` : null;
+  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
+  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
 
   if (details.length === 0) {
-    return icon;
+    return (
+      <span className={`inline-flex ${cursorClass}`} onClick={handleClick}>
+        {icon}
+      </span>
+    );
   }
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 cursor-default">
+        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
           {icon}
           {countText && <span className="text-xs">{countText}</span>}
         </span>

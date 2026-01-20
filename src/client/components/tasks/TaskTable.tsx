@@ -331,17 +331,17 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
 
       {/* Checks */}
       <TableCell>
-        <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} />
+        <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={prUrl} />
       </TableCell>
 
       {/* Review */}
       <TableCell>
-        <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
+        <ReviewStatusIcon approvedCount={task.approvedReviewCount} prUrl={prUrl} />
       </TableCell>
 
       {/* Comments */}
       <TableCell>
-        <UnresolvedCommentsIcon count={task.unresolvedCommentCount} />
+        <UnresolvedCommentsIcon count={task.unresolvedCommentCount} prUrl={prUrl} />
       </TableCell>
 
       {/* Next Todo */}
