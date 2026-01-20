@@ -1,10 +1,11 @@
 import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
 import { useUnreadCountQuery } from "@/client/lib/queries";
-import { LayoutDashboard, ListTodo, FolderSearch, CheckCircle, ScrollText, Settings } from "lucide-react";
+import { LayoutDashboard, ListTodo, SquareCheck, FolderSearch, CheckCircle, ScrollText, Settings } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/todos", icon: SquareCheck, label: "Todos" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },

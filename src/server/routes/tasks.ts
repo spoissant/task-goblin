@@ -155,7 +155,42 @@ export const taskRoutes: Routes = {
         query = query.offset(parseInt(offset, 10)) as typeof query;
       }
 
-      const items = await query;
+      const taskList = await query;
+
+      // Get next todo (lowest position incomplete) for each task
+      const taskIds = taskList.map((t) => t.id);
+      const nextTodoMap = new Map<number, { id: number; content: string; position: number | null }>();
+
+      if (taskIds.length > 0) {
+        // Get the lowest position incomplete todo for each task
+        const nextTodos = await db
+          .select({
+            taskId: todos.taskId,
+            id: todos.id,
+            content: todos.content,
+            position: todos.position,
+          })
+          .from(todos)
+          .where(
+            and(
+              sql`${todos.taskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`,
+              sql`${todos.done} IS NULL`
+            )
+          )
+          .orderBy(sql`COALESCE(${todos.position}, 999999)`);
+
+        // Keep only the first (lowest position) incomplete todo per task
+        for (const todo of nextTodos) {
+          if (todo.taskId && !nextTodoMap.has(todo.taskId)) {
+            nextTodoMap.set(todo.taskId, { id: todo.id, content: todo.content, position: todo.position });
+          }
+        }
+      }
+
+      const items = taskList.map((task) => ({
+        ...task,
+        nextTodo: nextTodoMap.get(task.id) || null,
+      }));
 
       // Get total count for pagination
       let totalQuery = db.select({ count: sql<number>`count(*)` }).from(tasks);

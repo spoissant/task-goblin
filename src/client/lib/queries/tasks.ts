@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Task, TaskDetail, TaskWithRepository, ListResponse, PaginatedResponse, AutoMatchResult, SplitResult } from "../types";
+import type { Task, TaskDetail, TaskWithRepository, TaskWithNextTodo, ListResponse, PaginatedResponse, AutoMatchResult, SplitResult } from "../types";
 
 export const taskKeys = {
   all: ["tasks"] as const,
@@ -23,7 +23,7 @@ export function useTasksQuery(filters: { status?: string; excludeCompleted?: boo
 
   return useQuery({
     queryKey: taskKeys.list(filters),
-    queryFn: () => api.get<ListResponse<Task>>(`/tasks${query ? `?${query}` : ""}`),
+    queryFn: () => api.get<ListResponse<TaskWithNextTodo>>(`/tasks${query ? `?${query}` : ""}`),
   });
 }
 

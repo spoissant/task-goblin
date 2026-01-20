@@ -55,13 +55,32 @@ export interface TaskWithRepository extends Task {
   repository: Repository | null;
 }
 
+// Task with next todo for dashboard
+export interface TaskWithNextTodo extends Task {
+  nextTodo: NextTodo | null;
+}
+
 export interface Todo {
   id: number;
   content: string;
   done: string | null;
   taskId: number | null;
+  position: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TodoWithTask extends Todo {
+  task: {
+    jiraKey: string | null;
+    title: string;
+  } | null;
+}
+
+export interface NextTodo {
+  id: number;
+  content: string;
+  position: number | null;
 }
 
 export interface Repository {

@@ -7,7 +7,7 @@ import { withErrorBoundary } from "../middleware";
 let router: ReturnType<typeof createRouter>;
 
 beforeAll(() => {
-  // Create tables in the in-memory test database
+  // Create tables in the in-memory test database - matches current schema.ts
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,7 +15,28 @@ beforeAll(() => {
       description TEXT,
       status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      jira_key TEXT UNIQUE,
+      type TEXT,
+      assignee TEXT,
+      priority TEXT,
+      sprint TEXT,
+      epic_key TEXT,
+      last_comment TEXT,
+      jira_synced_at TEXT,
+      pr_number INTEGER,
+      repository_id INTEGER REFERENCES repositories(id),
+      head_branch TEXT,
+      base_branch TEXT,
+      pr_state TEXT,
+      pr_author TEXT,
+      is_draft INTEGER DEFAULT 0,
+      checks_status TEXT,
+      checks_details TEXT,
+      review_status TEXT,
+      approved_review_count INTEGER,
+      pr_synced_at TEXT,
+      on_deployment_branches TEXT
     );
 
     CREATE TABLE IF NOT EXISTS todos (
@@ -23,9 +44,7 @@ beforeAll(() => {
       content TEXT NOT NULL,
       done TEXT,
       task_id INTEGER REFERENCES tasks(id),
-      branch_id INTEGER REFERENCES branches(id),
-      jira_item_id INTEGER REFERENCES jira_items(id),
-      pull_request_id INTEGER REFERENCES pull_requests(id),
+      position INTEGER,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -34,60 +53,30 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       owner TEXT NOT NULL,
       repo TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS branches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      repository_id INTEGER NOT NULL REFERENCES repositories(id),
-      task_id INTEGER NOT NULL REFERENCES tasks(id),
-      pull_request_id INTEGER REFERENCES pull_requests(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS pull_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      number INTEGER NOT NULL,
-      repository_id INTEGER NOT NULL REFERENCES repositories(id),
-      title TEXT NOT NULL,
-      state TEXT NOT NULL,
-      author TEXT,
-      head_branch TEXT,
-      base_branch TEXT,
-      is_draft INTEGER NOT NULL DEFAULT 0,
-      checks_status TEXT,
-      review_status TEXT,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS jira_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT NOT NULL UNIQUE,
-      summary TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL,
-      type TEXT,
-      assignee TEXT,
-      priority TEXT,
-      sprint TEXT,
-      epic_key TEXT,
-      last_comment TEXT,
-      task_id INTEGER REFERENCES tasks(id),
-      updated_at TEXT NOT NULL
+      enabled INTEGER NOT NULL DEFAULT 1,
+      badge_color TEXT,
+      deployment_branches TEXT
     );
 
     CREATE TABLE IF NOT EXISTS blocked_by (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       blocked_task_id INTEGER REFERENCES tasks(id),
-      blocked_branch_id INTEGER REFERENCES branches(id),
       blocker_task_id INTEGER REFERENCES tasks(id),
-      blocker_todo_id INTEGER REFERENCES todos(id),
-      blocker_branch_id INTEGER REFERENCES branches(id)
+      blocker_todo_id INTEGER REFERENCES todos(id)
     );
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER REFERENCES tasks(id),
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT,
+      source TEXT NOT NULL
     );
   `);
 
@@ -97,10 +86,8 @@ beforeAll(() => {
 beforeEach(() => {
   // Clear all tables before each test
   sqlite.exec("DELETE FROM blocked_by");
-  sqlite.exec("DELETE FROM branches");
+  sqlite.exec("DELETE FROM logs");
   sqlite.exec("DELETE FROM todos");
-  sqlite.exec("DELETE FROM jira_items");
-  sqlite.exec("DELETE FROM pull_requests");
   sqlite.exec("DELETE FROM tasks");
   sqlite.exec("DELETE FROM repositories");
   sqlite.exec("DELETE FROM settings");
@@ -262,6 +249,58 @@ describe("Todos endpoints", () => {
     );
     const toggled2 = await toggleRes2.json();
     expect(toggled2.done).toBeNull();
+  });
+
+  it("creates todo at start with placement='start'", async () => {
+    // Create first todo (position 1)
+    const res1 = await request("POST", "/api/v1/todos", { content: "First" });
+    const todo1 = await res1.json();
+    expect(todo1.position).toBe(1);
+
+    // Create second todo at end (position 2)
+    const res2 = await request("POST", "/api/v1/todos", { content: "Second" });
+    const todo2 = await res2.json();
+    expect(todo2.position).toBe(2);
+
+    // Create third todo at start - should shift others
+    const res3 = await request("POST", "/api/v1/todos", {
+      content: "Third at start",
+      placement: "start",
+    });
+    const todo3 = await res3.json();
+    expect(todo3.position).toBe(1);
+
+    // Verify positions shifted: Third=1, First=2, Second=3
+    const listRes = await request("GET", "/api/v1/todos");
+    const list = await listRes.json();
+    const sorted = list.items.sort((a: { position: number }, b: { position: number }) => a.position - b.position);
+    expect(sorted[0].content).toBe("Third at start");
+    expect(sorted[0].position).toBe(1);
+    expect(sorted[1].content).toBe("First");
+    expect(sorted[1].position).toBe(2);
+    expect(sorted[2].content).toBe("Second");
+    expect(sorted[2].position).toBe(3);
+  });
+
+  it("creates todo at end with placement='end' (default)", async () => {
+    // Create first todo
+    const res1 = await request("POST", "/api/v1/todos", { content: "First" });
+    const todo1 = await res1.json();
+    expect(todo1.position).toBe(1);
+
+    // Create second todo with explicit 'end' placement
+    const res2 = await request("POST", "/api/v1/todos", {
+      content: "Second at end",
+      placement: "end",
+    });
+    const todo2 = await res2.json();
+    expect(todo2.position).toBe(2);
+
+    // Verify first todo position unchanged
+    const listRes = await request("GET", "/api/v1/todos");
+    const list = await listRes.json();
+    const first = list.items.find((t: { content: string }) => t.content === "First");
+    expect(first.position).toBe(1);
   });
 });
 

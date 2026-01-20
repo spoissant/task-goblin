@@ -1,6 +1,6 @@
-import { eq, and, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, sql, asc, gt, lt, gte, lte } from "drizzle-orm";
 import { db } from "../../db";
-import { todos } from "../../db/schema";
+import { todos, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -27,13 +27,32 @@ export const todoRoutes: Routes = {
         conditions.push(isNull(todos.done));
       }
 
-      const items =
-        conditions.length > 0
-          ? await db
-              .select()
-              .from(todos)
-              .where(and(...conditions))
-          : await db.select().from(todos);
+      // Join with tasks to get task info
+      let query = db
+        .select({
+          id: todos.id,
+          content: todos.content,
+          done: todos.done,
+          taskId: todos.taskId,
+          position: todos.position,
+          createdAt: todos.createdAt,
+          updatedAt: todos.updatedAt,
+          task: {
+            jiraKey: tasks.jiraKey,
+            title: tasks.title,
+          },
+        })
+        .from(todos)
+        .leftJoin(tasks, eq(todos.taskId, tasks.id));
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as typeof query;
+      }
+
+      // Order by position (nulls last for legacy data)
+      query = query.orderBy(sql`COALESCE(${todos.position}, 999999)`) as typeof query;
+
+      const items = await query;
 
       return json({ items, total: items.length });
     },
@@ -45,13 +64,36 @@ export const todoRoutes: Routes = {
         throw new ValidationError("content is required");
       }
 
+      const placement = body.placement === "start" ? "start" : "end";
       const timestamp = now();
+      let newPosition: number;
+
+      if (placement === "start") {
+        // Shift ALL todos with non-null positions +1
+        await db
+          .update(todos)
+          .set({
+            position: sql`${todos.position} + 1`,
+            updatedAt: timestamp,
+          })
+          .where(isNotNull(todos.position));
+
+        newPosition = 1;
+      } else {
+        // Append: position = MAX(position) + 1
+        const maxPosResult = await db
+          .select({ maxPos: sql<number>`COALESCE(MAX(${todos.position}), 0)` })
+          .from(todos);
+        newPosition = (maxPosResult[0]?.maxPos ?? 0) + 1;
+      }
+
       const result = await db
         .insert(todos)
         .values({
           content: body.content,
           done: body.done || null,
           taskId: body.taskId || null,
+          position: newPosition,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -152,6 +194,72 @@ export const todoRoutes: Routes = {
       const result = await db
         .update(todos)
         .set({ done: newDone, updatedAt: now() })
+        .where(eq(todos.id, id))
+        .returning();
+
+      return json(result[0]);
+    },
+  },
+
+  "/api/v1/todos/:id/reorder": {
+    async PUT(req, params) {
+      const id = parseInt(params.id, 10);
+      const body = await getBody(req);
+
+      if (typeof body.position !== "number" || body.position < 1) {
+        throw new ValidationError("position must be a positive number");
+      }
+
+      const existing = await db.select().from(todos).where(eq(todos.id, id));
+      if (existing.length === 0) {
+        throw new NotFoundError("Todo", id);
+      }
+
+      const todo = existing[0];
+      const oldPosition = todo.position ?? 0;
+      const newPosition = body.position;
+
+      if (oldPosition === newPosition) {
+        return json(todo);
+      }
+
+      const timestamp = now();
+
+      // Shift other positions to make room
+      if (newPosition < oldPosition) {
+        // Moving up: shift items in [newPosition, oldPosition) down by 1
+        await db
+          .update(todos)
+          .set({
+            position: sql`${todos.position} + 1`,
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              gte(todos.position, newPosition),
+              lt(todos.position, oldPosition)
+            )
+          );
+      } else {
+        // Moving down: shift items in (oldPosition, newPosition] up by 1
+        await db
+          .update(todos)
+          .set({
+            position: sql`${todos.position} - 1`,
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              gt(todos.position, oldPosition),
+              lte(todos.position, newPosition)
+            )
+          );
+      }
+
+      // Update the todo's position
+      const result = await db
+        .update(todos)
+        .set({ position: newPosition, updatedAt: timestamp })
         .where(eq(todos.id, id))
         .returning();
 

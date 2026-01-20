@@ -41,6 +41,7 @@ export const todos = sqliteTable("todos", {
   content: text("content").notNull(),
   done: text("done"), // ISO timestamp when completed, null if pending
   taskId: integer("task_id").references(() => tasks.id),
+  position: integer("position"), // global ordering for all todos
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

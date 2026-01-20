@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/layout/RootLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
+import { TodosPage } from "./pages/TodosPage";
 import { CurationPage } from "./pages/CurationPage";
 import { CompletedPage } from "./pages/CompletedPage";
 import { LogsPage } from "./pages/LogsPage";
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
       {
         path: "tasks/:id",
         element: <TaskDetailPage />,
+      },
+      {
+        path: "todos",
+        element: <TodosPage />,
       },
       {
         path: "curate",

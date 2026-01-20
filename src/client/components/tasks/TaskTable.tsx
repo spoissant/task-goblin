@@ -1,10 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
-import { TooltipProvider } from "@/client/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/client/components/ui/tooltip";
 import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon } from "./StatusIcons";
@@ -17,9 +22,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Plus } from "lucide-react";
 import { toast } from "sonner";
-import type { Task, Repository } from "@/client/lib/types";
+import { AddTodoDialog } from "./AddTodoDialog";
+import type { TaskWithNextTodo, Repository } from "@/client/lib/types";
 
 // Status category definitions for filtering
 export const STATUS_CATEGORIES: Record<string, string[]> = {
@@ -52,6 +58,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
   // Fetch all tasks (no server-side status filter for category-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
+  const [addTodoTask, setAddTodoTask] = useState<{ id: number; title: string } | null>(null);
 
   // Build a map of repositoryId -> Repository for quick lookups
   const repoMap = useMemo(() => {
@@ -114,14 +121,28 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
             <TableHead className="w-[60px]">PR</TableHead>
             <TableHead className="w-[50px]">Checks</TableHead>
             <TableHead className="w-[60px]">Reviews</TableHead>
+            <TableHead className="w-[200px]">Next Todo</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredTasks.map((task) => (
-            <TaskRow key={task.id} task={task} repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
+              onAddTodo={() => setAddTodoTask({ id: task.id, title: task.title })}
+            />
           ))}
         </TableBody>
       </Table>
+      {addTodoTask && (
+        <AddTodoDialog
+          open={!!addTodoTask}
+          onOpenChange={(open) => !open && setAddTodoTask(null)}
+          taskId={addTodoTask.id}
+          taskTitle={addTodoTask.title}
+        />
+      )}
     </TooltipProvider>
   );
 }
@@ -152,11 +173,12 @@ function DeploymentBadges({ branches }: DeploymentBadgesProps) {
 }
 
 interface TaskRowProps {
-  task: Task;
+  task: TaskWithNextTodo;
   repo?: Repository;
+  onAddTodo: () => void;
 }
 
-function TaskRow({ task, repo }: TaskRowProps) {
+function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -314,6 +336,37 @@ function TaskRow({ task, repo }: TaskRowProps) {
       {/* Review */}
       <TableCell>
         <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
+      </TableCell>
+
+      {/* Next Todo */}
+      <TableCell className="max-w-[200px]">
+        <div className="flex items-center gap-1">
+          {task.nextTodo ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-sm truncate flex-1 cursor-default">
+                  {task.nextTodo.content}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left" collisionPadding={16} className="max-w-[300px]">
+                {task.nextTodo.content}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="text-muted-foreground flex-1">—</span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddTodo();
+            }}
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
