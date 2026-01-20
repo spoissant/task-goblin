@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { useCompletedTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
+import { useCompletedTasksQuery, useSyncTask } from "@/client/lib/queries";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
+import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { StatusBadge } from "@/client/components/tasks/StatusBadge";
 import { ChecksStatusCell } from "@/client/components/tasks/ChecksStatusCell";
+import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
+import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { Pagination } from "@/client/components/ui/pagination";
 import {
   Table,
@@ -15,6 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import type { TaskWithRepository } from "@/client/lib/types";
 
 const PAGE_SIZE = 25;
@@ -22,14 +27,6 @@ const PAGE_SIZE = 25;
 // Build Jira URL
 function getJiraUrl(jiraKey: string): string {
   return `https://hivebrite.atlassian.net/browse/${jiraKey}`;
-}
-
-// Review status emoji with count
-function getReviewDisplay(approvedCount: number | null): string {
-  if (approvedCount === null) return "";
-  if (approvedCount >= 2) return `\u2705 ${approvedCount}`;
-  if (approvedCount === 1) return "\u23f3 1";
-  return "\u274c 0";
 }
 
 export function CompletedPage() {
@@ -79,12 +76,14 @@ export function CompletedPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]"></TableHead>
                   <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
                   <TableHead className="w-[100px]">Epic</TableHead>
                   <TableHead className="w-[100px]">Key</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[120px]">Repo</TableHead>
+                  <TableHead className="w-[150px]">Branch</TableHead>
                   <TableHead className="w-[60px]">PR</TableHead>
                   <TableHead className="w-[50px]">Checks</TableHead>
                   <TableHead className="w-[60px]">Reviews</TableHead>
@@ -116,6 +115,7 @@ interface CompletedTaskRowProps {
 
 function CompletedTaskRow({ task }: CompletedTaskRowProps) {
   const repo = task.repository;
+  const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
   const prUrl =
@@ -123,8 +123,31 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
       ? `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`
       : null;
 
+  // Only show sync if task has Jira or PR
+  const canSync = task.jiraKey || task.prNumber;
+
+  const handleSync = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    syncTask.mutate({ task, repo: repo ?? undefined });
+  };
+
   return (
     <TableRow>
+      {/* Sync */}
+      <TableCell>
+        {canSync && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleSync}
+            disabled={syncTask.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
+          </Button>
+        )}
+      </TableCell>
+
       {/* Status */}
       <TableCell>
         <StatusBadge status={task.status} />
@@ -137,7 +160,7 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
             {task.type}
           </Badge>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
 
@@ -149,11 +172,12 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline font-mono text-xs"
+            onClick={(e) => e.stopPropagation()}
           >
             {task.epicKey}
           </a>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
 
@@ -165,11 +189,12 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline font-mono text-xs"
+            onClick={(e) => e.stopPropagation()}
           >
             {task.jiraKey}
           </a>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
 
@@ -185,8 +210,31 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
       </TableCell>
 
       {/* Repository */}
-      <TableCell className="text-xs text-muted-foreground">
-        {repo ? repo.repo : task.repositoryId ? `#${task.repositoryId}` : "-"}
+      <TableCell>
+        {repo ? (
+          <RepoBadge repo={repo} />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Branch */}
+      <TableCell className="font-mono text-xs max-w-[150px] truncate" title={task.headBranch || undefined}>
+        {task.headBranch ? (
+          <button
+            type="button"
+            className="hover:text-blue-600 cursor-pointer text-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(task.headBranch!);
+              toast.success("Branch copied to clipboard");
+            }}
+          >
+            {task.headBranch}
+          </button>
+        ) : (
+          "—"
+        )}
       </TableCell>
 
       {/* PR Number */}
@@ -197,15 +245,20 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
               href={prUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-xs text-blue-600 hover:underline"
+              className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
+              onClick={(e) => e.stopPropagation()}
             >
-              #{task.prNumber}
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+              <span>#{task.prNumber}</span>
             </a>
           ) : (
-            <span className="font-mono text-xs">#{task.prNumber}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-xs">
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+              <span>#{task.prNumber}</span>
+            </span>
           )
         ) : (
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
 
@@ -218,7 +271,9 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
       </TableCell>
 
       {/* Review */}
-      <TableCell>{getReviewDisplay(task.approvedReviewCount)}</TableCell>
+      <TableCell>
+        <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
+      </TableCell>
     </TableRow>
   );
 }
