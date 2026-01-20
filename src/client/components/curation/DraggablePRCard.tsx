@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Badge } from "@/client/components/ui/badge";
-import { GripVertical, GitPullRequest, ExternalLink } from "lucide-react";
+import { GripVertical, GitPullRequest, ExternalLink, MessageSquare } from "lucide-react";
 import type { Task, TaskWithRepository } from "@/client/lib/types";
 
 interface Props {
@@ -50,6 +50,12 @@ export function DraggablePRCard({ task, isOrphan = false, prUrl }: Props) {
       <Badge variant="outline" className="flex-shrink-0">
         #{task.prNumber}
       </Badge>
+      {task.unresolvedCommentCount && task.unresolvedCommentCount > 0 && (
+        <Badge variant="secondary" className="flex-shrink-0 gap-1">
+          <MessageSquare className="h-3 w-3" />
+          {task.unresolvedCommentCount}
+        </Badge>
+      )}
       {prUrl ? (
         <a
           href={prUrl}

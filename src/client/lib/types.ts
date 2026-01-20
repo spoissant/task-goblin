@@ -41,6 +41,7 @@ export interface Task {
   approvedReviewCount: number | null;
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
+  unresolvedCommentCount: number | null;
 }
 
 // Task detail with relations
@@ -48,6 +49,7 @@ export interface TaskDetail extends Task {
   todos: Todo[];
   blockedBy: BlockedBy[];
   repository: Repository | null;
+  logs: Log[];
 }
 
 // Task with repository for curation view

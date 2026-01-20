@@ -1,7 +1,7 @@
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
 import { StatusBadge } from "@/client/components/tasks/StatusBadge";
-import { ExternalLink, GitPullRequest, Scissors } from "lucide-react";
+import { ExternalLink, GitPullRequest, Scissors, MessageSquare } from "lucide-react";
 import { useSplitTask } from "@/client/lib/queries";
 import { toast } from "sonner";
 import type { TaskWithRepository } from "@/client/lib/types";
@@ -62,6 +62,12 @@ export function TaskRow({ task, jiraHost, getPrUrl }: Props) {
               <GitPullRequest className="h-3 w-3" />
               <Badge variant="secondary">#{task.prNumber}</Badge>
             </div>
+          )}
+          {task.unresolvedCommentCount && task.unresolvedCommentCount > 0 && (
+            <Badge variant="secondary" className="gap-1">
+              <MessageSquare className="h-3 w-3" />
+              {task.unresolvedCommentCount}
+            </Badge>
           )}
         </div>
         <p className="font-medium truncate mt-1">{task.title}</p>

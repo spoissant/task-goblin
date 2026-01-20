@@ -18,6 +18,7 @@ const GITHUB_TRACKED_FIELDS = [
   "isDraft",
   "checksStatus",
   "approvedReviewCount",
+  "unresolvedCommentCount",
 ] as const;
 
 const LARGE_FIELDS = ["checksDetails"];
@@ -99,6 +100,7 @@ interface PrTaskData {
   checksDetails: string | null;
   reviewStatus: string | null;
   approvedReviewCount: number;
+  unresolvedCommentCount: number;
   prSyncedAt: string;
   updatedAt: string;
   onDeploymentBranches: string | null;
@@ -118,7 +120,8 @@ function mapPrToTaskData(
   repositoryId: number,
   approvedReviewCount = 0,
   checksResult: ChecksResult = { checksStatus: null, checksDetails: null },
-  onDeploymentBranches: string[] = []
+  onDeploymentBranches: string[] = [],
+  unresolvedCommentCount = 0
 ): PrTaskData {
   // Map state: GitHub has open/closed + merged boolean, we use open/closed/merged
   const prState = pr.merged ? "merged" : pr.state;
@@ -137,6 +140,7 @@ function mapPrToTaskData(
     checksDetails: checksResult.checksDetails,
     reviewStatus: null, // Requires separate API call, skip for v1
     approvedReviewCount,
+    unresolvedCommentCount,
     prSyncedAt: timestamp,
     updatedAt: timestamp,
     onDeploymentBranches: onDeploymentBranches.length > 0 ? JSON.stringify(onDeploymentBranches) : null,
@@ -160,6 +164,43 @@ async function fetchApprovedReviewCount(
     if (r.user?.login) latestByUser.set(r.user.login, r.state || "");
   }
   return [...latestByUser.values()].filter((s) => s === "APPROVED").length;
+}
+
+interface GraphQLReviewThreadsResponse {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        nodes: Array<{ isResolved: boolean }>;
+      };
+    };
+  };
+}
+
+async function fetchUnresolvedCommentCount(
+  client: ReturnType<typeof getGitHubClient>,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<number> {
+  const query = `
+    query($owner: String!, $repo: String!, $prNumber: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $prNumber) {
+          reviewThreads(first: 100) {
+            nodes {
+              isResolved
+            }
+          }
+        }
+      }
+    }
+  `;
+  try {
+    const result = await client.graphql<GraphQLReviewThreadsResponse>(query, { owner, repo, prNumber });
+    return result.repository.pullRequest.reviewThreads.nodes.filter((t) => !t.isResolved).length;
+  } catch {
+    return 0;
+  }
 }
 
 async function fetchCheckRunsStatus(
@@ -314,6 +355,7 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
         checksDetails: data.checksDetails,
         reviewStatus: data.reviewStatus,
         approvedReviewCount: data.approvedReviewCount,
+        unresolvedCommentCount: data.unresolvedCommentCount,
         onDeploymentBranches: data.onDeploymentBranches,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
@@ -369,6 +411,7 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
         checksDetails: data.checksDetails,
         reviewStatus: data.reviewStatus,
         approvedReviewCount: data.approvedReviewCount,
+        unresolvedCommentCount: data.unresolvedCommentCount,
         onDeploymentBranches: data.onDeploymentBranches,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
@@ -408,6 +451,7 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
       checksDetails: data.checksDetails,
       reviewStatus: data.reviewStatus,
       approvedReviewCount: data.approvedReviewCount,
+      unresolvedCommentCount: data.unresolvedCommentCount,
       onDeploymentBranches: data.onDeploymentBranches,
       prSyncedAt: data.prSyncedAt,
       createdAt: timestamp,
@@ -486,8 +530,8 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
           ? JSON.parse(repo.deploymentBranches)
           : [];
 
-        // Fetch approved review count, check runs, and deployment branches in parallel
-        const [approvedCount, checksResult, onDeploymentBranches] = await Promise.all([
+        // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
+        const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
           fetchApprovedReviewCount(client, owner, repoName, item.number),
           fullPr.head?.sha
             ? fetchCheckRunsStatus(client, owner, repoName, fullPr.head.sha)
@@ -495,9 +539,10 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
           fullPr.head?.ref && deploymentBranches.length > 0
             ? detectDeploymentBranches(client, owner, repoName, fullPr.head.ref, deploymentBranches)
             : Promise.resolve([]),
+          fetchUnresolvedCommentCount(client, owner, repoName, item.number),
         ]);
 
-        const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches);
+        const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
         const result = await upsertPrTask(taskData);
         if (result === "new") newCount++;
         else updatedCount++;
@@ -539,16 +584,17 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
           pull_number: task.prNumber,
         });
 
-        // Fetch approved review count and check runs in parallel
-        const [approvedCount, checksResult] = await Promise.all([
+        // Fetch approved review count, check runs, and unresolved comments in parallel
+        const [approvedCount, checksResult, unresolvedCount] = await Promise.all([
           fetchApprovedReviewCount(client, repo.owner, repo.repo, task.prNumber),
           pr.head?.sha
             ? fetchCheckRunsStatus(client, repo.owner, repo.repo, pr.head.sha)
             : Promise.resolve({ checksStatus: null, checksDetails: null }),
+          fetchUnresolvedCommentCount(client, repo.owner, repo.repo, task.prNumber),
         ]);
 
         // Orphaned PRs are closed/merged, clear deployment branches
-        const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, []);
+        const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount);
         const result = await upsertPrTask(taskData);
         if (result === "new") newCount++;
         else updatedCount++;
@@ -628,8 +674,8 @@ export async function syncGitHubPullRequestByNumber(
     // Detect deployment branches only for open PRs
     const isOpen = pr.state === "open" && !pr.merged;
 
-    // Fetch approved review count, check runs, and deployment branches in parallel
-    const [approvedCount, checksResult, onDeploymentBranches] = await Promise.all([
+    // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
+    const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
       fetchApprovedReviewCount(client, owner, repo, prNumber),
       pr.head?.sha
         ? fetchCheckRunsStatus(client, owner, repo, pr.head.sha)
@@ -637,9 +683,10 @@ export async function syncGitHubPullRequestByNumber(
       isOpen && pr.head?.ref && deploymentBranches.length > 0
         ? detectDeploymentBranches(client, owner, repo, pr.head.ref, deploymentBranches)
         : Promise.resolve([]),
+      fetchUnresolvedCommentCount(client, owner, repo, prNumber),
     ]);
 
-    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranches);
+    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
     const status = await upsertPrTask(taskData);
     return { status };
   } catch (err: unknown) {

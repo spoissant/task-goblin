@@ -1,6 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/layout/RootLayout";
-import { DashboardPage } from "./pages/DashboardPage";
+import { TasksPage } from "./pages/TasksPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { TodosPage } from "./pages/TodosPage";
 import { CurationPage } from "./pages/CurationPage";
@@ -15,7 +15,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <DashboardPage />,
+        element: <TasksPage />,
       },
       {
         path: "tasks/:id",

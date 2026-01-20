@@ -12,7 +12,7 @@ import {
 } from "@/client/components/ui/tooltip";
 import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
-import { ReviewStatusIcon, PrStatusIcon } from "./StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "./StatusIcons";
 import { RepoBadge } from "./RepoBadge";
 import {
   Table,
@@ -121,6 +121,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
             <TableHead className="w-[60px]">PR</TableHead>
             <TableHead className="w-[50px]">Checks</TableHead>
             <TableHead className="w-[60px]">Reviews</TableHead>
+            <TableHead className="w-[60px]">Comments</TableHead>
             <TableHead className="w-[200px]">Next Todo</TableHead>
           </TableRow>
         </TableHeader>
@@ -336,6 +337,11 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
       {/* Review */}
       <TableCell>
         <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
+      </TableCell>
+
+      {/* Comments */}
+      <TableCell>
+        <UnresolvedCommentsIcon count={task.unresolvedCommentCount} />
       </TableCell>
 
       {/* Next Todo */}

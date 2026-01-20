@@ -17,7 +17,7 @@ const STATUS_FILTERS = [
   { value: "blocked", label: "Blocked" },
 ];
 
-export function DashboardPage() {
+export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
 

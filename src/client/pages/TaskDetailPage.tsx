@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
+import { useMarkLogRead } from "@/client/lib/queries/logs";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { BlockedByList } from "@/client/components/tasks/BlockedByList";
@@ -9,8 +10,9 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Badge } from "@/client/components/ui/badge";
-import { ArrowLeft, RefreshCw, Trash2, ExternalLink, GitPullRequest } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, ExternalLink, GitPullRequest, Check } from "lucide-react";
 import { toast } from "sonner";
+import type { Log } from "@/client/lib/types";
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +22,7 @@ export function TaskDetailPage() {
   const { data: task, isLoading, error, refetch, isFetching } = useTaskQuery(taskId);
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
+  const markLogRead = useMarkLogRead();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
 
@@ -49,7 +52,7 @@ export function TaskDetailPage() {
         <p className="text-muted-foreground">Task not found</p>
         <Button variant="ghost" onClick={() => navigate("/")} className="mt-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
+          Back to Tasks
         </Button>
       </div>
     );
@@ -231,6 +234,52 @@ export function TaskDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Activity Logs Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {task.logs.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No activity logs</p>
+              ) : (
+                <div className="space-y-3">
+                  {task.logs.map((log: Log) => (
+                    <div
+                      key={log.id}
+                      className={`flex items-start justify-between gap-2 p-2 rounded ${
+                        log.readAt ? "opacity-60" : "bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs">
+                            {log.source}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(log.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm">{log.content}</p>
+                      </div>
+                      {!log.readAt && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => markLogRead.mutate(log.id)}
+                          title="Mark as read"
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

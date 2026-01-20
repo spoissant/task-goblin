@@ -29,6 +29,20 @@
       "when": 1768929529135,
       "tag": "0003_wide_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1768933243180,
+      "tag": "0004_ordinary_kat_farrell",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1768933599660,
+      "tag": "0005_famous_warlock",
+      "breakpoints": true
     }
   ]
 }

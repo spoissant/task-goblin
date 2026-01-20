@@ -1,6 +1,6 @@
-import { eq, and, sql, ne, isNull, isNotNull, or } from "drizzle-orm";
+import { eq, and, sql, ne, isNull, isNotNull, or, desc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, blockedBy, repositories } from "../../db/schema";
+import { tasks, todos, blockedBy, repositories, logs } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -264,11 +264,19 @@ export const taskRoutes: Routes = {
         repository = repoResult[0] || null;
       }
 
+      // Get logs for this task
+      const taskLogs = await db
+        .select()
+        .from(logs)
+        .where(eq(logs.taskId, id))
+        .orderBy(desc(logs.createdAt));
+
       return json({
         ...task,
         todos: taskTodos,
         blockedBy: taskBlockedBy,
         repository,
+        logs: taskLogs,
       });
     },
 
@@ -558,6 +566,7 @@ export const taskRoutes: Routes = {
         mergedFields.checksStatus = prTask.checksStatus;
         mergedFields.checksDetails = prTask.checksDetails;
         mergedFields.approvedReviewCount = prTask.approvedReviewCount;
+        mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
         mergedFields.reviewStatus = prTask.reviewStatus;
         mergedFields.prSyncedAt = prTask.prSyncedAt;
       }
@@ -641,6 +650,7 @@ export const taskRoutes: Routes = {
           isDraft: task.isDraft,
           checksStatus: task.checksStatus,
           reviewStatus: task.reviewStatus,
+          unresolvedCommentCount: task.unresolvedCommentCount,
           prSyncedAt: task.prSyncedAt,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -660,6 +670,7 @@ export const taskRoutes: Routes = {
           isDraft: null,
           checksStatus: null,
           reviewStatus: null,
+          unresolvedCommentCount: null,
           prSyncedAt: null,
           updatedAt: timestamp,
         })

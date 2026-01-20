@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, GitMerge, FileEdit } from "lucide-react";
+import { CheckCircle, XCircle, GitMerge, FileEdit, MessageSquare } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -109,6 +109,43 @@ export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
       </TooltipTrigger>
       <TooltipContent>
         Open PR
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface UnresolvedCommentsIconProps {
+  count: number | null;
+}
+
+export function UnresolvedCommentsIcon({ count }: UnresolvedCommentsIconProps) {
+  if (count === null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  if (count === 0) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center cursor-default">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>All comments resolved</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 cursor-default">
+          <MessageSquare className="h-4 w-4 text-yellow-500" />
+          <span className="text-xs">{count}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {count} unresolved comment{count !== 1 ? "s" : ""}
       </TooltipContent>
     </Tooltip>
   );

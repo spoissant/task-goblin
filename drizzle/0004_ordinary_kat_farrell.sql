@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `unresolved_comment_count` integer;

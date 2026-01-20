@@ -33,6 +33,7 @@ export const tasks = sqliteTable("tasks", {
   approvedReviewCount: integer("approved_review_count"),
   prSyncedAt: text("pr_synced_at"),
   onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on
+  unresolvedCommentCount: integer("unresolved_comment_count").default(0),
 });
 
 // 2. Todo - Checklist items linked only to tasks
