@@ -5,6 +5,7 @@ import { blockedByRoutes } from "./blocked-by";
 import { repositoryRoutes } from "./repositories";
 import { settingsRoutes } from "./settings";
 import { githubRoutes } from "./github";
+import { logRoutes } from "./logs";
 import { json } from "../response";
 
 const healthRoute: Routes = {
@@ -23,4 +24,5 @@ export const routes: Routes = {
   ...repositoryRoutes,
   ...settingsRoutes,
   ...githubRoutes,
+  ...logRoutes,
 };

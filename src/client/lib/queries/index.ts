@@ -4,3 +4,4 @@ export * from "./settings";
 export * from "./repositories";
 export * from "./sync";
 export * from "./blocked-by";
+export * from "./logs";

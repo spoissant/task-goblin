@@ -111,6 +111,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
             <TableHead className="w-[40px]"></TableHead>
             <TableHead className="w-[100px]">Status</TableHead>
             <TableHead className="w-[80px]">Type</TableHead>
+            <TableHead className="w-[100px]">Epic</TableHead>
             <TableHead className="w-[100px]">Key</TableHead>
             <TableHead>Title</TableHead>
             <TableHead className="w-[120px]">Repo</TableHead>
@@ -177,6 +178,23 @@ function TaskRow({ task, repo }: TaskRowProps) {
       <TableCell>
         {task.type ? (
           <Badge variant="outline" className="text-xs">{task.type}</Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Epic */}
+      <TableCell>
+        {task.epicKey ? (
+          <a
+            href={getJiraUrl(task.epicKey)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline font-mono text-xs"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {task.epicKey}
+          </a>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

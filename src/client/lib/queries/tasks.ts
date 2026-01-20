@@ -1,26 +1,37 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Task, TaskDetail, TaskWithRepository, ListResponse, AutoMatchResult, SplitResult } from "../types";
+import type { Task, TaskDetail, TaskWithRepository, ListResponse, PaginatedResponse, AutoMatchResult, SplitResult } from "../types";
 
 export const taskKeys = {
   all: ["tasks"] as const,
   lists: () => [...taskKeys.all, "list"] as const,
-  list: (filters: { status?: string }) => [...taskKeys.lists(), filters] as const,
+  list: (filters: { status?: string; excludeCompleted?: boolean }) => [...taskKeys.lists(), filters] as const,
   details: () => [...taskKeys.all, "detail"] as const,
   detail: (id: number) => [...taskKeys.details(), id] as const,
   withRelations: () => [...taskKeys.all, "with-relations"] as const,
   orphanJira: () => [...taskKeys.all, "orphan-jira"] as const,
   orphanPr: () => [...taskKeys.all, "orphan-pr"] as const,
+  completed: (pagination: { limit: number; offset: number }) => [...taskKeys.all, "completed", pagination] as const,
 };
 
-export function useTasksQuery(filters: { status?: string } = {}) {
+export function useTasksQuery(filters: { status?: string; excludeCompleted?: boolean } = {}) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
+  // excludeCompleted defaults to true on backend, only pass if explicitly false
+  if (filters.excludeCompleted === false) params.set("excludeCompleted", "false");
   const query = params.toString();
 
   return useQuery({
     queryKey: taskKeys.list(filters),
     queryFn: () => api.get<ListResponse<Task>>(`/tasks${query ? `?${query}` : ""}`),
+  });
+}
+
+// Completed tasks with pagination
+export function useCompletedTasksQuery({ limit = 25, offset = 0 }: { limit?: number; offset?: number } = {}) {
+  return useQuery({
+    queryKey: taskKeys.completed({ limit, offset }),
+    queryFn: () => api.get<PaginatedResponse<TaskWithRepository>>(`/tasks/completed?limit=${limit}&offset=${offset}`),
   });
 }
 

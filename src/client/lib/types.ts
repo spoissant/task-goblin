@@ -81,6 +81,24 @@ export interface Settings {
   [key: string]: string | null;
 }
 
+export interface LogTask {
+  id: number;
+  jiraKey: string | null;
+  prNumber: number | null;
+  title: string;
+  repository: { owner: string; repo: string } | null;
+}
+
+export interface Log {
+  id: number;
+  taskId: number | null;
+  content: string;
+  createdAt: string;
+  readAt: string | null;
+  source: string;
+  task?: LogTask | null;
+}
+
 export interface JiraConfig {
   jira_host: string | null;
   jira_email: string | null;
@@ -92,6 +110,11 @@ export interface JiraConfig {
 export interface ListResponse<T> {
   items: T[];
   total: number;
+}
+
+export interface PaginatedResponse<T> extends ListResponse<T> {
+  limit: number;
+  offset: number;
 }
 
 export interface SyncResult {

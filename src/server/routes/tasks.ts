@@ -8,6 +8,55 @@ import type { Routes } from "../router";
 
 const VALID_STATUSES = ["todo", "in_progress", "code_review", "qa", "done", "blocked"];
 
+// Jira statuses that indicate completion (case-insensitive)
+const JIRA_COMPLETED_STATUSES = [
+  "ready to prod",
+  "completed",
+  "done",
+  "closed",
+  "cancelled",
+  "rejected",
+  "define preventive measures",
+];
+
+// SQL condition for checking if a task is completed based on its type
+function getCompletedCondition() {
+  const jiraStatusList = JIRA_COMPLETED_STATUSES.map((s) => `'${s}'`).join(", ");
+
+  return or(
+    // Jira-only completed: jiraKey set, no prNumber, status in completed list
+    and(
+      isNotNull(tasks.jiraKey),
+      isNull(tasks.prNumber),
+      sql`LOWER(${tasks.status}) IN (${sql.raw(jiraStatusList)})`
+    ),
+    // PR-only completed: prNumber set, no jiraKey, prState = merged
+    and(
+      isNotNull(tasks.prNumber),
+      isNull(tasks.jiraKey),
+      eq(tasks.prState, "merged")
+    ),
+    // Both completed: jiraKey AND prNumber set, both conditions met
+    and(
+      isNotNull(tasks.jiraKey),
+      isNotNull(tasks.prNumber),
+      sql`LOWER(${tasks.status}) IN (${sql.raw(jiraStatusList)})`,
+      eq(tasks.prState, "merged")
+    ),
+    // Manual completed: no jiraKey, no prNumber, status = done
+    and(
+      isNull(tasks.jiraKey),
+      isNull(tasks.prNumber),
+      eq(tasks.status, "done")
+    )
+  );
+}
+
+// SQL condition for non-completed tasks (inverse of completed)
+function getNotCompletedCondition() {
+  return sql`NOT (${getCompletedCondition()})`;
+}
+
 // SQL CASE expression for status ordering (lower = higher priority)
 // Handles both underscore and space variants (e.g., "code_review" and "code review")
 const statusOrderExpr = sql`CASE
@@ -41,8 +90,16 @@ export const taskRoutes: Routes = {
       const orphanJira = url.searchParams.get("orphanJira");
       const orphanPr = url.searchParams.get("orphanPr");
       const linked = url.searchParams.get("linked");
+      const excludeCompleted = url.searchParams.get("excludeCompleted") !== "false"; // default true
+      const limit = url.searchParams.get("limit");
+      const offset = url.searchParams.get("offset");
 
       const conditions = [];
+
+      // Exclude completed tasks by default
+      if (excludeCompleted) {
+        conditions.push(getNotCompletedCondition());
+      }
 
       if (status) {
         conditions.push(eq(tasks.status, status));
@@ -82,16 +139,33 @@ export const taskRoutes: Routes = {
         );
       }
 
-      const items =
-        conditions.length > 0
-          ? await db
-              .select()
-              .from(tasks)
-              .where(and(...conditions))
-              .orderBy(statusOrderExpr)
-          : await db.select().from(tasks).orderBy(statusOrderExpr);
+      let query = db.select().from(tasks);
 
-      return json({ items, total: items.length });
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as typeof query;
+      }
+
+      query = query.orderBy(statusOrderExpr) as typeof query;
+
+      // Apply pagination if specified
+      if (limit) {
+        query = query.limit(parseInt(limit, 10)) as typeof query;
+      }
+      if (offset) {
+        query = query.offset(parseInt(offset, 10)) as typeof query;
+      }
+
+      const items = await query;
+
+      // Get total count for pagination
+      let totalQuery = db.select({ count: sql<number>`count(*)` }).from(tasks);
+      if (conditions.length > 0) {
+        totalQuery = totalQuery.where(and(...conditions)) as typeof totalQuery;
+      }
+      const totalResult = await totalQuery;
+      const total = totalResult[0]?.count ?? items.length;
+
+      return json({ items, total });
     },
 
     async POST(req) {
@@ -247,16 +321,64 @@ export const taskRoutes: Routes = {
     },
   },
 
-  // Get non-done tasks for curation view
+  // Get completed tasks with pagination
+  "/api/v1/tasks/completed": {
+    async GET(req) {
+      const url = new URL(req.url);
+      const limit = parseInt(url.searchParams.get("limit") || "25", 10);
+      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+
+      const completedCondition = getCompletedCondition();
+
+      // Get paginated completed tasks
+      const taskList = await db
+        .select()
+        .from(tasks)
+        .where(completedCondition)
+        .orderBy(statusOrderExpr)
+        .limit(limit)
+        .offset(offset);
+
+      // Get total count
+      const totalResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(tasks)
+        .where(completedCondition);
+      const total = totalResult[0]?.count ?? 0;
+
+      // Get repositories for tasks that have one
+      const repoIds = [...new Set(taskList.filter(t => t.repositoryId).map(t => t.repositoryId!))];
+      const repoMap = new Map<number, typeof repositories.$inferSelect>();
+
+      if (repoIds.length > 0) {
+        const repos = await db
+          .select()
+          .from(repositories)
+          .where(sql`${repositories.id} IN (${sql.join(repoIds.map(id => sql`${id}`), sql`, `)})`);
+        for (const repo of repos) {
+          repoMap.set(repo.id, repo);
+        }
+      }
+
+      const items = taskList.map((task) => ({
+        ...task,
+        repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
+      }));
+
+      return json({ items, total, limit, offset });
+    },
+  },
+
+  // Get non-completed linked tasks for curation view
   "/api/v1/tasks/with-relations": {
     async GET() {
-      // Get all non-done tasks (linked: manual OR merged)
+      // Get all non-completed linked tasks (manual OR merged)
       const taskList = await db
         .select()
         .from(tasks)
         .where(
           and(
-            ne(tasks.status, "done"),
+            getNotCompletedCondition(),
             or(
               // Manual tasks
               and(isNull(tasks.jiraKey), isNull(tasks.prNumber)),
@@ -290,9 +412,11 @@ export const taskRoutes: Routes = {
     },
   },
 
-  // Get Jira orphans (jiraKey set, no prNumber)
+  // Get Jira orphans (jiraKey set, no prNumber, not completed)
   "/api/v1/tasks/orphan-jira": {
     async GET() {
+      const jiraStatusList = JIRA_COMPLETED_STATUSES.map((s) => `'${s}'`).join(", ");
+
       const items = await db
         .select()
         .from(tasks)
@@ -300,7 +424,8 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.jiraKey),
             isNull(tasks.prNumber),
-            ne(tasks.status, "done")
+            // Exclude Jira-completed statuses
+            sql`LOWER(${tasks.status}) NOT IN (${sql.raw(jiraStatusList)})`
           )
         )
         .orderBy(statusOrderExpr);
@@ -309,7 +434,7 @@ export const taskRoutes: Routes = {
     },
   },
 
-  // Get PR orphans (prNumber set, no jiraKey)
+  // Get PR orphans (prNumber set, no jiraKey, not merged)
   "/api/v1/tasks/orphan-pr": {
     async GET() {
       const taskList = await db
@@ -319,7 +444,8 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.prNumber),
             isNull(tasks.jiraKey),
-            ne(tasks.status, "done")
+            // Exclude merged PRs
+            or(isNull(tasks.prState), ne(tasks.prState, "merged"))
           )
         )
         .orderBy(statusOrderExpr);
@@ -513,7 +639,9 @@ export const taskRoutes: Routes = {
   // Auto-match orphans by finding jiraKey in branch names/titles
   "/api/v1/tasks/auto-match": {
     async POST() {
-      // Get all Jira orphans
+      const jiraStatusList = JIRA_COMPLETED_STATUSES.map((s) => `'${s}'`).join(", ");
+
+      // Get all non-completed Jira orphans
       const jiraOrphans = await db
         .select()
         .from(tasks)
@@ -521,11 +649,11 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.jiraKey),
             isNull(tasks.prNumber),
-            ne(tasks.status, "done")
+            sql`LOWER(${tasks.status}) NOT IN (${sql.raw(jiraStatusList)})`
           )
         );
 
-      // Get all PR orphans
+      // Get all non-merged PR orphans
       const prOrphans = await db
         .select()
         .from(tasks)
@@ -533,7 +661,7 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.prNumber),
             isNull(tasks.jiraKey),
-            ne(tasks.status, "done")
+            or(isNull(tasks.prState), ne(tasks.prState, "merged"))
           )
         );
 

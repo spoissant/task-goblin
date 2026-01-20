@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1768854175619,
-      "tag": "0000_clear_thunderbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1768876094011,
-      "tag": "0001_round_young_avengers",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1768881045231,
-      "tag": "0002_wealthy_ink",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1768890000000,
-      "tag": "0003_checks_details",
+      "when": 1768921397097,
+      "tag": "0000_outgoing_stingray",
       "breakpoints": true
     }
   ]

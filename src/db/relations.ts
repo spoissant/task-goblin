@@ -4,11 +4,13 @@ import {
   todos,
   repositories,
   blockedBy,
+  logs,
 } from "./schema";
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   todos: many(todos),
   blockedBy: many(blockedBy),
+  logs: many(logs),
   repository: one(repositories, {
     fields: [tasks.repositoryId],
     references: [repositories.id],
@@ -40,5 +42,12 @@ export const blockedByRelations = relations(blockedBy, ({ one }) => ({
   blockerTodo: one(todos, {
     fields: [blockedBy.blockerTodoId],
     references: [todos.id],
+  }),
+}));
+
+export const logsRelations = relations(logs, ({ one }) => ({
+  task: one(tasks, {
+    fields: [logs.taskId],
+    references: [tasks.id],
   }),
 }));

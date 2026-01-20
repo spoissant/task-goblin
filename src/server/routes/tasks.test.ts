@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "bun:test";
 import { sqlite } from "../../db";
 import { createRouter } from "../router";
 import { routes } from "./index";

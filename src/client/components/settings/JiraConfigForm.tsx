@@ -89,7 +89,7 @@ export function JiraConfigForm() {
               id="jira_jql"
               value={formData.jira_jql}
               onChange={(e) => setFormData({ ...formData, jira_jql: e.target.value })}
-              placeholder="assignee = currentUser() AND status != Done"
+              placeholder="assignee = currentUser() AND statusCategory != Done"
               rows={2}
             />
             <p className="text-xs text-muted-foreground">
