@@ -521,6 +521,8 @@ export const taskRoutes: Routes = {
         mergedFields.prAuthor = prTask.prAuthor;
         mergedFields.isDraft = prTask.isDraft;
         mergedFields.checksStatus = prTask.checksStatus;
+        mergedFields.checksDetails = prTask.checksDetails;
+        mergedFields.approvedReviewCount = prTask.approvedReviewCount;
         mergedFields.reviewStatus = prTask.reviewStatus;
         mergedFields.prSyncedAt = prTask.prSyncedAt;
       }
