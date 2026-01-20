@@ -7,6 +7,8 @@ import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
+import { ReviewStatusIcon, PrStatusIcon } from "./StatusIcons";
+import { RepoBadge } from "./RepoBadge";
 import {
   Table,
   TableBody,
@@ -40,14 +42,6 @@ function matchesCategory(status: string, category: string): boolean {
 function getJiraUrl(jiraKey: string, jiraHost?: string): string {
   const host = jiraHost || "hivebrite.atlassian.net";
   return `https://${host}/browse/${jiraKey}`;
-}
-
-// Review status emoji with count
-function getReviewDisplay(approvedCount: number | null): string {
-  if (approvedCount === null) return "";
-  if (approvedCount >= 2) return `✅ ${approvedCount}`;
-  if (approvedCount === 1) return "⏳ 1";
-  return "❌ 0";
 }
 
 interface TaskTableProps {
@@ -116,6 +110,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
             <TableHead>Title</TableHead>
             <TableHead className="w-[120px]">Repo</TableHead>
             <TableHead className="w-[150px]">Branch</TableHead>
+            <TableHead className="w-[100px]">Merged in</TableHead>
             <TableHead className="w-[60px]">PR</TableHead>
             <TableHead className="w-[50px]">Checks</TableHead>
             <TableHead className="w-[60px]">Reviews</TableHead>
@@ -129,6 +124,31 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
       </Table>
     </TooltipProvider>
   );
+}
+
+interface DeploymentBadgesProps {
+  branches: string | null;
+}
+
+function DeploymentBadges({ branches }: DeploymentBadgesProps) {
+  if (!branches) return <span className="text-muted-foreground">—</span>;
+
+  try {
+    const parsed: string[] = JSON.parse(branches);
+    if (!parsed.length) return <span className="text-muted-foreground">—</span>;
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {parsed.map((branch) => (
+          <Badge key={branch} variant="secondary" className="text-xs">
+            {branch}
+          </Badge>
+        ))}
+      </div>
+    );
+  } catch {
+    return <span className="text-muted-foreground">—</span>;
+  }
 }
 
 interface TaskRowProps {
@@ -229,8 +249,12 @@ function TaskRow({ task, repo }: TaskRowProps) {
       </TableCell>
 
       {/* Repository */}
-      <TableCell className="text-xs text-muted-foreground">
-        {repo ? repo.repo : task.repositoryId ? `#${task.repositoryId}` : "—"}
+      <TableCell>
+        {repo ? (
+          <RepoBadge repo={repo} />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
 
       {/* Branch */}
@@ -252,6 +276,11 @@ function TaskRow({ task, repo }: TaskRowProps) {
         )}
       </TableCell>
 
+      {/* Merged in */}
+      <TableCell>
+        <DeploymentBadges branches={task.onDeploymentBranches} />
+      </TableCell>
+
       {/* PR Number */}
       <TableCell>
         {task.prNumber ? (
@@ -260,13 +289,17 @@ function TaskRow({ task, repo }: TaskRowProps) {
               href={prUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-xs text-blue-600 hover:underline"
+              className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
-              #{task.prNumber}
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+              <span>#{task.prNumber}</span>
             </a>
           ) : (
-            <span className="font-mono text-xs">#{task.prNumber}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-xs">
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+              <span>#{task.prNumber}</span>
+            </span>
           )
         ) : (
           <span className="text-muted-foreground">—</span>
@@ -280,7 +313,7 @@ function TaskRow({ task, repo }: TaskRowProps) {
 
       {/* Review */}
       <TableCell>
-        {getReviewDisplay(task.approvedReviewCount)}
+        <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
       </TableCell>
     </TableRow>
   );

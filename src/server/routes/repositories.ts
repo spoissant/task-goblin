@@ -26,12 +26,20 @@ export const repositoryRoutes: Routes = {
         throw new ValidationError("repo is required");
       }
 
+      // Convert deploymentBranches array to JSON string (null if empty)
+      let deploymentBranches: string | null = null;
+      if (Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0) {
+        deploymentBranches = JSON.stringify(body.deploymentBranches);
+      }
+
       const result = await db
         .insert(repositories)
         .values({
           owner: body.owner,
           repo: body.repo,
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
+          badgeColor: body.badgeColor ?? null,
+          deploymentBranches,
         })
         .returning();
 
@@ -73,12 +81,22 @@ export const repositoryRoutes: Routes = {
         throw new NotFoundError("Repository", id);
       }
 
+      // Convert deploymentBranches array to JSON string (null if empty)
+      let deploymentBranches: string | null = existing[0].deploymentBranches;
+      if (body.deploymentBranches !== undefined) {
+        deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
+          ? JSON.stringify(body.deploymentBranches)
+          : null;
+      }
+
       const result = await db
         .update(repositories)
         .set({
           owner: body.owner,
           repo: body.repo,
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
+          badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
+          deploymentBranches,
         })
         .where(eq(repositories.id, id))
         .returning();
@@ -102,6 +120,12 @@ export const repositoryRoutes: Routes = {
       if (body.owner !== undefined) updates.owner = body.owner;
       if (body.repo !== undefined) updates.repo = body.repo;
       if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
+      if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
+      if (body.deploymentBranches !== undefined) {
+        updates.deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
+          ? JSON.stringify(body.deploymentBranches)
+          : null;
+      }
 
       if (Object.keys(updates).length === 0) {
         return json(existing[0]);

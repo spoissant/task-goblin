@@ -32,6 +32,7 @@ export const tasks = sqliteTable("tasks", {
   reviewStatus: text("review_status"), // approved | changes_requested | pending
   approvedReviewCount: integer("approved_review_count"),
   prSyncedAt: text("pr_synced_at"),
+  onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on
 });
 
 // 2. Todo - Checklist items linked only to tasks
@@ -50,6 +51,8 @@ export const repositories = sqliteTable("repositories", {
   owner: text("owner").notNull(), // GitHub org/user
   repo: text("repo").notNull(), // repo name
   enabled: integer("enabled").notNull().default(1), // SQLite bool
+  badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
+  deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
 });
 
 // 4. BlockedBy - Explicit FK blocking relationships (tasks only)

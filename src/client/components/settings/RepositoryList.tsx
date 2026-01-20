@@ -25,9 +25,18 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/client/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/client/components/ui/select";
 import { Label } from "@/client/components/ui/label";
-import { Plus, Trash2 } from "lucide-react";
+import { Badge } from "@/client/components/ui/badge";
+import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { BADGE_COLORS, type BadgeColorName } from "@/client/components/tasks/RepoBadge";
 
 export function RepositoryList() {
   const { data, isLoading } = useRepositoriesQuery();
@@ -38,6 +47,8 @@ export function RepositoryList() {
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [newOwner, setNewOwner] = useState("");
   const [newRepo, setNewRepo] = useState("");
+  const [newBadgeColor, setNewBadgeColor] = useState<BadgeColorName | "">("gray");
+  const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
 
   const handleCreate = () => {
     if (!newOwner.trim() || !newRepo.trim()) {
@@ -46,16 +57,28 @@ export function RepositoryList() {
     }
 
     createRepo.mutate(
-      { owner: newOwner.trim(), repo: newRepo.trim() },
+      { owner: newOwner.trim(), repo: newRepo.trim(), badgeColor: newBadgeColor || null },
       {
         onSuccess: () => {
           toast.success("Repository added");
           setNewOwner("");
           setNewRepo("");
+          setNewBadgeColor("gray");
           setIsAddingRepo(false);
         },
         onError: () => {
           toast.error("Failed to add repository");
+        },
+      }
+    );
+  };
+
+  const handleBadgeColorChange = (id: number, color: string) => {
+    updateRepo.mutate(
+      { id, badgeColor: color || null },
+      {
+        onError: () => {
+          toast.error("Failed to update badge color");
         },
       }
     );
@@ -67,6 +90,46 @@ export function RepositoryList() {
       {
         onError: () => {
           toast.error("Failed to update repository");
+        },
+      }
+    );
+  };
+
+  const parseDeploymentBranches = (json: string | null): string[] => {
+    if (!json) return [];
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
+  };
+
+  const handleAddDeploymentBranch = (id: number, currentBranches: string[]) => {
+    const newBranch = branchInputs[id]?.trim();
+    if (!newBranch) return;
+    if (currentBranches.includes(newBranch)) {
+      toast.error("Branch already exists");
+      return;
+    }
+    updateRepo.mutate(
+      { id, deploymentBranches: [...currentBranches, newBranch] },
+      {
+        onSuccess: () => {
+          setBranchInputs((prev) => ({ ...prev, [id]: "" }));
+        },
+        onError: () => {
+          toast.error("Failed to add deployment branch");
+        },
+      }
+    );
+  };
+
+  const handleRemoveDeploymentBranch = (id: number, currentBranches: string[], branchToRemove: string) => {
+    updateRepo.mutate(
+      { id, deploymentBranches: currentBranches.filter((b) => b !== branchToRemove) },
+      {
+        onError: () => {
+          toast.error("Failed to remove deployment branch");
         },
       }
     );
@@ -109,6 +172,8 @@ export function RepositoryList() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Repository</TableHead>
+                  <TableHead>Badge Color</TableHead>
+                  <TableHead>Deployment Branches</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -118,6 +183,65 @@ export function RepositoryList() {
                   <TableRow key={repo.id}>
                     <TableCell className="font-mono">
                       {repo.owner}/{repo.repo}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={repo.badgeColor || "gray"}
+                        onValueChange={(value) => handleBadgeColorChange(repo.id, value)}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(BADGE_COLORS).map((color) => (
+                            <SelectItem key={color} value={color}>
+                              <span className="flex items-center gap-2">
+                                <span
+                                  className={`inline-block w-3 h-3 rounded-full ${BADGE_COLORS[color as BadgeColorName].split(" ")[0]}`}
+                                />
+                                {color}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const branches = parseDeploymentBranches(repo.deploymentBranches);
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {branches.map((branch) => (
+                              <Badge
+                                key={branch}
+                                variant="secondary"
+                                className="gap-1 pr-1"
+                              >
+                                {branch}
+                                <button
+                                  type="button"
+                                  className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                                  onClick={() => handleRemoveDeploymentBranch(repo.id, branches, branch)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                            <Input
+                              className="h-6 w-20 text-xs"
+                              placeholder="staging"
+                              value={branchInputs[repo.id] || ""}
+                              onChange={(e) => setBranchInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddDeploymentBranch(repo.id, branches);
+                                }
+                              }}
+                            />
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Checkbox
@@ -166,6 +290,29 @@ export function RepositoryList() {
                 onChange={(e) => setNewRepo(e.target.value)}
                 placeholder="repository-name"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Badge Color</Label>
+              <Select
+                value={newBadgeColor || "gray"}
+                onValueChange={(value) => setNewBadgeColor(value as BadgeColorName)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.keys(BADGE_COLORS).map((color) => (
+                    <SelectItem key={color} value={color}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`inline-block w-3 h-3 rounded-full ${BADGE_COLORS[color as BadgeColorName].split(" ")[0]}`}
+                        />
+                        {color}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

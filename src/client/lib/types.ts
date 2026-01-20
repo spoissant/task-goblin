@@ -40,6 +40,7 @@ export interface Task {
   reviewStatus: string | null;
   approvedReviewCount: number | null;
   prSyncedAt: string | null;
+  onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
 }
 
 // Task detail with relations
@@ -68,6 +69,8 @@ export interface Repository {
   owner: string;
   repo: string;
   enabled: number;
+  badgeColor: string | null;
+  deploymentBranches: string | null; // JSON array of branch names
 }
 
 export interface BlockedBy {

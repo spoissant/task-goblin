@@ -18,7 +18,7 @@ export function useCreateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { owner: string; repo: string; enabled?: boolean }) =>
+    mutationFn: (data: { owner: string; repo: string; enabled?: boolean; badgeColor?: string | null }) =>
       api.post<Repository>("/repositories", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
@@ -30,7 +30,7 @@ export function useUpdateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[] }) =>
       api.patch<Repository>(`/repositories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
