@@ -8,6 +8,7 @@ import {
   GitHubApiError,
 } from "../services/github-sync";
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
+import { backfillDescriptions } from "../services/backfill-descriptions";
 import type { Routes } from "../router";
 
 export const githubRoutes: Routes = {
@@ -92,6 +93,13 @@ export const githubRoutes: Routes = {
         }
         throw err;
       }
+    },
+  },
+
+  "/api/v1/backfill/descriptions": {
+    async POST() {
+      const result = await backfillDescriptions();
+      return json(result);
     },
   },
 };

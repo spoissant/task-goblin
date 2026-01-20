@@ -1,5 +1,6 @@
 import { eq, and, isNotNull, notInArray } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
+import { convert as adfToMd } from "adf-to-md";
 import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
@@ -78,8 +79,14 @@ export class JiraApiError extends Error {
 function stringifyDescription(description: unknown): string | null {
   if (!description) return null;
   if (typeof description === "string") return description;
-  // ADF (Atlassian Document Format) - stringify as JSON
-  return JSON.stringify(description);
+  // ADF (Atlassian Document Format) - convert to markdown
+  try {
+    const { result } = adfToMd(description);
+    return result || null;
+  } catch {
+    // Fallback to JSON if conversion fails
+    return JSON.stringify(description);
+  }
 }
 
 function extractEpicKey(issue: { fields: Record<string, unknown> }): string | null {

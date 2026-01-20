@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useUpdateTask } from "@/client/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Input } from "@/client/components/ui/input";
@@ -115,10 +116,12 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
             placeholder="Add a description..."
             rows={3}
           />
+        ) : task.description ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
+            <ReactMarkdown>{task.description}</ReactMarkdown>
+          </div>
         ) : (
-          <p className="text-muted-foreground">
-            {task.description || "No description"}
-          </p>
+          <p className="text-muted-foreground">No description</p>
         )}
       </CardContent>
     </Card>
