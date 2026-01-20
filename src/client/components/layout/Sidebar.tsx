@@ -5,8 +5,8 @@ import { LayoutDashboard, ListTodo, FolderSearch, CheckCircle, ScrollText, Setti
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
+  { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
