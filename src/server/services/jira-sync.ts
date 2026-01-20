@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNotNull, notInArray } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
 import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
@@ -203,6 +203,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
   let synced = 0;
   let newCount = 0;
   let updatedCount = 0;
+  const syncedKeys = new Set<string>();
 
   const maxResults = 50;
   let pageToken: string | undefined = undefined;
@@ -231,6 +232,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
 
       for (const issue of issues) {
         const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+        syncedKeys.add(taskData.jiraKey);
         const result = await upsertTask(taskData);
         if (result === "new") newCount++;
         else updatedCount++;
@@ -241,6 +243,47 @@ export async function syncJiraItems(): Promise<SyncResult> {
         break;
       }
       pageToken = response.nextPageToken;
+    }
+
+    // Sync orphaned tasks (Jira issues that transitioned to Done)
+    const orphanedTasks = syncedKeys.size > 0
+      ? await db
+          .select({ jiraKey: tasks.jiraKey })
+          .from(tasks)
+          .where(
+            and(
+              isNotNull(tasks.jiraKey),
+              notInArray(tasks.jiraKey, [...syncedKeys])
+            )
+          )
+      : await db
+          .select({ jiraKey: tasks.jiraKey })
+          .from(tasks)
+          .where(isNotNull(tasks.jiraKey));
+
+    for (const task of orphanedTasks) {
+      if (!task.jiraKey) continue;
+      try {
+        const issue = await client.issues.getIssue({
+          issueIdOrKey: task.jiraKey,
+          fields: [
+            "summary",
+            "description",
+            "status",
+            "issuetype",
+            "assignee",
+            "priority",
+            "parent",
+          ],
+        });
+        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+        const result = await upsertTask(taskData);
+        if (result === "new") newCount++;
+        else updatedCount++;
+        synced++;
+      } catch {
+        // Issue may be deleted or inaccessible, skip
+      }
     }
   } catch (err: unknown) {
     if (err instanceof JiraConfigError) {
