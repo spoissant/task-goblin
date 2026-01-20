@@ -1,9 +1,63 @@
 import { eq } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
 import { db } from "../../db";
-import { tasks } from "../../db/schema";
+import { tasks, logs } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
+
+interface FieldDiff {
+  field: string;
+  old: string | null;
+  new: string | null;
+}
+
+const JIRA_TRACKED_FIELDS = [
+  "title",
+  "description",
+  "status",
+  "type",
+  "assignee",
+  "priority",
+  "sprint",
+  "epicKey",
+] as const;
+
+const LARGE_FIELDS = ["description"];
+
+function generateTaskDiff(
+  oldTask: Record<string, unknown>,
+  newData: Record<string, unknown>,
+  fields: readonly string[]
+): FieldDiff[] {
+  const diffs: FieldDiff[] = [];
+  for (const field of fields) {
+    const oldVal = oldTask[field] ?? null;
+    const newVal = newData[field] ?? null;
+    // Convert to string for comparison
+    const oldStr = oldVal === null ? null : String(oldVal);
+    const newStr = newVal === null ? null : String(newVal);
+    if (oldStr !== newStr) {
+      diffs.push({ field, old: oldStr, new: newStr });
+    }
+  }
+  return diffs;
+}
+
+function formatDiffLog(diffs: FieldDiff[]): string {
+  const lines = ["# Task updated"];
+  for (const diff of diffs) {
+    if (LARGE_FIELDS.includes(diff.field)) {
+      lines.push(`- ${diff.field}: (changed)`);
+    } else {
+      lines.push(`- ${diff.field}: ${diff.old ?? "null"} -> ${diff.new ?? "null"}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function formatJiraCreatedLog(status: string, jiraKey: string, title: string): string {
+  return `# Task created\n${status} - ${jiraKey} - ${title}`;
+}
 
 export interface SyncResult {
   synced: number;
@@ -70,11 +124,20 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }) {
 
 async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated"> {
   const existing = await db
-    .select({ id: tasks.id, prNumber: tasks.prNumber })
+    .select()
     .from(tasks)
     .where(eq(tasks.jiraKey, taskData.jiraKey));
 
   if (existing.length > 0) {
+    const oldTask = existing[0];
+
+    // Compare fields and generate diff
+    const diffs = generateTaskDiff(
+      oldTask as unknown as Record<string, unknown>,
+      taskData as unknown as Record<string, unknown>,
+      JIRA_TRACKED_FIELDS
+    );
+
     // Update existing task, preserve PR fields if already merged
     await db
       .update(tasks)
@@ -92,14 +155,38 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         updatedAt: taskData.updatedAt,
       })
       .where(eq(tasks.jiraKey, taskData.jiraKey));
+
+    // Only log if there were actual changes
+    if (diffs.length > 0) {
+      const timestamp = now();
+      await db.insert(logs).values({
+        taskId: oldTask.id,
+        content: formatDiffLog(diffs),
+        source: "jira",
+        createdAt: timestamp,
+      });
+    }
+
     return "updated";
   } else {
     // Create new Jira-only task
     const timestamp = now();
-    await db.insert(tasks).values({
-      ...taskData,
+    const result = await db
+      .insert(tasks)
+      .values({
+        ...taskData,
+        createdAt: timestamp,
+      })
+      .returning({ id: tasks.id });
+
+    // Log new task creation
+    await db.insert(logs).values({
+      taskId: result[0].id,
+      content: formatJiraCreatedLog(taskData.status, taskData.jiraKey, taskData.title),
+      source: "jira",
       createdAt: timestamp,
     });
+
     return "new";
   }
 }

@@ -1,8 +1,62 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks, repositories, logs } from "../../db/schema";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
 import { now } from "../lib/timestamp";
+
+interface FieldDiff {
+  field: string;
+  old: string | null;
+  new: string | null;
+}
+
+const GITHUB_TRACKED_FIELDS = [
+  "prState",
+  "prAuthor",
+  "headBranch",
+  "baseBranch",
+  "isDraft",
+  "checksStatus",
+  "approvedReviewCount",
+] as const;
+
+const LARGE_FIELDS = ["checksDetails"];
+
+function generateTaskDiff(
+  oldTask: Record<string, unknown>,
+  newData: Record<string, unknown>,
+  fields: readonly string[]
+): FieldDiff[] {
+  const diffs: FieldDiff[] = [];
+  for (const field of fields) {
+    const oldVal = oldTask[field] ?? null;
+    const newVal = newData[field] ?? null;
+    // Convert to string for comparison
+    const oldStr = oldVal === null ? null : String(oldVal);
+    const newStr = newVal === null ? null : String(newVal);
+    if (oldStr !== newStr) {
+      diffs.push({ field, old: oldStr, new: newStr });
+    }
+  }
+  return diffs;
+}
+
+function formatDiffLog(diffs: FieldDiff[]): string {
+  const lines = ["# Task updated"];
+  for (const diff of diffs) {
+    if (LARGE_FIELDS.includes(diff.field)) {
+      lines.push(`- ${diff.field}: (changed)`);
+    } else {
+      lines.push(`- ${diff.field}: ${diff.old ?? "null"} -> ${diff.new ?? "null"}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function formatPrCreatedLog(isDraft: number, prState: string, prNumber: number, headBranch: string): string {
+  const draftStatus = isDraft ? "Draft" : "Ready";
+  return `# Task created\n${draftStatus} - ${prState} - #${prNumber} - ${headBranch}`;
+}
 
 export interface SyncResult {
   synced: number;
@@ -190,7 +244,7 @@ function mapPrStateToTaskStatus(prState: string, isDraft: number): string {
 async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
   // First, try to find by repositoryId + prNumber (if we already synced this PR)
   const existingByNumber = await db
-    .select({ id: tasks.id, jiraKey: tasks.jiraKey })
+    .select()
     .from(tasks)
     .where(
       and(
@@ -200,11 +254,20 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
     );
 
   if (existingByNumber.length > 0) {
+    const oldTask = existingByNumber[0];
+
+    // Compare fields and generate diff
+    const diffs = generateTaskDiff(
+      oldTask as unknown as Record<string, unknown>,
+      data as unknown as Record<string, unknown>,
+      GITHUB_TRACKED_FIELDS
+    );
+
     // Update existing, preserve Jira fields if already merged
     await db
       .update(tasks)
       .set({
-        title: existingByNumber[0].jiraKey ? undefined : data.title, // Keep Jira title if merged
+        title: oldTask.jiraKey ? undefined : data.title, // Keep Jira title if merged
         prState: data.prState,
         prAuthor: data.prAuthor,
         headBranch: data.headBranch,
@@ -217,13 +280,25 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
       })
-      .where(eq(tasks.id, existingByNumber[0].id));
+      .where(eq(tasks.id, oldTask.id));
+
+    // Only log if there were actual changes
+    if (diffs.length > 0) {
+      const timestamp = now();
+      await db.insert(logs).values({
+        taskId: oldTask.id,
+        content: formatDiffLog(diffs),
+        source: "github",
+        createdAt: timestamp,
+      });
+    }
+
     return "updated";
   }
 
   // Next, try to find by repositoryId + headBranch (local entry waiting for sync)
   const existingByBranch = await db
-    .select({ id: tasks.id, jiraKey: tasks.jiraKey })
+    .select()
     .from(tasks)
     .where(
       and(
@@ -233,12 +308,21 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
     );
 
   if (existingByBranch.length > 0) {
+    const oldTask = existingByBranch[0];
+
+    // Compare fields and generate diff
+    const diffs = generateTaskDiff(
+      oldTask as unknown as Record<string, unknown>,
+      data as unknown as Record<string, unknown>,
+      GITHUB_TRACKED_FIELDS
+    );
+
     // Update existing local entry with GitHub data, preserve Jira fields
     await db
       .update(tasks)
       .set({
         prNumber: data.prNumber,
-        title: existingByBranch[0].jiraKey ? undefined : data.title, // Keep Jira title if merged
+        title: oldTask.jiraKey ? undefined : data.title, // Keep Jira title if merged
         prState: data.prState,
         prAuthor: data.prAuthor,
         baseBranch: data.baseBranch,
@@ -250,31 +334,55 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
       })
-      .where(eq(tasks.id, existingByBranch[0].id));
+      .where(eq(tasks.id, oldTask.id));
+
+    // Only log if there were actual changes
+    if (diffs.length > 0) {
+      const timestamp = now();
+      await db.insert(logs).values({
+        taskId: oldTask.id,
+        content: formatDiffLog(diffs),
+        source: "github",
+        createdAt: timestamp,
+      });
+    }
+
     return "updated";
   }
 
   // No existing entry, create new PR-only task (orphaned)
   const timestamp = now();
-  await db.insert(tasks).values({
-    title: data.title,
-    description: null,
-    status: mapPrStateToTaskStatus(data.prState, data.isDraft),
-    prNumber: data.prNumber,
-    repositoryId: data.repositoryId,
-    headBranch: data.headBranch,
-    baseBranch: data.baseBranch,
-    prState: data.prState,
-    prAuthor: data.prAuthor,
-    isDraft: data.isDraft,
-    checksStatus: data.checksStatus,
-    checksDetails: data.checksDetails,
-    reviewStatus: data.reviewStatus,
-    approvedReviewCount: data.approvedReviewCount,
-    prSyncedAt: data.prSyncedAt,
+  const result = await db
+    .insert(tasks)
+    .values({
+      title: data.title,
+      description: null,
+      status: mapPrStateToTaskStatus(data.prState, data.isDraft),
+      prNumber: data.prNumber,
+      repositoryId: data.repositoryId,
+      headBranch: data.headBranch,
+      baseBranch: data.baseBranch,
+      prState: data.prState,
+      prAuthor: data.prAuthor,
+      isDraft: data.isDraft,
+      checksStatus: data.checksStatus,
+      checksDetails: data.checksDetails,
+      reviewStatus: data.reviewStatus,
+      approvedReviewCount: data.approvedReviewCount,
+      prSyncedAt: data.prSyncedAt,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .returning({ id: tasks.id });
+
+  // Log new task creation
+  await db.insert(logs).values({
+    taskId: result[0].id,
+    content: formatPrCreatedLog(data.isDraft, data.prState, data.prNumber, data.headBranch),
+    source: "github",
     createdAt: timestamp,
-    updatedAt: timestamp,
   });
+
   return "new";
 }
 
