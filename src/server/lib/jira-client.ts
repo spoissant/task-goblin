@@ -7,6 +7,7 @@ export interface JiraConfig {
   host: string;
   email: string;
   jql: string | null;
+  sprintField: string | null;
 }
 
 export class JiraConfigError extends Error {
@@ -31,6 +32,7 @@ export async function getJiraConfig(): Promise<JiraConfig> {
   const host = await getSetting("jira_host");
   const email = await getSetting("jira_email");
   const jql = await getSetting("jira_jql");
+  const sprintField = await getSetting("jira_sprint_field");
 
   if (!host) {
     throw new JiraConfigError(
@@ -54,7 +56,7 @@ export async function getJiraConfig(): Promise<JiraConfig> {
     );
   }
 
-  return { host, email, jql };
+  return { host, email, jql, sprintField };
 }
 
 export function getJiraClient(config: JiraConfig): Version3Client {

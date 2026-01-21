@@ -8,6 +8,7 @@ export const logKeys = {
   list: (filters: { includeRead?: boolean; limit: number; offset: number }) =>
     [...logKeys.lists(), filters] as const,
   unreadCount: () => [...logKeys.all, "unread-count"] as const,
+  taskLogs: (taskId: number) => [...logKeys.all, "task", taskId] as const,
 };
 
 export function useLogsQuery({
@@ -68,6 +69,26 @@ export function useDeleteLog() {
     mutationFn: (id: number) => api.delete(`/logs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
+    },
+  });
+}
+
+export function useTaskLogsQuery(taskId: number | null) {
+  return useQuery({
+    queryKey: logKeys.taskLogs(taskId!),
+    queryFn: () => api.get<{ items: Log[]; total: number }>(`/tasks/${taskId}/logs`),
+    enabled: taskId !== null,
+  });
+}
+
+export function useMarkTaskLogsRead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (taskId: number) => api.post<{ success: boolean }>(`/tasks/${taskId}/logs/mark-read`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: logKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 }

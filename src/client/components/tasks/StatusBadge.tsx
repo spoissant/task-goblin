@@ -6,6 +6,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   in_progress: { label: "In Progress", color: "bg-fuchsia-500" },
   code_review: { label: "Code Review", color: "bg-yellow-600" },
   qa: { label: "QA", color: "bg-blue-600" },
+  ready_to_merge: { label: "Ready to Merge", color: "bg-green-700" },
   done: { label: "Done", color: "bg-green-700" },
   canceled: { label: "Canceled", color: "bg-green-700" },
   closed: { label: "Closed", color: "bg-green-700" },

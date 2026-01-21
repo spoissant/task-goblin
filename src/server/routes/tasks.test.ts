@@ -3,82 +3,13 @@ import { sqlite } from "../../db";
 import { createRouter } from "../router";
 import { routes } from "./index";
 import { withErrorBoundary } from "../middleware";
+import { createTestTables } from "../../test/createSchema";
 
 let router: ReturnType<typeof createRouter>;
 
 beforeAll(() => {
-  // Create tables in the in-memory test database - matches current schema.ts
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL DEFAULT 'todo',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      jira_key TEXT UNIQUE,
-      type TEXT,
-      assignee TEXT,
-      priority TEXT,
-      sprint TEXT,
-      epic_key TEXT,
-      last_comment TEXT,
-      jira_synced_at TEXT,
-      pr_number INTEGER,
-      repository_id INTEGER REFERENCES repositories(id),
-      head_branch TEXT,
-      base_branch TEXT,
-      pr_state TEXT,
-      pr_author TEXT,
-      is_draft INTEGER DEFAULT 0,
-      checks_status TEXT,
-      checks_details TEXT,
-      review_status TEXT,
-      approved_review_count INTEGER,
-      pr_synced_at TEXT,
-      on_deployment_branches TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS todos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      content TEXT NOT NULL,
-      done TEXT,
-      task_id INTEGER REFERENCES tasks(id),
-      position INTEGER,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS repositories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      owner TEXT NOT NULL,
-      repo TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      badge_color TEXT,
-      deployment_branches TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS blocked_by (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      blocked_task_id INTEGER REFERENCES tasks(id),
-      blocker_task_id INTEGER REFERENCES tasks(id),
-      blocker_todo_id INTEGER REFERENCES todos(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER REFERENCES tasks(id),
-      content TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      read_at TEXT,
-      source TEXT NOT NULL
-    );
-  `);
+  // Create tables from Drizzle schema - always stays in sync
+  createTestTables(sqlite);
 
   router = createRouter(routes);
 });

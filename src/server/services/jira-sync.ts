@@ -5,12 +5,7 @@ import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
-
-interface FieldDiff {
-  field: string;
-  old: string | null;
-  new: string | null;
-}
+import { generateTaskDiff, formatDiffLog } from "../lib/diff";
 
 const JIRA_TRACKED_FIELDS = [
   "title",
@@ -23,38 +18,7 @@ const JIRA_TRACKED_FIELDS = [
   "epicKey",
 ] as const;
 
-const LARGE_FIELDS = ["description"];
-
-function generateTaskDiff(
-  oldTask: Record<string, unknown>,
-  newData: Record<string, unknown>,
-  fields: readonly string[]
-): FieldDiff[] {
-  const diffs: FieldDiff[] = [];
-  for (const field of fields) {
-    const oldVal = oldTask[field] ?? null;
-    const newVal = newData[field] ?? null;
-    // Convert to string for comparison
-    const oldStr = oldVal === null ? null : String(oldVal);
-    const newStr = newVal === null ? null : String(newVal);
-    if (oldStr !== newStr) {
-      diffs.push({ field, old: oldStr, new: newStr });
-    }
-  }
-  return diffs;
-}
-
-function formatDiffLog(diffs: FieldDiff[]): string {
-  const lines = ["# Task updated"];
-  for (const diff of diffs) {
-    if (LARGE_FIELDS.includes(diff.field)) {
-      lines.push(`- ${diff.field}: (changed)`);
-    } else {
-      lines.push(`- ${diff.field}: ${diff.old ?? "null"} -> ${diff.new ?? "null"}`);
-    }
-  }
-  return lines.join("\n");
-}
+const LARGE_FIELDS = ["description"] as const;
 
 function formatJiraCreatedLog(status: string, jiraKey: string, title: string): string {
   return `# Task created\n${status} - ${jiraKey} - ${title}`;
@@ -100,6 +64,12 @@ function extractEpicKey(issue: { fields: Record<string, unknown> }): string | nu
   return null;
 }
 
+interface Sprint {
+  id: number;
+  name: string;
+  state: "active" | "closed" | "future";
+}
+
 interface IssueFields {
   summary?: string;
   description?: unknown;
@@ -108,11 +78,21 @@ interface IssueFields {
   assignee?: { displayName?: string };
   priority?: { name?: string };
   parent?: unknown;
+  [key: string]: unknown;
 }
 
-function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }) {
+function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprintFieldId: string | null) {
   const fields = issue.fields;
   const timestamp = now();
+
+  // Extract active sprint name from custom field
+  let sprintName: string | null = null;
+  if (sprintFieldId) {
+    const sprints = fields[sprintFieldId] as Sprint[] | null;
+    const activeSprint = sprints?.find(s => s.state === "active");
+    sprintName = activeSprint?.name ?? null;
+  }
+
   return {
     jiraKey: issue.key!,
     title: fields.summary || issue.key!,
@@ -121,7 +101,7 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }) {
     type: fields.issuetype?.name || null,
     assignee: fields.assignee?.displayName || null,
     priority: fields.priority?.name || null,
-    sprint: null, // Custom field, skip for v1
+    sprint: sprintName,
     epicKey: extractEpicKey({ fields: fields as Record<string, unknown> }),
     lastComment: null, // Requires separate API call, skip for v1
     jiraSyncedAt: timestamp,
@@ -168,7 +148,7 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
       const timestamp = now();
       await db.insert(logs).values({
         taskId: oldTask.id,
-        content: formatDiffLog(diffs),
+        content: formatDiffLog(diffs, LARGE_FIELDS),
         source: "jira",
         createdAt: timestamp,
       });
@@ -215,21 +195,17 @@ export async function syncJiraItems(): Promise<SyncResult> {
   const maxResults = 50;
   let pageToken: string | undefined = undefined;
 
+  // Build fields array, optionally including sprint field
+  const baseFields = ["summary", "description", "status", "issuetype", "assignee", "priority", "parent"];
+  const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
+
   try {
     while (true) {
       const response: SearchAndReconcileResults = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
         jql,
         maxResults,
         nextPageToken: pageToken,
-        fields: [
-          "summary",
-          "description",
-          "status",
-          "issuetype",
-          "assignee",
-          "priority",
-          "parent",
-        ],
+        fields,
       });
 
       const issues = response.issues || [];
@@ -238,7 +214,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
       }
 
       for (const issue of issues) {
-        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
         syncedKeys.add(taskData.jiraKey);
         const result = await upsertTask(taskData);
         if (result === "new") newCount++;
@@ -273,17 +249,9 @@ export async function syncJiraItems(): Promise<SyncResult> {
       try {
         const issue = await client.issues.getIssue({
           issueIdOrKey: task.jiraKey,
-          fields: [
-            "summary",
-            "description",
-            "status",
-            "issuetype",
-            "assignee",
-            "priority",
-            "parent",
-          ],
+          fields,
         });
-        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
         const result = await upsertTask(taskData);
         if (result === "new") newCount++;
         else updatedCount++;
@@ -318,21 +286,17 @@ export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | 
   const config = await getJiraConfig();
   const client = getJiraClient(config);
 
+  // Build fields array, optionally including sprint field
+  const baseFields = ["summary", "description", "status", "issuetype", "assignee", "priority", "parent"];
+  const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
+
   try {
     const issue = await client.issues.getIssue({
       issueIdOrKey: key,
-      fields: [
-        "summary",
-        "description",
-        "status",
-        "issuetype",
-        "assignee",
-        "priority",
-        "parent",
-      ],
+      fields,
     });
 
-    const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields });
+    const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
     const status = await upsertTask(taskData);
     return { status };
   } catch (err: unknown) {

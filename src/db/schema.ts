@@ -5,7 +5,7 @@ export const tasks = sqliteTable("tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   description: text("description"),
-  status: text("status").notNull().default("todo"), // todo | in_progress | code_review | qa | done | blocked
+  status: text("status").notNull().default("todo"), // todo | in_progress | code_review | qa | done | blocked | ready_to_merge
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 

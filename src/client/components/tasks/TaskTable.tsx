@@ -17,9 +17,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, ListTodo, MessageSquare } from "lucide-react";
+import { RefreshCw, ListTodo, MessageSquare, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { TodosDialog } from "./TodosDialog";
+import { TaskLogsModal } from "./TaskLogsModal";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
 // Status category definitions for filtering
@@ -53,6 +54,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
+  const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
   // Build a map of repositoryId -> Repository for quick lookups
   const repoMap = useMemo(() => {
@@ -105,6 +107,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
           <TableRow>
             <TableHead className="w-[40px]"></TableHead>
             <TableHead className="w-[80px]">Type</TableHead>
+            <TableHead className="w-[140px]">Sprint</TableHead>
             <TableHead className="w-[100px]">Epic</TableHead>
             <TableHead className="w-[100px]">Key</TableHead>
             <TableHead>Title</TableHead>
@@ -133,6 +136,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
               task={task}
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
+              onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
             />
           ))}
         </TableBody>
@@ -143,6 +147,14 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
           onOpenChange={(open) => !open && setTodoDialogTask(null)}
           taskId={todoDialogTask.id}
           taskTitle={todoDialogTask.title}
+        />
+      )}
+      {logsModalTask && (
+        <TaskLogsModal
+          open={!!logsModalTask}
+          onOpenChange={(open) => !open && setLogsModalTask(null)}
+          taskId={logsModalTask.id}
+          taskTitle={logsModalTask.title}
         />
       )}
     </TooltipProvider>
@@ -178,9 +190,10 @@ interface TaskRowProps {
   task: TaskWithTodos;
   repo?: Repository;
   onOpenTodos: () => void;
+  onOpenLogs: () => void;
 }
 
-function TaskRow({ task, repo, onOpenTodos }: TaskRowProps) {
+function TaskRow({ task, repo, onOpenTodos, onOpenLogs }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -196,11 +209,32 @@ function TaskRow({ task, repo, onOpenTodos }: TaskRowProps) {
     syncTask.mutate({ task, repo });
   };
 
+  const handleOpenLogs = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onOpenLogs();
+  };
+
   return (
     <TableRow>
-      {/* Sync */}
+      {/* Sync / Unread Logs */}
       <TableCell>
-        {canSync && (
+        {task.unreadLogCount > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleOpenLogs}
+                className="relative inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted"
+              >
+                <Bell className="h-4 w-4 text-orange-500" />
+                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-4 min-w-[1rem] px-1 flex items-center justify-center font-medium">
+                  {task.unreadLogCount}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{task.unreadLogCount} unread log(s)</TooltipContent>
+          </Tooltip>
+        ) : canSync ? (
           <Button
             variant="ghost"
             size="icon"
@@ -210,7 +244,7 @@ function TaskRow({ task, repo, onOpenTodos }: TaskRowProps) {
           >
             <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
           </Button>
-        )}
+        ) : null}
       </TableCell>
 
       {/* Type */}
@@ -220,6 +254,11 @@ function TaskRow({ task, repo, onOpenTodos }: TaskRowProps) {
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
+      </TableCell>
+
+      {/* Sprint */}
+      <TableCell className="max-w-[140px] truncate text-xs" title={task.sprint || undefined}>
+        {task.sprint || <span className="text-muted-foreground">—</span>}
       </TableCell>
 
       {/* Epic */}

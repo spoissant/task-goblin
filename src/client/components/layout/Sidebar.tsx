@@ -2,7 +2,6 @@ import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
 import { useUnreadCountQuery } from "@/client/lib/queries";
 import {
-  ListTodo,
   SquareCheck,
   FolderSearch,
   CheckCircle,
@@ -48,7 +47,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         <div className={cn("mb-8 flex items-center", isCollapsed ? "justify-center" : "justify-between")}>
           {!isCollapsed && (
             <h1 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
-              <ListTodo className="h-6 w-6" />
+              <img src="/task-goblin.png" alt="" className="h-6 w-6" />
               <span>Task Goblin</span>
             </h1>
           )}

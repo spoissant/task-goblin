@@ -4,9 +4,10 @@ import { tasks, todos, blockedBy, repositories, logs } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
+import { getBody } from "../lib/request";
 import type { Routes } from "../router";
 
-const VALID_STATUSES = ["todo", "in_progress", "code_review", "qa", "done", "blocked"];
+const VALID_STATUSES = ["todo", "in_progress", "code_review", "qa", "done", "blocked", "ready_to_merge"];
 
 // Jira statuses that indicate completion (case-insensitive)
 const JIRA_COMPLETED_STATUSES = [
@@ -76,10 +77,6 @@ const statusOrderExpr = sql`CASE
   WHEN LOWER(${tasks.status}) IN ('on hold', 'on_hold') THEN 13
   ELSE 14
 END`;
-
-async function getBody(req: Request) {
-  return req.json();
-}
 
 export const taskRoutes: Routes = {
   "/api/v1/tasks": {
@@ -189,9 +186,34 @@ export const taskRoutes: Routes = {
         }
       }
 
+      // Get unread log counts for each task
+      const unreadLogCountsMap = new Map<number, number>();
+      if (taskIds.length > 0) {
+        const unreadLogCounts = await db
+          .select({
+            taskId: logs.taskId,
+            count: sql<number>`count(*)`,
+          })
+          .from(logs)
+          .where(
+            and(
+              sql`${logs.taskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`,
+              isNull(logs.readAt)
+            )
+          )
+          .groupBy(logs.taskId);
+
+        for (const row of unreadLogCounts) {
+          if (row.taskId) {
+            unreadLogCountsMap.set(row.taskId, row.count);
+          }
+        }
+      }
+
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
+        unreadLogCount: unreadLogCountsMap.get(task.id) || 0,
       }));
 
       // Get total count for pagination

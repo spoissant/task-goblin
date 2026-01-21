@@ -3,12 +3,7 @@ import { db } from "../../db";
 import { tasks, repositories, logs } from "../../db/schema";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
 import { now } from "../lib/timestamp";
-
-interface FieldDiff {
-  field: string;
-  old: string | null;
-  new: string | null;
-}
+import { generateTaskDiff, formatDiffLog } from "../lib/diff";
 
 const GITHUB_TRACKED_FIELDS = [
   "prState",
@@ -21,38 +16,7 @@ const GITHUB_TRACKED_FIELDS = [
   "unresolvedCommentCount",
 ] as const;
 
-const LARGE_FIELDS = ["checksDetails"];
-
-function generateTaskDiff(
-  oldTask: Record<string, unknown>,
-  newData: Record<string, unknown>,
-  fields: readonly string[]
-): FieldDiff[] {
-  const diffs: FieldDiff[] = [];
-  for (const field of fields) {
-    const oldVal = oldTask[field] ?? null;
-    const newVal = newData[field] ?? null;
-    // Convert to string for comparison
-    const oldStr = oldVal === null ? null : String(oldVal);
-    const newStr = newVal === null ? null : String(newVal);
-    if (oldStr !== newStr) {
-      diffs.push({ field, old: oldStr, new: newStr });
-    }
-  }
-  return diffs;
-}
-
-function formatDiffLog(diffs: FieldDiff[]): string {
-  const lines = ["# Task updated"];
-  for (const diff of diffs) {
-    if (LARGE_FIELDS.includes(diff.field)) {
-      lines.push(`- ${diff.field}: (changed)`);
-    } else {
-      lines.push(`- ${diff.field}: ${diff.old ?? "null"} -> ${diff.new ?? "null"}`);
-    }
-  }
-  return lines.join("\n");
-}
+const LARGE_FIELDS = ["checksDetails"] as const;
 
 function formatPrCreatedLog(isDraft: number, prState: string, prNumber: number, headBranch: string): string {
   const draftStatus = isDraft ? "Draft" : "Ready";
@@ -215,23 +179,26 @@ async function fetchCheckRunsStatus(
       setTimeout(() => reject(new Error("Checks fetch timeout")), 5000)
     );
 
-    const { data } = await Promise.race([
-      client.checks.listForRef({
-        owner,
-        repo,
-        ref: headSha,
-      }),
+    // Fetch both check runs (GitHub Actions, etc.) and commit statuses (Buildkite, etc.) in parallel
+    const [checkRunsResponse, statusResponse] = await Promise.race([
+      Promise.all([
+        client.checks.listForRef({ owner, repo, ref: headSha }),
+        client.repos.getCombinedStatusForRef({ owner, repo, ref: headSha }),
+      ]),
       timeoutPromise,
     ]);
 
-    if (data.check_runs.length === 0) {
+    const checkRuns = checkRunsResponse.data.check_runs;
+    const statuses = statusResponse.data.statuses;
+
+    if (checkRuns.length === 0 && statuses.length === 0) {
       return { checksStatus: null, checksDetails: null };
     }
 
-    // Deduplicate by check name - keep only the latest run for each unique check
+    // Deduplicate check runs by name - keep only the latest run for each unique check
     // GitHub returns all iterations including reruns, we want only the most recent
-    const latestByName = new Map<string, typeof data.check_runs[0]>();
-    for (const run of data.check_runs) {
+    const latestByName = new Map<string, typeof checkRuns[0]>();
+    for (const run of checkRuns) {
       const existing = latestByName.get(run.name);
       if (!existing || new Date(run.started_at || 0) > new Date(existing.started_at || 0)) {
         latestByName.set(run.name, run);
@@ -239,12 +206,32 @@ async function fetchCheckRunsStatus(
     }
     const uniqueRuns = Array.from(latestByName.values());
 
-    const details: CheckDetail[] = uniqueRuns.map((run) => ({
+    // Convert check runs to CheckDetail format
+    const checkRunDetails: CheckDetail[] = uniqueRuns.map((run) => ({
       name: run.name,
       status: run.status as "queued" | "in_progress" | "completed",
       conclusion: run.conclusion,
       url: run.html_url,
     }));
+
+    // Convert commit statuses to CheckDetail format
+    // Status API uses state: "error" | "failure" | "pending" | "success"
+    const statusDetails: CheckDetail[] = statuses.map((status) => ({
+      name: status.context,
+      status: status.state === "pending" ? "in_progress" : "completed",
+      conclusion: status.state === "success" ? "success" : status.state === "pending" ? null : "failure",
+      url: status.target_url,
+    }));
+
+    // Merge and dedupe - check runs take precedence over statuses with same name
+    const allDetails = new Map<string, CheckDetail>();
+    for (const detail of statusDetails) {
+      allDetails.set(detail.name, detail);
+    }
+    for (const detail of checkRunDetails) {
+      allDetails.set(detail.name, detail);
+    }
+    const details = Array.from(allDetails.values());
 
     // Aggregate status:
     // - "failed" if any check has conclusion === "failure" | "timed_out"
@@ -252,11 +239,11 @@ async function fetchCheckRunsStatus(
     // - "passed" if all checks have conclusion === "success" | "skipped" | "neutral"
     let checksStatus: string;
 
-    const hasFailed = uniqueRuns.some(
-      (run) => run.conclusion === "failure" || run.conclusion === "timed_out"
+    const hasFailed = details.some(
+      (d) => d.conclusion === "failure" || d.conclusion === "timed_out"
     );
-    const hasPending = uniqueRuns.some(
-      (run) => run.status !== "completed"
+    const hasPending = details.some(
+      (d) => d.status !== "completed"
     );
 
     if (hasFailed) {
@@ -367,7 +354,7 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
       const timestamp = now();
       await db.insert(logs).values({
         taskId: oldTask.id,
-        content: formatDiffLog(diffs),
+        content: formatDiffLog(diffs, LARGE_FIELDS),
         source: "github",
         createdAt: timestamp,
       });
@@ -423,7 +410,7 @@ async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
       const timestamp = now();
       await db.insert(logs).values({
         taskId: oldTask.id,
-        content: formatDiffLog(diffs),
+        content: formatDiffLog(diffs, LARGE_FIELDS),
         source: "github",
         createdAt: timestamp,
       });

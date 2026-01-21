@@ -4,11 +4,8 @@ import { todos, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
+import { getBody } from "../lib/request";
 import type { Routes } from "../router";
-
-async function getBody(req: Request) {
-  return req.json();
-}
 
 export const todoRoutes: Routes = {
   "/api/v1/todos": {

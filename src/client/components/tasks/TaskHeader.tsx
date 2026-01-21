@@ -22,10 +22,11 @@ interface TaskHeaderProps {
 }
 
 const STATUSES = [
-  { value: "todo", label: "To Do" },
+  { value: "todo", label: "Todo" },
   { value: "in_progress", label: "In Progress" },
   { value: "code_review", label: "Code Review" },
   { value: "qa", label: "QA" },
+  { value: "ready_to_merge", label: "Ready to Merge" },
   { value: "done", label: "Done" },
   { value: "blocked", label: "Blocked" },
 ];

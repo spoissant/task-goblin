@@ -1,14 +1,11 @@
-import { eq, sql, isNull, desc } from "drizzle-orm";
+import { eq, sql, isNull, desc, asc, and } from "drizzle-orm";
 import { db } from "../../db";
 import { logs, tasks, repositories } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
+import { getBody } from "../lib/request";
 import type { Routes } from "../router";
-
-async function getBody(req: Request) {
-  return req.json();
-}
 
 export const logRoutes: Routes = {
   "/api/v1/logs": {
@@ -41,7 +38,7 @@ export const logRoutes: Routes = {
         .leftJoin(tasks, eq(logs.taskId, tasks.id))
         .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
         .where(whereCondition)
-        .orderBy(desc(logs.createdAt))
+        .orderBy(asc(logs.createdAt))
         .limit(limit)
         .offset(offset);
 
@@ -162,6 +159,78 @@ export const logRoutes: Routes = {
         .returning();
 
       return json(result[0]);
+    },
+  },
+
+  "/api/v1/tasks/:taskId/logs": {
+    async GET(req, params) {
+      const taskId = parseInt(params.taskId, 10);
+
+      // Check task exists
+      const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId));
+      if (taskResult.length === 0) {
+        throw new NotFoundError("Task", taskId);
+      }
+
+      // Get unread logs for this task, ordered oldest first
+      const rawItems = await db
+        .select({
+          log: logs,
+          task: {
+            id: tasks.id,
+            jiraKey: tasks.jiraKey,
+            prNumber: tasks.prNumber,
+            title: tasks.title,
+            repositoryId: tasks.repositoryId,
+          },
+          repository: {
+            owner: repositories.owner,
+            repo: repositories.repo,
+          },
+        })
+        .from(logs)
+        .leftJoin(tasks, eq(logs.taskId, tasks.id))
+        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
+        .where(and(eq(logs.taskId, taskId), isNull(logs.readAt)))
+        .orderBy(asc(logs.createdAt));
+
+      const items = rawItems.map((row) => ({
+        ...row.log,
+        task: row.task?.id
+          ? {
+              id: row.task.id,
+              jiraKey: row.task.jiraKey,
+              prNumber: row.task.prNumber,
+              title: row.task.title,
+              repository:
+                row.task.repositoryId && row.repository?.owner
+                  ? { owner: row.repository.owner, repo: row.repository.repo }
+                  : null,
+            }
+          : null,
+      }));
+
+      return json({ items, total: items.length });
+    },
+  },
+
+  "/api/v1/tasks/:taskId/logs/mark-read": {
+    async POST(req, params) {
+      const taskId = parseInt(params.taskId, 10);
+
+      // Check task exists
+      const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId));
+      if (taskResult.length === 0) {
+        throw new NotFoundError("Task", taskId);
+      }
+
+      // Mark all unread logs for this task as read
+      await db
+        .update(logs)
+        .set({ readAt: now() })
+        .where(and(eq(logs.taskId, taskId), isNull(logs.readAt)));
+
+      return json({ success: true });
     },
   },
 };

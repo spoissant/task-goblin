@@ -21,7 +21,7 @@ export function registerTaskTools(server: McpServer) {
     {
       description: "List all tasks with optional filters. Can filter by status, orphan type (jira-only or pr-only tasks), or linked (both jira and pr).",
       inputSchema: {
-        status: z.string().optional().describe("Filter by status (todo, in_progress, code_review, qa, done, blocked)"),
+        status: z.string().optional().describe("Filter by status (todo, in_progress, code_review, qa, done, blocked, ready_to_merge)"),
         orphanJira: z.boolean().optional().describe("If true, return only Jira orphan tasks (have jiraKey but no prNumber)"),
         orphanPr: z.boolean().optional().describe("If true, return only PR orphan tasks (have prNumber but no jiraKey)"),
         linked: z.boolean().optional().describe("If true, return only linked tasks (have both jiraKey and prNumber, or manual tasks)"),

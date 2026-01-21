@@ -3,11 +3,8 @@ import { db } from "../../db";
 import { settings } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
+import { getBody } from "../lib/request";
 import type { Routes } from "../router";
-
-async function getBody(req: Request) {
-  return req.json();
-}
 
 export const settingsRoutes: Routes = {
   "/api/v1/settings": {
@@ -117,7 +114,7 @@ export const settingsRoutes: Routes = {
   // Jira config bundle
   "/api/v1/settings/jira/config": {
     async GET() {
-      const jiraKeys = ["jira_host", "jira_email", "jira_project", "jira_jql"];
+      const jiraKeys = ["jira_host", "jira_email", "jira_project", "jira_jql", "jira_sprint_field"];
       const items = await db.select().from(settings);
 
       const config: Record<string, string | null> = {};
@@ -133,7 +130,7 @@ export const settingsRoutes: Routes = {
     async PUT(req) {
       const body = await getBody(req);
 
-      const validKeys = ["jira_host", "jira_email", "jira_project", "jira_jql"];
+      const validKeys = ["jira_host", "jira_email", "jira_project", "jira_jql", "jira_sprint_field"];
       const updates: { key: string; value: string | null }[] = [];
 
       for (const key of validKeys) {
