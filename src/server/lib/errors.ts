@@ -30,3 +30,18 @@ export class BadRequestError extends AppError {
     this.name = "BadRequestError";
   }
 }
+
+// Type guard for API errors from external services (Jira, GitHub)
+export interface ApiError {
+  status?: number;
+  message?: string;
+}
+
+export function isApiError(err: unknown): err is ApiError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (typeof (err as ApiError).status === "number" || typeof (err as ApiError).status === "undefined") &&
+    (typeof (err as ApiError).message === "string" || typeof (err as ApiError).message === "undefined")
+  );
+}

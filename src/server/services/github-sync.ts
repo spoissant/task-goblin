@@ -10,6 +10,7 @@ import {
   detectDeploymentBranches,
 } from "./github-fetchers";
 import { upsertPrTask } from "./github-upsert";
+import { isApiError } from "../lib/errors";
 
 export interface SyncResult {
   synced: number;
@@ -165,30 +166,33 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
       throw err;
     }
 
-    const error = err as { status?: number; message?: string };
-    if (error.status === 401) {
+    if (isApiError(err)) {
+      if (err.status === 401) {
+        throw new GitHubApiError(
+          "GitHub authentication failed. Check your GITHUB_TOKEN.",
+          "GITHUB_AUTH_FAILED"
+        );
+      }
+      if (err.status === 403) {
+        throw new GitHubApiError(
+          "GitHub rate limit exceeded or insufficient permissions.",
+          "GITHUB_FORBIDDEN"
+        );
+      }
+      if (err.status === 422) {
+        throw new GitHubApiError(
+          "Invalid search query. Check github_username setting.",
+          "GITHUB_INVALID_QUERY"
+        );
+      }
+
       throw new GitHubApiError(
-        "GitHub authentication failed. Check your GITHUB_TOKEN.",
-        "GITHUB_AUTH_FAILED"
-      );
-    }
-    if (error.status === 403) {
-      throw new GitHubApiError(
-        "GitHub rate limit exceeded or insufficient permissions.",
-        "GITHUB_FORBIDDEN"
-      );
-    }
-    if (error.status === 422) {
-      throw new GitHubApiError(
-        "Invalid search query. Check github_username setting.",
-        "GITHUB_INVALID_QUERY"
+        err.message || "Failed to fetch PRs from GitHub",
+        "GITHUB_API_ERROR"
       );
     }
 
-    throw new GitHubApiError(
-      error.message || "Failed to fetch PRs from GitHub",
-      "GITHUB_API_ERROR"
-    );
+    throw new GitHubApiError("Failed to fetch PRs from GitHub", "GITHUB_API_ERROR");
   }
 
   return { synced, new: newCount, updated: updatedCount };
@@ -251,23 +255,26 @@ export async function syncGitHubPullRequestByNumber(
       throw err;
     }
 
-    const error = err as { status?: number; message?: string };
-    if (error.status === 401) {
+    if (isApiError(err)) {
+      if (err.status === 401) {
+        throw new GitHubApiError(
+          "GitHub authentication failed. Check your GITHUB_TOKEN.",
+          "GITHUB_AUTH_FAILED"
+        );
+      }
+      if (err.status === 404) {
+        throw new GitHubApiError(
+          `PR #${prNumber} not found in ${owner}/${repo}`,
+          "GITHUB_PR_NOT_FOUND"
+        );
+      }
+
       throw new GitHubApiError(
-        "GitHub authentication failed. Check your GITHUB_TOKEN.",
-        "GITHUB_AUTH_FAILED"
-      );
-    }
-    if (error.status === 404) {
-      throw new GitHubApiError(
-        `PR #${prNumber} not found in ${owner}/${repo}`,
-        "GITHUB_PR_NOT_FOUND"
+        err.message || `Failed to fetch PR #${prNumber} from GitHub`,
+        "GITHUB_API_ERROR"
       );
     }
 
-    throw new GitHubApiError(
-      error.message || `Failed to fetch PR #${prNumber} from GitHub`,
-      "GITHUB_API_ERROR"
-    );
+    throw new GitHubApiError(`Failed to fetch PR #${prNumber} from GitHub`, "GITHUB_API_ERROR");
   }
 }

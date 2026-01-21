@@ -6,6 +6,7 @@ import { tasks, logs } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
 import { generateTaskDiff, formatDiffLog } from "../lib/diff";
+import { isApiError } from "../lib/errors";
 
 const JIRA_TRACKED_FIELDS = [
   "title",
@@ -265,18 +266,21 @@ export async function syncJiraItems(): Promise<SyncResult> {
       throw err;
     }
 
-    const error = err as { status?: number; message?: string };
-    if (error.status === 401 || error.status === 403) {
+    if (isApiError(err)) {
+      if (err.status === 401 || err.status === 403) {
+        throw new JiraApiError(
+          "Jira authentication failed. Check your API token and email.",
+          "JIRA_AUTH_FAILED"
+        );
+      }
+
       throw new JiraApiError(
-        "Jira authentication failed. Check your API token and email.",
-        "JIRA_AUTH_FAILED"
+        err.message || "Failed to fetch issues from Jira",
+        "JIRA_API_ERROR"
       );
     }
 
-    throw new JiraApiError(
-      error.message || "Failed to fetch issues from Jira",
-      "JIRA_API_ERROR"
-    );
+    throw new JiraApiError("Failed to fetch issues from Jira", "JIRA_API_ERROR");
   }
 
   return { synced, new: newCount, updated: updatedCount };
@@ -304,23 +308,26 @@ export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | 
       throw err;
     }
 
-    const error = err as { status?: number; message?: string };
-    if (error.status === 401 || error.status === 403) {
+    if (isApiError(err)) {
+      if (err.status === 401 || err.status === 403) {
+        throw new JiraApiError(
+          "Jira authentication failed. Check your API token and email.",
+          "JIRA_AUTH_FAILED"
+        );
+      }
+      if (err.status === 404) {
+        throw new JiraApiError(
+          `Issue ${key} not found in Jira`,
+          "JIRA_ISSUE_NOT_FOUND"
+        );
+      }
+
       throw new JiraApiError(
-        "Jira authentication failed. Check your API token and email.",
-        "JIRA_AUTH_FAILED"
-      );
-    }
-    if (error.status === 404) {
-      throw new JiraApiError(
-        `Issue ${key} not found in Jira`,
-        "JIRA_ISSUE_NOT_FOUND"
+        err.message || `Failed to fetch issue ${key} from Jira`,
+        "JIRA_API_ERROR"
       );
     }
 
-    throw new JiraApiError(
-      error.message || `Failed to fetch issue ${key} from Jira`,
-      "JIRA_API_ERROR"
-    );
+    throw new JiraApiError(`Failed to fetch issue ${key} from Jira`, "JIRA_API_ERROR");
   }
 }

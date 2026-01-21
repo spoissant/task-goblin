@@ -5,7 +5,7 @@ import { json } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
-import { JIRA_COMPLETED_STATUSES, getJiraStatusList, statusOrderExpr } from "../lib/task-status";
+import { JIRA_COMPLETED_STATUSES, jiraStatusNotInCondition, statusOrderExpr } from "../lib/task-status";
 import type { Routes } from "../router";
 
 export const taskMergeRoutes: Routes = {
@@ -180,8 +180,6 @@ export const taskMergeRoutes: Routes = {
   // Auto-match orphans by finding jiraKey in branch names/titles
   "/api/v1/tasks/auto-match": {
     async POST() {
-      const jiraStatusList = getJiraStatusList();
-
       // Get all non-completed Jira orphans
       const jiraOrphans = await db
         .select()
@@ -190,7 +188,7 @@ export const taskMergeRoutes: Routes = {
           and(
             isNotNull(tasks.jiraKey),
             isNull(tasks.prNumber),
-            sql`LOWER(${tasks.status}) NOT IN (${sql.raw(jiraStatusList)})`
+            jiraStatusNotInCondition()
           )
         );
 

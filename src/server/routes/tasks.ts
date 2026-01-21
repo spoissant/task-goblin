@@ -7,7 +7,7 @@ import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import {
   VALID_STATUSES,
-  getJiraStatusList,
+  jiraStatusNotInCondition,
   getCompletedCondition,
   getNotCompletedCondition,
   statusOrderExpr,
@@ -418,8 +418,6 @@ export const taskRoutes: Routes = {
   // Get Jira orphans (jiraKey set, no prNumber, not completed)
   "/api/v1/tasks/orphan-jira": {
     async GET() {
-      const jiraStatusList = getJiraStatusList();
-
       const items = await db
         .select()
         .from(tasks)
@@ -428,7 +426,7 @@ export const taskRoutes: Routes = {
             isNotNull(tasks.jiraKey),
             isNull(tasks.prNumber),
             // Exclude Jira-completed statuses
-            sql`LOWER(${tasks.status}) NOT IN (${sql.raw(jiraStatusList)})`
+            jiraStatusNotInCondition()
           )
         )
         .orderBy(statusOrderExpr);

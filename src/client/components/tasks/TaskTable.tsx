@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
+import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
@@ -39,10 +40,10 @@ function matchesCategory(status: string, category: string): boolean {
   return patterns.some((p) => s === p || s.includes(p));
 }
 
-// Build Jira URL
-function getJiraUrl(jiraKey: string, jiraHost?: string): string {
-  const host = jiraHost || "hivebrite.atlassian.net";
-  return `https://${host}/browse/${jiraKey}`;
+// Build Jira URL - requires jiraHost, returns null if not configured
+function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): string | null {
+  if (!jiraHost) return null;
+  return `https://${jiraHost}/browse/${jiraKey}`;
 }
 
 interface TaskTableProps {
@@ -53,8 +54,12 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
   // Fetch all tasks (no server-side status filter for category-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
+  const { data: settingsData } = useSettingsQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
+
+  // Extract jiraHost from settings
+  const jiraHost = settingsData?.jira_host || null;
 
   // Build a map of repositoryId -> Repository for quick lookups
   const repoMap = useMemo(() => {
@@ -135,6 +140,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
               key={task.id}
               task={task}
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
+              jiraHost={jiraHost}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
             />
@@ -189,11 +195,12 @@ function DeploymentBadges({ branches }: DeploymentBadgesProps) {
 interface TaskRowProps {
   task: TaskWithTodos;
   repo?: Repository;
+  jiraHost: string | null;
   onOpenTodos: () => void;
   onOpenLogs: () => void;
 }
 
-function TaskRow({ task, repo, onOpenTodos, onOpenLogs }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -264,15 +271,22 @@ function TaskRow({ task, repo, onOpenTodos, onOpenLogs }: TaskRowProps) {
       {/* Epic */}
       <TableCell>
         {task.epicKey ? (
-          <a
-            href={getJiraUrl(task.epicKey)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline font-mono text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {task.epicKey}
-          </a>
+          (() => {
+            const epicUrl = getJiraUrl(task.epicKey, jiraHost);
+            return epicUrl ? (
+              <a
+                href={epicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-mono text-xs"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {task.epicKey}
+              </a>
+            ) : (
+              <span className="font-mono text-xs">{task.epicKey}</span>
+            );
+          })()
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
@@ -281,15 +295,22 @@ function TaskRow({ task, repo, onOpenTodos, onOpenLogs }: TaskRowProps) {
       {/* Jira Key */}
       <TableCell>
         {task.jiraKey ? (
-          <a
-            href={getJiraUrl(task.jiraKey)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline font-mono text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {task.jiraKey}
-          </a>
+          (() => {
+            const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
+            return jiraUrl ? (
+              <a
+                href={jiraUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-mono text-xs"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {task.jiraKey}
+              </a>
+            ) : (
+              <span className="font-mono text-xs">{task.jiraKey}</span>
+            );
+          })()
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

@@ -1,4 +1,4 @@
-import { eq, and, isNull, isNotNull, sql, asc, gt, lt, gte, lte } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, sql, gt, lt, gte, lte } from "drizzle-orm";
 import { db } from "../../db";
 import { todos, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
