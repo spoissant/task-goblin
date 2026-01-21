@@ -157,13 +157,13 @@ export const taskRoutes: Routes = {
 
       const taskList = await query;
 
-      // Get next todo (lowest position incomplete) for each task
+      // Get all pending todos for each task
       const taskIds = taskList.map((t) => t.id);
-      const nextTodoMap = new Map<number, { id: number; content: string; position: number | null }>();
+      const pendingTodosMap = new Map<number, { id: number; content: string; position: number | null }[]>();
 
       if (taskIds.length > 0) {
-        // Get the lowest position incomplete todo for each task
-        const nextTodos = await db
+        // Get all incomplete todos for each task, ordered by position
+        const allPendingTodos = await db
           .select({
             taskId: todos.taskId,
             id: todos.id,
@@ -179,17 +179,19 @@ export const taskRoutes: Routes = {
           )
           .orderBy(sql`COALESCE(${todos.position}, 999999)`);
 
-        // Keep only the first (lowest position) incomplete todo per task
-        for (const todo of nextTodos) {
-          if (todo.taskId && !nextTodoMap.has(todo.taskId)) {
-            nextTodoMap.set(todo.taskId, { id: todo.id, content: todo.content, position: todo.position });
+        // Group todos by task
+        for (const todo of allPendingTodos) {
+          if (todo.taskId) {
+            const existing = pendingTodosMap.get(todo.taskId) || [];
+            existing.push({ id: todo.id, content: todo.content, position: todo.position });
+            pendingTodosMap.set(todo.taskId, existing);
           }
         }
       }
 
       const items = taskList.map((task) => ({
         ...task,
-        nextTodo: nextTodoMap.get(task.id) || null,
+        pendingTodos: pendingTodosMap.get(task.id) || [],
       }));
 
       // Get total count for pagination

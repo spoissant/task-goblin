@@ -9,12 +9,11 @@ import { Plus } from "lucide-react";
 // Status filter categories - maps to STATUS_CATEGORIES in TaskTable
 const STATUS_FILTERS = [
   { value: "", label: "All" },
-  { value: "todo", label: "To Do" },
-  { value: "in_progress", label: "In Progress" },
+  { value: "ready_to_merge", label: "Ready to Merge" },
+  { value: "qa", label: "Ready for Test/QA" },
   { value: "code_review", label: "Code Review" },
-  { value: "qa", label: "QA" },
-  { value: "done", label: "Done" },
-  { value: "blocked", label: "Blocked" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "todo", label: "Todo" },
 ];
 
 export function TasksPage() {

@@ -6,11 +6,15 @@ import { taskKeys } from "./tasks";
 export const todoKeys = {
   all: ["todos"] as const,
   list: () => [...todoKeys.all, "list"] as const,
-  listFiltered: (params: { done?: boolean }) => [...todoKeys.list(), params] as const,
+  listFiltered: (params: { taskId?: number; done?: boolean }) =>
+    [...todoKeys.list(), params] as const,
 };
 
-export function useTodosQuery(params: { done?: boolean } = {}) {
+export function useTodosQuery(params: { taskId?: number; done?: boolean } = {}) {
   const searchParams = new URLSearchParams();
+  if (params.taskId !== undefined) {
+    searchParams.set("taskId", String(params.taskId));
+  }
   if (params.done !== undefined) {
     searchParams.set("done", String(params.done));
   }

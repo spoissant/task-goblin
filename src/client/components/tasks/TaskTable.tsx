@@ -4,12 +4,7 @@ import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/q
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/client/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "./StatusIcons";
@@ -22,19 +17,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, Plus } from "lucide-react";
+import { RefreshCw, ListTodo, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
-import { AddTodoDialog } from "./AddTodoDialog";
-import type { TaskWithNextTodo, Repository } from "@/client/lib/types";
+import { TodosDialog } from "./TodosDialog";
+import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
 // Status category definitions for filtering
 export const STATUS_CATEGORIES: Record<string, string[]> = {
-  todo: ["todo", "to do", "accepted", "backlog", "on hold"],
-  in_progress: ["in_progress", "in progress"],
-  code_review: ["code_review", "code review"],
+  ready_to_merge: ["ready to merge", "ready to prod"],
   qa: ["qa", "ready for test", "ready to test"],
-  done: ["done", "ready to merge", "ready to prod", "closed", "cancelled", "canceled"],
-  blocked: ["blocked"],
+  code_review: ["code_review", "code review"],
+  in_progress: ["in_progress", "in progress"],
+  todo: ["todo", "to do", "accepted", "backlog", "on hold", "done", "closed", "cancelled", "canceled", "blocked"],
 };
 
 function matchesCategory(status: string, category: string): boolean {
@@ -58,7 +52,7 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
   // Fetch all tasks (no server-side status filter for category-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
-  const [addTodoTask, setAddTodoTask] = useState<{ id: number; title: string } | null>(null);
+  const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
 
   // Build a map of repositoryId -> Repository for quick lookups
   const repoMap = useMemo(() => {
@@ -110,19 +104,26 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="w-[40px]"></TableHead>
-            <TableHead className="w-[100px]">Status</TableHead>
             <TableHead className="w-[80px]">Type</TableHead>
             <TableHead className="w-[100px]">Epic</TableHead>
             <TableHead className="w-[100px]">Key</TableHead>
             <TableHead>Title</TableHead>
             <TableHead className="w-[120px]">Repo</TableHead>
             <TableHead className="w-[150px]">Branch</TableHead>
-            <TableHead className="w-[100px]">Merged in</TableHead>
             <TableHead className="w-[60px]">PR</TableHead>
+            <TableHead className="w-[100px]">Status</TableHead>
+            <TableHead className="w-[100px]">Merged in</TableHead>
             <TableHead className="w-[50px]">Checks</TableHead>
             <TableHead className="w-[60px]">Reviews</TableHead>
-            <TableHead className="w-[60px]">Comments</TableHead>
-            <TableHead className="w-[200px]">Next Todo</TableHead>
+            <TableHead className="w-[50px]">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <MessageSquare className="h-4 w-4" />
+                </TooltipTrigger>
+                <TooltipContent>Pull Request Comments</TooltipContent>
+              </Tooltip>
+            </TableHead>
+            <TableHead className="w-[80px]">Todos</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -131,17 +132,17 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
               key={task.id}
               task={task}
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
-              onAddTodo={() => setAddTodoTask({ id: task.id, title: task.title })}
+              onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
             />
           ))}
         </TableBody>
       </Table>
-      {addTodoTask && (
-        <AddTodoDialog
-          open={!!addTodoTask}
-          onOpenChange={(open) => !open && setAddTodoTask(null)}
-          taskId={addTodoTask.id}
-          taskTitle={addTodoTask.title}
+      {todoDialogTask && (
+        <TodosDialog
+          open={!!todoDialogTask}
+          onOpenChange={(open) => !open && setTodoDialogTask(null)}
+          taskId={todoDialogTask.id}
+          taskTitle={todoDialogTask.title}
         />
       )}
     </TooltipProvider>
@@ -174,12 +175,12 @@ function DeploymentBadges({ branches }: DeploymentBadgesProps) {
 }
 
 interface TaskRowProps {
-  task: TaskWithNextTodo;
+  task: TaskWithTodos;
   repo?: Repository;
-  onAddTodo: () => void;
+  onOpenTodos: () => void;
 }
 
-function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
+function TaskRow({ task, repo, onOpenTodos }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -210,11 +211,6 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
             <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
           </Button>
         )}
-      </TableCell>
-
-      {/* Status */}
-      <TableCell>
-        <StatusBadge status={task.status} />
       </TableCell>
 
       {/* Type */}
@@ -299,11 +295,6 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
         )}
       </TableCell>
 
-      {/* Merged in */}
-      <TableCell>
-        <DeploymentBadges branches={task.onDeploymentBranches} />
-      </TableCell>
-
       {/* PR Number */}
       <TableCell>
         {task.prNumber ? (
@@ -329,6 +320,16 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
         )}
       </TableCell>
 
+      {/* Status */}
+      <TableCell>
+        <StatusBadge status={task.status} />
+      </TableCell>
+
+      {/* Merged in */}
+      <TableCell>
+        <DeploymentBadges branches={task.onDeploymentBranches} />
+      </TableCell>
+
       {/* Checks */}
       <TableCell>
         <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={prUrl} />
@@ -344,35 +345,23 @@ function TaskRow({ task, repo, onAddTodo }: TaskRowProps) {
         <UnresolvedCommentsIcon count={task.unresolvedCommentCount} prUrl={prUrl} />
       </TableCell>
 
-      {/* Next Todo */}
-      <TableCell className="max-w-[200px]">
-        <div className="flex items-center gap-1">
-          {task.nextTodo ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-sm truncate flex-1 cursor-default">
-                  {task.nextTodo.content}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="left" collisionPadding={16} className="max-w-[300px]">
-                {task.nextTodo.content}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <span className="text-muted-foreground flex-1">—</span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddTodo();
-            }}
-          >
-            <Plus className="h-3 w-3" />
-          </Button>
-        </div>
+      {/* Todos */}
+      <TableCell>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenTodos();
+          }}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-80 ${
+            task.pendingTodos.length > 0
+              ? "bg-yellow-100 text-yellow-800"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          <ListTodo className="h-3.5 w-3.5" />
+          {task.pendingTodos.length}
+        </button>
       </TableCell>
     </TableRow>
   );
