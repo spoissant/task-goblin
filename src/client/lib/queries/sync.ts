@@ -7,7 +7,7 @@ export function useSyncJira() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.post<SyncResult>("/refresh/jira"),
+    mutationFn: () => api.post<SyncResult>("/sync/jira"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
@@ -18,7 +18,7 @@ export function useSyncGitHub() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.post<SyncResult>("/refresh/github"),
+    mutationFn: () => api.post<SyncResult>("/sync/github"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
@@ -38,13 +38,13 @@ export function useSyncAll() {
       const results: SyncAllResult = {};
 
       try {
-        results.jira = await api.post<SyncResult>("/refresh/jira");
+        results.jira = await api.post<SyncResult>("/sync/jira");
       } catch {
         // Jira sync failed, continue with GitHub
       }
 
       try {
-        results.github = await api.post<SyncResult>("/refresh/github");
+        results.github = await api.post<SyncResult>("/sync/github");
       } catch {
         // GitHub sync failed
       }
