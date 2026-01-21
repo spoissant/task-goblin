@@ -1,5 +1,6 @@
 import type { Routes } from "../router";
 import { taskRoutes } from "./tasks";
+import { taskMergeRoutes } from "../services/task-merge";
 import { todoRoutes } from "./todos";
 import { blockedByRoutes } from "./blocked-by";
 import { repositoryRoutes } from "./repositories";
@@ -19,6 +20,7 @@ const healthRoute: Routes = {
 export const routes: Routes = {
   ...healthRoute,
   ...taskRoutes,
+  ...taskMergeRoutes,
   ...todoRoutes,
   ...blockedByRoutes,
   ...repositoryRoutes,
