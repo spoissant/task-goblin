@@ -82,29 +82,34 @@ export const taskMergeRoutes: Routes = {
         }
       }
 
-      // Update target with merged fields
-      const result = await db
-        .update(tasks)
-        .set(mergedFields)
-        .where(eq(tasks.id, id))
-        .returning();
+      // Wrap all merge operations in a transaction for consistency
+      const result = await db.transaction(async (tx) => {
+        // Update target with merged fields
+        const updated = await tx
+          .update(tasks)
+          .set(mergedFields)
+          .where(eq(tasks.id, id))
+          .returning();
 
-      // Move todos from source to target
-      await db
-        .update(todos)
-        .set({ taskId: id })
-        .where(eq(todos.taskId, body.sourceTaskId));
+        // Move todos from source to target
+        await tx
+          .update(todos)
+          .set({ taskId: id })
+          .where(eq(todos.taskId, body.sourceTaskId));
 
-      // Move blockedBy relations from source to target
-      await db
-        .update(blockedBy)
-        .set({ blockedTaskId: id })
-        .where(eq(blockedBy.blockedTaskId, body.sourceTaskId));
+        // Move blockedBy relations from source to target
+        await tx
+          .update(blockedBy)
+          .set({ blockedTaskId: id })
+          .where(eq(blockedBy.blockedTaskId, body.sourceTaskId));
 
-      // Delete source task
-      await db.delete(tasks).where(eq(tasks.id, body.sourceTaskId));
+        // Delete source task
+        await tx.delete(tasks).where(eq(tasks.id, body.sourceTaskId));
 
-      return json(result[0]);
+        return updated[0];
+      });
+
+      return json(result);
     },
   },
 
@@ -127,53 +132,55 @@ export const taskMergeRoutes: Routes = {
 
       const timestamp = now();
 
-      // Create new PR orphan task with PR fields
-      const newPrTask = await db
-        .insert(tasks)
-        .values({
-          title: task.headBranch || `PR #${task.prNumber}`,
-          description: null,
-          status: task.status,
-          prNumber: task.prNumber,
-          repositoryId: task.repositoryId,
-          headBranch: task.headBranch,
-          baseBranch: task.baseBranch,
-          prState: task.prState,
-          prAuthor: task.prAuthor,
-          isDraft: task.isDraft,
-          checksStatus: task.checksStatus,
-          reviewStatus: task.reviewStatus,
-          unresolvedCommentCount: task.unresolvedCommentCount,
-          prSyncedAt: task.prSyncedAt,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        })
-        .returning();
+      // Wrap split operations in a transaction for consistency
+      const { jiraTask, prTask } = await db.transaction(async (tx) => {
+        // Create new PR orphan task with PR fields
+        const newPrTask = await tx
+          .insert(tasks)
+          .values({
+            title: task.headBranch || `PR #${task.prNumber}`,
+            description: null,
+            status: task.status,
+            prNumber: task.prNumber,
+            repositoryId: task.repositoryId,
+            headBranch: task.headBranch,
+            baseBranch: task.baseBranch,
+            prState: task.prState,
+            prAuthor: task.prAuthor,
+            isDraft: task.isDraft,
+            checksStatus: task.checksStatus,
+            reviewStatus: task.reviewStatus,
+            unresolvedCommentCount: task.unresolvedCommentCount,
+            prSyncedAt: task.prSyncedAt,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .returning();
 
-      // Clear PR fields from original task (keep as Jira orphan)
-      const result = await db
-        .update(tasks)
-        .set({
-          prNumber: null,
-          repositoryId: null,
-          headBranch: null,
-          baseBranch: null,
-          prState: null,
-          prAuthor: null,
-          isDraft: null,
-          checksStatus: null,
-          reviewStatus: null,
-          unresolvedCommentCount: null,
-          prSyncedAt: null,
-          updatedAt: timestamp,
-        })
-        .where(eq(tasks.id, id))
-        .returning();
+        // Clear PR fields from original task (keep as Jira orphan)
+        const updatedJiraTask = await tx
+          .update(tasks)
+          .set({
+            prNumber: null,
+            repositoryId: null,
+            headBranch: null,
+            baseBranch: null,
+            prState: null,
+            prAuthor: null,
+            isDraft: null,
+            checksStatus: null,
+            reviewStatus: null,
+            unresolvedCommentCount: null,
+            prSyncedAt: null,
+            updatedAt: timestamp,
+          })
+          .where(eq(tasks.id, id))
+          .returning();
 
-      return json({
-        jiraTask: result[0],
-        prTask: newPrTask[0],
+        return { jiraTask: updatedJiraTask[0], prTask: newPrTask[0] };
       });
+
+      return json({ jiraTask, prTask });
     },
   },
 

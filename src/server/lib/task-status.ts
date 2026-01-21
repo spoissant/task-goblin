@@ -1,7 +1,12 @@
 import { sql, or, and, isNotNull, isNull, eq } from "drizzle-orm";
 import { tasks } from "../../db/schema";
 
-export const VALID_STATUSES = ["todo", "in_progress", "code_review", "qa", "done", "blocked", "ready_to_merge"];
+/**
+ * Valid statuses for manually-created tasks (no Jira/GitHub integration).
+ * Jira-synced tasks store raw Jira statuses (e.g., "In Progress", "Ready to Prod")
+ * and are not validated against this list.
+ */
+export const MANUAL_TASK_STATUSES = ["todo", "in_progress", "code_review", "qa", "done", "blocked", "ready_to_merge"];
 
 // Jira statuses that indicate completion (case-insensitive, stored lowercase)
 export const JIRA_COMPLETED_STATUSES = [

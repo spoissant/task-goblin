@@ -6,7 +6,7 @@ import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import {
-  VALID_STATUSES,
+  MANUAL_TASK_STATUSES,
   jiraStatusNotInCondition,
   getCompletedCondition,
   getNotCompletedCondition,
@@ -170,9 +170,9 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      if (body.status && !VALID_STATUSES.includes(body.status)) {
+      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
         throw new ValidationError(
-          `status must be one of: ${VALID_STATUSES.join(", ")}`
+          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
         );
       }
 
@@ -248,9 +248,9 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      if (body.status && !VALID_STATUSES.includes(body.status)) {
+      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
         throw new ValidationError(
-          `status must be one of: ${VALID_STATUSES.join(", ")}`
+          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
         );
       }
 
@@ -277,9 +277,9 @@ export const taskRoutes: Routes = {
       const id = parseInt(params.id, 10);
       const body = await getBody(req);
 
-      if (body.status && !VALID_STATUSES.includes(body.status)) {
+      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
         throw new ValidationError(
-          `status must be one of: ${VALID_STATUSES.join(", ")}`
+          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
         );
       }
 
