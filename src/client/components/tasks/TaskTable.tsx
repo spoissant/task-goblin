@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
-import { useSettingsQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery, useStatusConfigQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
@@ -24,11 +24,9 @@ import { TodosDialog } from "./TodosDialog";
 import { TaskLogsModal } from "./TaskLogsModal";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
-// Match status filter (case-insensitive, handles underscore/space variants)
-function matchesStatus(taskStatus: string, filter: string): boolean {
-  const normalizedTask = taskStatus.toLowerCase().replace(/_/g, " ");
-  const normalizedFilter = filter.toLowerCase().replace(/_/g, " ");
-  return normalizedTask === normalizedFilter;
+// Normalize status name for comparison (case-insensitive, handles underscore/space variants)
+function normalizeStatus(status: string): string {
+  return status.toLowerCase().replace(/_/g, " ");
 }
 
 // Build Jira URL - requires jiraHost, returns null if not configured
@@ -40,14 +38,15 @@ function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): strin
 }
 
 interface TaskTableProps {
-  statusFilter?: string;
+  filterGroup?: string;
 }
 
-export function TaskTable({ statusFilter }: TaskTableProps) {
+export function TaskTable({ filterGroup }: TaskTableProps) {
   // Fetch all tasks (no server-side status filter for category-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
+  const { data: statusConfig } = useStatusConfigQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
@@ -65,12 +64,35 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
     return map;
   }, [reposData?.items]);
 
-  // Client-side filtering by exact status name
+  // Build a map of normalized status name -> filter for the selected filter group
+  const { statusFilterMap, defaultFilter } = useMemo(() => {
+    const map = new Map<string, string | null>();
+    let defaultFilterValue: string | null = null;
+
+    if (statusConfig?.statuses) {
+      for (const status of statusConfig.statuses) {
+        map.set(normalizeStatus(status.name), status.filter ?? null);
+        if (status.isDefault) {
+          defaultFilterValue = status.filter ?? null;
+        }
+      }
+    }
+
+    return { statusFilterMap: map, defaultFilter: defaultFilterValue };
+  }, [statusConfig?.statuses]);
+
+  // Client-side filtering by filter group
   const filteredTasks = useMemo(() => {
     if (!data?.items) return [];
-    if (!statusFilter) return data.items;
-    return data.items.filter((task) => matchesStatus(task.status, statusFilter));
-  }, [data?.items, statusFilter]);
+    if (!filterGroup) return data.items;
+
+    return data.items.filter((task) => {
+      const normalizedStatus = normalizeStatus(task.status);
+      // Get filter for this status, or use default filter for unknown statuses
+      const taskFilter = statusFilterMap.get(normalizedStatus) ?? defaultFilter;
+      return taskFilter === filterGroup;
+    });
+  }, [data?.items, filterGroup, statusFilterMap, defaultFilter]);
 
   if (isLoading) {
     return (

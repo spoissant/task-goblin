@@ -190,6 +190,7 @@ export const settingsRoutes: Routes = {
       }
 
       // Validate each status config
+      let defaultCount = 0;
       for (const status of body.statuses) {
         if (typeof status.name !== "string" || !status.name.trim()) {
           throw new ValidationError("Each status must have a name");
@@ -203,6 +204,22 @@ export const settingsRoutes: Routes = {
         if (typeof status.isSelectable !== "boolean") {
           throw new ValidationError("Each status must have isSelectable boolean");
         }
+        // filter can be string, null, or undefined (optional)
+        if (status.filter !== undefined && status.filter !== null && typeof status.filter !== "string") {
+          throw new ValidationError("Status filter must be a string or null");
+        }
+        // isDefault can be boolean or undefined (optional)
+        if (status.isDefault !== undefined && typeof status.isDefault !== "boolean") {
+          throw new ValidationError("Status isDefault must be a boolean");
+        }
+        if (status.isDefault) {
+          defaultCount++;
+        }
+      }
+
+      // Validate exactly one status has isDefault: true
+      if (defaultCount !== 1) {
+        throw new ValidationError("Exactly one status must be marked as default");
       }
 
       await saveStatusConfig(body.statuses as StatusConfig[]);
@@ -302,6 +319,8 @@ export const settingsRoutes: Routes = {
             order: maxOrder,
             isCompleted,
             isSelectable: false, // New statuses are not selectable by default
+            filter: null, // New statuses have no filter by default
+            isDefault: false, // New statuses are not the default
           });
         }
 

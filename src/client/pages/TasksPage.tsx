@@ -8,25 +8,30 @@ import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
 import { Plus } from "lucide-react";
 
 export function TasksPage() {
-  const [statusFilter, setStatusFilter] = useState("");
+  const [filterGroup, setFilterGroup] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const { data: statusConfig } = useStatusConfigQuery();
 
-  // Build filters from selectable, non-completed statuses, sorted by order
-  const statusFilters = useMemo(() => {
-    const filters = [{ value: "", label: "All" }];
+  // Build filter tabs ordered by first selectable status's order (highest to lowest)
+  const filterTabs = useMemo(() => {
+    const tabs: { value: string; label: string; order: number }[] = [
+      { value: "", label: "All", order: Infinity },
+    ];
 
     if (statusConfig?.statuses) {
-      const selectable = statusConfig.statuses
-        .filter(s => s.isSelectable && !s.isCompleted)
-        .sort((a, b) => a.order - b.order);
-
-      for (const status of selectable) {
-        filters.push({ value: status.name, label: status.name });
+      // Iterate in reverse (bottom to top in settings page)
+      // For each filter, use the index of the last non-completed status with that filter
+      const seenFilters = new Set<string>();
+      for (let i = statusConfig.statuses.length - 1; i >= 0; i--) {
+        const status = statusConfig.statuses[i];
+        if (!status.isCompleted && status.filter && !seenFilters.has(status.filter)) {
+          seenFilters.add(status.filter);
+          tabs.push({ value: status.filter, label: status.filter, order: i });
+        }
       }
     }
 
-    return filters;
+    return tabs;
   }, [statusConfig?.statuses]);
 
   return (
@@ -42,17 +47,17 @@ export function TasksPage() {
         </div>
       </div>
 
-      <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-6">
+      <Tabs value={filterGroup} onValueChange={setFilterGroup} className="mb-6">
         <TabsList>
-          {statusFilters.map((filter) => (
-            <TabsTrigger key={filter.value} value={filter.value}>
-              {filter.label}
+          {filterTabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
-      <TaskTable statusFilter={statusFilter || undefined} />
+      <TaskTable filterGroup={filterGroup || undefined} />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
     </div>

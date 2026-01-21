@@ -6,32 +6,34 @@ import { tasks, settings } from "../../db/schema";
  * Status configuration stored in settings as JSON
  */
 export interface StatusConfig {
-  name: string;         // Jira status name (e.g., "In Progress")
-  color: string | null; // Tailwind class, null = use default
-  order: number;        // Sort position
-  isCompleted: boolean; // Show in Completed vs Tasks page
-  isSelectable: boolean;// Show in manual task dropdowns
+  name: string;          // Jira status name (e.g., "In Progress")
+  color: string | null;  // Tailwind class, null = use default
+  order: number;         // Sort position
+  isCompleted: boolean;  // Show in Completed vs Tasks page
+  isSelectable: boolean; // Show in manual task dropdowns
+  filter?: string | null; // Filter group for dashboard tabs (null = not in any filter)
+  isDefault?: boolean;    // Default status for unknown statuses (exactly one should be true)
 }
 
 // Default statuses when no config exists (for backwards compatibility)
 const DEFAULT_STATUS_CONFIG: StatusConfig[] = [
-  { name: "To Do", color: "bg-slate-500", order: 10, isCompleted: false, isSelectable: true },
-  { name: "In Progress", color: "bg-fuchsia-500", order: 9, isCompleted: false, isSelectable: true },
-  { name: "Code Review", color: "bg-yellow-600", order: 8, isCompleted: false, isSelectable: true },
-  { name: "Ready for Test", color: "bg-blue-600", order: 7, isCompleted: false, isSelectable: false },
-  { name: "QA", color: "bg-blue-600", order: 6, isCompleted: false, isSelectable: true },
-  { name: "Ready to Merge", color: "bg-green-700", order: 5, isCompleted: false, isSelectable: true },
-  { name: "Ready to Prod", color: "bg-green-700", order: 4, isCompleted: true, isSelectable: false },
-  { name: "Closed", color: "bg-green-700", order: 3, isCompleted: true, isSelectable: false },
-  { name: "Cancelled", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false },
-  { name: "Rejected", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false },
-  { name: "Done", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: true },
-  { name: "Blocked", color: "bg-red-500", order: 13, isCompleted: false, isSelectable: true },
-  { name: "Accepted", color: "bg-slate-500", order: 11, isCompleted: false, isSelectable: false },
-  { name: "Backlog", color: "bg-slate-500", order: 12, isCompleted: false, isSelectable: false },
-  { name: "On Hold", color: "bg-slate-500", order: 13, isCompleted: false, isSelectable: false },
-  { name: "Define Preventive Measures", color: "bg-green-700", order: 1, isCompleted: true, isSelectable: false },
-  { name: "Completed", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: false },
+  { name: "To Do", color: "bg-slate-500", order: 10, isCompleted: false, isSelectable: true, filter: "Backlog", isDefault: true },
+  { name: "In Progress", color: "bg-fuchsia-500", order: 9, isCompleted: false, isSelectable: true, filter: "Active" },
+  { name: "Code Review", color: "bg-yellow-600", order: 8, isCompleted: false, isSelectable: true, filter: "Active" },
+  { name: "Ready for Test", color: "bg-blue-600", order: 7, isCompleted: false, isSelectable: false, filter: "Active" },
+  { name: "QA", color: "bg-blue-600", order: 6, isCompleted: false, isSelectable: true, filter: "Active" },
+  { name: "Ready to Merge", color: "bg-green-700", order: 5, isCompleted: false, isSelectable: true, filter: "Review" },
+  { name: "Ready to Prod", color: "bg-green-700", order: 4, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Closed", color: "bg-green-700", order: 3, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Cancelled", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Rejected", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Done", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: true, filter: null },
+  { name: "Blocked", color: "bg-red-500", order: 13, isCompleted: false, isSelectable: true, filter: "Backlog" },
+  { name: "Accepted", color: "bg-slate-500", order: 11, isCompleted: false, isSelectable: false, filter: "Backlog" },
+  { name: "Backlog", color: "bg-slate-500", order: 12, isCompleted: false, isSelectable: false, filter: "Backlog" },
+  { name: "On Hold", color: "bg-slate-500", order: 13, isCompleted: false, isSelectable: false, filter: "Backlog" },
+  { name: "Define Preventive Measures", color: "bg-green-700", order: 1, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Completed", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: false, filter: null },
 ];
 
 const DEFAULT_COLOR = "bg-slate-500";
@@ -73,6 +75,16 @@ export async function getStatusConfig(): Promise<StatusConfig[]> {
     statusConfigCache = DEFAULT_STATUS_CONFIG;
     return statusConfigCache;
   }
+}
+
+/**
+ * Get the default status (for unknown/deleted statuses to inherit from)
+ */
+export async function getDefaultStatus(): Promise<StatusConfig> {
+  const config = await getStatusConfig();
+  const defaultStatus = config.find(s => s.isDefault);
+  // Fallback to first status if none marked as default (shouldn't happen with valid config)
+  return defaultStatus || config[0] || DEFAULT_STATUS_CONFIG[0];
 }
 
 /**
@@ -240,7 +252,7 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
 export const MANUAL_TASK_STATUSES = ["To Do", "In Progress", "Code Review", "QA", "Done", "Blocked", "Ready to Merge"];
 
 // Jira statuses that indicate completion (case-insensitive, stored lowercase)
-const JIRA_COMPLETED_STATUSES = [
+export const JIRA_COMPLETED_STATUSES = [
   "ready to prod",
   "completed",
   "done",

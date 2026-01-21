@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { ArrowUp, ArrowDown, RefreshCw, Save, Loader2 } from "lucide-react";
+import { ArrowUp, ArrowDown, RefreshCw, Save, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { StatusConfig } from "@/client/lib/types";
 
@@ -80,9 +80,28 @@ export function StatusConfigForm() {
   ) => {
     setStatuses((prev) => {
       const next = [...prev];
+      // Special handling for isDefault - only one can be true
+      if (field === "isDefault" && value === true) {
+        // Clear isDefault from all other statuses
+        for (let i = 0; i < next.length; i++) {
+          if (i !== index) {
+            next[i] = { ...next[i], isDefault: false };
+          }
+        }
+      }
       next[index] = { ...next[index], [field]: value };
       return next;
     });
+    setHasChanges(true);
+  };
+
+  const handleDeleteStatus = (index: number) => {
+    const status = statuses[index];
+    if (status.isDefault) {
+      toast.error("Cannot delete the default status");
+      return;
+    }
+    setStatuses((prev) => prev.filter((_, i) => i !== index));
     setHasChanges(true);
   };
 
@@ -217,9 +236,12 @@ export function StatusConfigForm() {
             <TableRow>
               <TableHead className="w-[50px]">Order</TableHead>
               <TableHead>Name</TableHead>
+              <TableHead className="w-[120px]">Filter</TableHead>
               <TableHead className="w-[180px]">Color</TableHead>
-              <TableHead className="w-[100px] text-center">Completed</TableHead>
-              <TableHead className="w-[100px] text-center">Selectable</TableHead>
+              <TableHead className="w-[80px] text-center">Completed</TableHead>
+              <TableHead className="w-[80px] text-center">Selectable</TableHead>
+              <TableHead className="w-[80px] text-center">Default</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -248,6 +270,14 @@ export function StatusConfigForm() {
                   </div>
                 </TableCell>
                 <TableCell className="font-medium">{status.name}</TableCell>
+                <TableCell>
+                  <Input
+                    value={status.filter || ""}
+                    onChange={(e) => handleStatusChange(index, "filter", e.target.value || null)}
+                    placeholder="None"
+                    className="h-8"
+                  />
+                </TableCell>
                 <TableCell>
                   <Select
                     value={status.color || USE_DEFAULT_VALUE}
@@ -286,6 +316,26 @@ export function StatusConfigForm() {
                     }
                   />
                 </TableCell>
+                <TableCell className="text-center">
+                  <Checkbox
+                    checked={status.isDefault || false}
+                    onCheckedChange={(checked) =>
+                      handleStatusChange(index, "isDefault", !!checked)
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteStatus(index)}
+                    disabled={status.isDefault}
+                    title={status.isDefault ? "Cannot delete default status" : "Delete status"}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -294,10 +344,16 @@ export function StatusConfigForm() {
 
       <div className="text-sm text-muted-foreground space-y-1">
         <p>
+          <strong>Filter:</strong> Groups statuses into tabs on the dashboard (empty = not in any filter tab)
+        </p>
+        <p>
           <strong>Completed:</strong> Tasks with these statuses appear in the Completed page
         </p>
         <p>
           <strong>Selectable:</strong> These statuses are available when creating/editing manual tasks
+        </p>
+        <p>
+          <strong>Default:</strong> Unknown statuses inherit this status's filter and color
         </p>
       </div>
     </div>

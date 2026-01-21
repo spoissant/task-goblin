@@ -136,6 +136,8 @@ export interface StatusConfig {
   order: number;
   isCompleted: boolean;
   isSelectable: boolean;
+  filter?: string | null;
+  isDefault?: boolean;
 }
 
 export interface StatusConfigResponse {

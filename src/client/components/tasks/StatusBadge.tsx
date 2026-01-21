@@ -28,9 +28,18 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
           };
         }
       }
+
+      // Fallback for unknown status - use default status's color
+      const defaultStatus = data.statuses.find(s => s.isDefault);
+      if (defaultStatus) {
+        return {
+          label: status,
+          color: defaultStatus.color || data.defaultColor || FALLBACK_COLOR,
+        };
+      }
     }
 
-    // Fallback for unknown status - use default color or fallback
+    // Final fallback - use default color or hardcoded fallback
     return {
       label: status,
       color: data?.defaultColor || FALLBACK_COLOR,
