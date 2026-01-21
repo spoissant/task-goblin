@@ -73,16 +73,12 @@ export function BlockedByList({ blockedBy, taskId }: BlockedByListProps) {
     if (blocker.blockerTodoId) {
       return `Todo #${blocker.blockerTodoId}`;
     }
-    if (blocker.blockerPullRequestId) {
-      return `PR #${blocker.blockerPullRequestId}`;
-    }
     return "Unknown";
   };
 
   const getBlockerType = (blocker: BlockedBy) => {
     if (blocker.blockerTaskId) return "Task";
     if (blocker.blockerTodoId) return "Todo";
-    if (blocker.blockerPullRequestId) return "PR";
     return "Unknown";
   };
 

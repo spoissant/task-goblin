@@ -43,7 +43,9 @@ function matchesCategory(status: string, category: string): boolean {
 // Build Jira URL - requires jiraHost, returns null if not configured
 function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): string | null {
   if (!jiraHost) return null;
-  return `https://${jiraHost}/browse/${jiraKey}`;
+  // Strip protocol and trailing slashes from jiraHost if present
+  const cleanHost = jiraHost.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  return `https://${cleanHost}/browse/${jiraKey}`;
 }
 
 interface TaskTableProps {
