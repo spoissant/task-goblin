@@ -130,8 +130,14 @@ export function useSplitTask() {
 
 // Auto-match orphans
 export function useAutoMatchOrphans() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: () => api.post<AutoMatchResult>("/tasks/auto-match"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.orphanJira() });
+      queryClient.invalidateQueries({ queryKey: taskKeys.orphanPr() });
+    },
   });
 }
 
