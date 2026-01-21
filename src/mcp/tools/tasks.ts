@@ -9,7 +9,6 @@ import {
   type TaskWithRelations,
   type ListResponse,
   type SyncResult,
-  type MergeResult,
   type SplitResult,
   type AutoMatchResult,
 } from "../client.js";
@@ -157,7 +156,7 @@ export function registerTaskTools(server: McpServer) {
     },
     async ({ targetId, sourceId }) => {
       try {
-        const result = await post<MergeResult>(`/api/v1/tasks/${targetId}/merge`, { sourceId });
+        const result = await post<Task>(`/api/v1/tasks/${targetId}/merge`, { sourceTaskId: sourceId });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -204,16 +203,16 @@ export function registerTaskTools(server: McpServer) {
     }
   );
 
-  // refresh_jira
+  // sync_jira
   server.registerTool(
-    "refresh_jira",
+    "sync_jira",
     {
-      description: "Trigger a sync from Jira API to refresh Jira tasks",
+      description: "Sync tasks from Jira API",
       inputSchema: {},
     },
     async () => {
       try {
-        const result = await post<SyncResult>("/api/v1/refresh/jira");
+        const result = await post<SyncResult>("/api/v1/sync/jira");
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -222,16 +221,16 @@ export function registerTaskTools(server: McpServer) {
     }
   );
 
-  // refresh_github
+  // sync_github
   server.registerTool(
-    "refresh_github",
+    "sync_github",
     {
-      description: "Trigger a sync from GitHub API to refresh PR tasks",
+      description: "Sync tasks from GitHub API",
       inputSchema: {},
     },
     async () => {
       try {
-        const result = await post<SyncResult>("/api/v1/refresh/github");
+        const result = await post<SyncResult>("/api/v1/sync/github");
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

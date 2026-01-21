@@ -12,7 +12,7 @@ import { backfillDescriptions } from "../services/backfill-descriptions";
 import type { Routes } from "../router";
 
 export const githubRoutes: Routes = {
-  "/api/v1/refresh/jira": {
+  "/api/v1/sync/jira": {
     async POST() {
       try {
         const result = await syncJiraItems();
@@ -30,7 +30,7 @@ export const githubRoutes: Routes = {
     },
   },
 
-  "/api/v1/refresh/github": {
+  "/api/v1/sync/github": {
     async POST() {
       try {
         const result = await syncGitHubPullRequests();
@@ -50,7 +50,7 @@ export const githubRoutes: Routes = {
     },
   },
 
-  "/api/v1/refresh/github/:owner/:repo/:number": {
+  "/api/v1/sync/github/:owner/:repo/:number": {
     async POST(_req, params) {
       const { owner, repo, number } = params;
       const prNumber = parseInt(number, 10);
@@ -74,7 +74,7 @@ export const githubRoutes: Routes = {
     },
   },
 
-  "/api/v1/refresh/jira/:key": {
+  "/api/v1/sync/jira/:key": {
     async POST(_req, params) {
       const { key } = params;
 

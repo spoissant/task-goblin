@@ -10,18 +10,12 @@ export function registerTodoTools(server: McpServer) {
       description: "List todos with optional filters",
       inputSchema: {
         taskId: z.number().optional().describe("Filter by parent task ID"),
-        branchId: z.number().optional().describe("Filter by parent branch ID"),
-        jiraItemId: z.number().optional().describe("Filter by parent Jira item ID"),
-        pullRequestId: z.number().optional().describe("Filter by parent pull request ID"),
         done: z.boolean().optional().describe("Filter by completion status"),
       },
     },
-    async ({ taskId, branchId, jiraItemId, pullRequestId, done }) => {
+    async ({ taskId, done }) => {
       const params = new URLSearchParams();
       if (taskId !== undefined) params.set("taskId", String(taskId));
-      if (branchId !== undefined) params.set("branchId", String(branchId));
-      if (jiraItemId !== undefined) params.set("jiraItemId", String(jiraItemId));
-      if (pullRequestId !== undefined) params.set("pullRequestId", String(pullRequestId));
       if (done !== undefined) params.set("done", String(done));
 
       const queryString = params.toString();
@@ -40,19 +34,15 @@ export function registerTodoTools(server: McpServer) {
       inputSchema: {
         content: z.string().describe("Todo content/text"),
         taskId: z.number().optional().describe("Parent task ID"),
-        branchId: z.number().optional().describe("Parent branch ID"),
-        jiraItemId: z.number().optional().describe("Parent Jira item ID"),
-        pullRequestId: z.number().optional().describe("Parent pull request ID"),
+        placement: z.enum(["top", "bottom"]).optional().describe("Where to insert the todo (default: bottom)"),
       },
     },
-    async ({ content, taskId, branchId, jiraItemId, pullRequestId }) => {
+    async ({ content, taskId, placement }) => {
       try {
         const todo = await post<Todo>("/api/v1/todos", {
           content,
           taskId: taskId || null,
-          branchId: branchId || null,
-          jiraItemId: jiraItemId || null,
-          pullRequestId: pullRequestId || null,
+          placement: placement || undefined,
         });
         return { content: [{ type: "text", text: JSON.stringify(todo) }] };
       } catch (err) {

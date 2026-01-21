@@ -125,13 +125,9 @@ export interface SyncResult {
   errors: string[];
 }
 
-export interface MergeResult {
-  merged: Task;
-}
-
 export interface SplitResult {
-  original: Task;
-  newPrTask: Task;
+  jiraTask: Task;
+  prTask: Task;
 }
 
 export interface AutoMatchResult {

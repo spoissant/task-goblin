@@ -7,13 +7,13 @@ interface SyncResult {
   [key: string]: unknown;
 }
 
-export function registerRefreshTools(server: McpServer) {
+export function registerSyncTools(server: McpServer) {
   server.registerTool(
-    "refresh",
+    "sync",
     {
       description: "Trigger a sync of tasks from external sources (Jira and/or GitHub)",
       inputSchema: {
-        source: z.enum(["jira", "github", "all"]).describe("Data source to refresh"),
+        source: z.enum(["jira", "github", "all"]).describe("Data source to sync"),
       },
     },
     async ({ source }) => {
@@ -21,11 +21,11 @@ export function registerRefreshTools(server: McpServer) {
         const results: Record<string, SyncResult> = {};
 
         if (source === "jira" || source === "all") {
-          results.jira = await post<SyncResult>("/api/v1/refresh/jira");
+          results.jira = await post<SyncResult>("/api/v1/sync/jira");
         }
 
         if (source === "github" || source === "all") {
-          results.github = await post<SyncResult>("/api/v1/refresh/github");
+          results.github = await post<SyncResult>("/api/v1/sync/github");
         }
 
         return { content: [{ type: "text", text: JSON.stringify(results) }] };
