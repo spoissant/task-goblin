@@ -1,24 +1,33 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
+import { useStatusConfigQuery } from "@/client/lib/queries/settings";
 import { Button } from "@/client/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
 import { Plus } from "lucide-react";
 
-// Status filter categories - maps to STATUS_CATEGORIES in TaskTable
-const STATUS_FILTERS = [
-  { value: "", label: "All" },
-  { value: "ready_to_merge", label: "Ready to Merge" },
-  { value: "qa", label: "Ready for Test/QA" },
-  { value: "code_review", label: "Code Review" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "todo", label: "Todo" },
-];
-
 export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const { data: statusConfig } = useStatusConfigQuery();
+
+  // Build filters from selectable, non-completed statuses, sorted by order
+  const statusFilters = useMemo(() => {
+    const filters = [{ value: "", label: "All" }];
+
+    if (statusConfig?.statuses) {
+      const selectable = statusConfig.statuses
+        .filter(s => s.isSelectable && !s.isCompleted)
+        .sort((a, b) => a.order - b.order);
+
+      for (const status of selectable) {
+        filters.push({ value: status.name, label: status.name });
+      }
+    }
+
+    return filters;
+  }, [statusConfig?.statuses]);
 
   return (
     <div>
@@ -35,7 +44,7 @@ export function TasksPage() {
 
       <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-6">
         <TabsList>
-          {STATUS_FILTERS.map((filter) => (
+          {statusFilters.map((filter) => (
             <TabsTrigger key={filter.value} value={filter.value}>
               {filter.label}
             </TabsTrigger>

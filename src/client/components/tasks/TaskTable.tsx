@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
-import { useSettingsQuery, useStatusConfigQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
@@ -22,55 +22,13 @@ import { RefreshCw, ListTodo, MessageSquare, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { TodosDialog } from "./TodosDialog";
 import { TaskLogsModal } from "./TaskLogsModal";
-import type { TaskWithTodos, Repository, StatusConfig } from "@/client/lib/types";
+import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
-// Fallback status category definitions (used if config not loaded)
-const FALLBACK_STATUS_CATEGORIES: Record<string, string[]> = {
-  ready_to_merge: ["ready to merge", "ready to prod"],
-  qa: ["qa", "ready for test", "ready to test"],
-  code_review: ["code_review", "code review"],
-  in_progress: ["in_progress", "in progress"],
-  todo: ["todo", "to do", "accepted", "backlog", "on hold", "done", "closed", "cancelled", "canceled", "blocked"],
-};
-
-// Build status categories from config based on order ranges
-function buildStatusCategories(config: StatusConfig[]): Record<string, string[]> {
-  const categories: Record<string, string[]> = {
-    ready_to_merge: [],
-    qa: [],
-    code_review: [],
-    in_progress: [],
-    todo: [],
-  };
-
-  for (const status of config) {
-    const name = status.name.toLowerCase();
-    const underscore = name.replace(/ /g, "_");
-    const names = name !== underscore ? [name, underscore] : [name];
-
-    // Categorize based on status name patterns
-    if (name.includes("ready to merge") || name.includes("ready to prod")) {
-      categories.ready_to_merge.push(...names);
-    } else if (name.includes("qa") || name.includes("ready for test") || name.includes("ready to test")) {
-      categories.qa.push(...names);
-    } else if (name.includes("code review")) {
-      categories.code_review.push(...names);
-    } else if (name.includes("in progress")) {
-      categories.in_progress.push(...names);
-    } else {
-      // Everything else goes to "todo" category (includes backlog, blocked, done, etc.)
-      categories.todo.push(...names);
-    }
-  }
-
-  return categories;
-}
-
-function matchesCategory(status: string, category: string, categories: Record<string, string[]>): boolean {
-  const patterns = categories[category];
-  if (!patterns) return false;
-  const s = status.toLowerCase();
-  return patterns.some((p) => s === p || s.includes(p));
+// Match status filter (case-insensitive, handles underscore/space variants)
+function matchesStatus(taskStatus: string, filter: string): boolean {
+  const normalizedTask = taskStatus.toLowerCase().replace(/_/g, " ");
+  const normalizedFilter = filter.toLowerCase().replace(/_/g, " ");
+  return normalizedTask === normalizedFilter;
 }
 
 // Build Jira URL - requires jiraHost, returns null if not configured
@@ -90,20 +48,11 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
-  const { data: statusConfigData } = useStatusConfigQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
   // Extract jiraHost from settings
   const jiraHost = settingsData?.jira_host || null;
-
-  // Build status categories from config or use fallback
-  const statusCategories = useMemo(() => {
-    if (statusConfigData?.statuses) {
-      return buildStatusCategories(statusConfigData.statuses);
-    }
-    return FALLBACK_STATUS_CATEGORIES;
-  }, [statusConfigData?.statuses]);
 
   // Build a map of repositoryId -> Repository for quick lookups
   const repoMap = useMemo(() => {
@@ -116,12 +65,12 @@ export function TaskTable({ statusFilter }: TaskTableProps) {
     return map;
   }, [reposData?.items]);
 
-  // Client-side filtering by category
+  // Client-side filtering by exact status name
   const filteredTasks = useMemo(() => {
     if (!data?.items) return [];
     if (!statusFilter) return data.items;
-    return data.items.filter((task) => matchesCategory(task.status, statusFilter, statusCategories));
-  }, [data?.items, statusFilter, statusCategories]);
+    return data.items.filter((task) => matchesStatus(task.status, statusFilter));
+  }, [data?.items, statusFilter]);
 
   if (isLoading) {
     return (
