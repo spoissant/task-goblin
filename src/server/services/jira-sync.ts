@@ -104,7 +104,6 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
     priority: fields.priority?.name || null,
     sprint: sprintName,
     epicKey: extractEpicKey({ fields: fields as Record<string, unknown> }),
-    lastComment: null, // Requires separate API call, skip for v1
     jiraSyncedAt: timestamp,
     updatedAt: timestamp,
   };
@@ -138,7 +137,6 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         priority: taskData.priority,
         sprint: taskData.sprint,
         epicKey: taskData.epicKey,
-        lastComment: taskData.lastComment,
         jiraSyncedAt: taskData.jiraSyncedAt,
         updatedAt: taskData.updatedAt,
       })

@@ -60,7 +60,6 @@ export const taskMergeRoutes: Routes = {
         mergedFields.checksDetails = prTask.checksDetails;
         mergedFields.approvedReviewCount = prTask.approvedReviewCount;
         mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
-        mergedFields.reviewStatus = prTask.reviewStatus;
         mergedFields.prSyncedAt = prTask.prSyncedAt;
       }
       // If target is PR task, copy Jira fields from source
@@ -71,7 +70,6 @@ export const taskMergeRoutes: Routes = {
         mergedFields.priority = jiraTask.priority;
         mergedFields.sprint = jiraTask.sprint;
         mergedFields.epicKey = jiraTask.epicKey;
-        mergedFields.lastComment = jiraTask.lastComment;
         mergedFields.jiraSyncedAt = jiraTask.jiraSyncedAt;
         // Use Jira summary as title if target doesn't have a good title
         if (jiraTask.title && jiraTask.title !== prTask.headBranch) {
@@ -149,7 +147,6 @@ export const taskMergeRoutes: Routes = {
             prAuthor: task.prAuthor,
             isDraft: task.isDraft,
             checksStatus: task.checksStatus,
-            reviewStatus: task.reviewStatus,
             unresolvedCommentCount: task.unresolvedCommentCount,
             prSyncedAt: task.prSyncedAt,
             createdAt: timestamp,
@@ -169,7 +166,6 @@ export const taskMergeRoutes: Routes = {
             prAuthor: null,
             isDraft: null,
             checksStatus: null,
-            reviewStatus: null,
             unresolvedCommentCount: null,
             prSyncedAt: null,
             updatedAt: timestamp,

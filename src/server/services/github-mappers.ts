@@ -16,7 +16,6 @@ export interface PrTaskData {
   isDraft: number;
   checksStatus: string | null;
   checksDetails: string | null;
-  reviewStatus: string | null;
   approvedReviewCount: number;
   unresolvedCommentCount: number;
   prSyncedAt: string;
@@ -61,7 +60,6 @@ export function mapPrToTaskData(
     isDraft: pr.draft ? 1 : 0,
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,
-    reviewStatus: null, // Requires separate API call, skip for v1
     approvedReviewCount,
     unresolvedCommentCount,
     prSyncedAt: timestamp,

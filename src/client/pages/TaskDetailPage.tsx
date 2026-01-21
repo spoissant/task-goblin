@@ -211,11 +211,6 @@ export function TaskDetailPage() {
                       Checks: {task.checksStatus}
                     </p>
                   )}
-                  {task.reviewStatus && (
-                    <p className="text-sm text-muted-foreground">
-                      Review: {task.reviewStatus}
-                    </p>
-                  )}
                   {task.prSyncedAt && (
                     <p className="text-xs text-muted-foreground">
                       Last synced: {new Date(task.prSyncedAt).toLocaleString()}

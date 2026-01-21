@@ -24,7 +24,6 @@ export interface Task {
   priority: string | null;
   sprint: string | null;
   epicKey: string | null;
-  lastComment: string | null;
   jiraSyncedAt: string | null;
 
   // GitHub/PR fields (nullable - set when prNumber present)
@@ -37,7 +36,6 @@ export interface Task {
   isDraft: number | null;
   checksStatus: string | null;
   checksDetails: string | null;
-  reviewStatus: string | null;
   approvedReviewCount: number | null;
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on

@@ -16,7 +16,6 @@ export const tasks = sqliteTable("tasks", {
   priority: text("priority"),
   sprint: text("sprint"), // sprint name
   epicKey: text("epic_key"), // parent epic key
-  lastComment: text("last_comment"), // most recent comment body
   jiraSyncedAt: text("jira_synced_at"),
 
   // GitHub/PR fields (nullable - set when prNumber present)
@@ -29,7 +28,6 @@ export const tasks = sqliteTable("tasks", {
   isDraft: integer("is_draft").default(0),
   checksStatus: text("checks_status"), // passing | failing | pending
   checksDetails: text("checks_details"), // JSON array of check details
-  reviewStatus: text("review_status"), // approved | changes_requested | pending
   approvedReviewCount: integer("approved_review_count"),
   prSyncedAt: text("pr_synced_at"),
   onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on

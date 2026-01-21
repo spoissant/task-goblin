@@ -43,6 +43,13 @@
       "when": 1768933599660,
       "tag": "0005_famous_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1769010105950,
+      "tag": "0006_robust_pyro",
+      "breakpoints": true
     }
   ]
 }

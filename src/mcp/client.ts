@@ -71,7 +71,6 @@ export interface Task {
   priority: string | null;
   sprint: string | null;
   epicKey: string | null;
-  lastComment: string | null;
   jiraSyncedAt: string | null;
   // GitHub/PR fields (nullable)
   prNumber: number | null;
@@ -82,7 +81,6 @@ export interface Task {
   prAuthor: string | null;
   isDraft: number | null;
   checksStatus: string | null;
-  reviewStatus: string | null;
   prSyncedAt: string | null;
 }
 
