@@ -130,6 +130,24 @@ export interface JiraConfig {
   jira_sprint_field?: string | null;
 }
 
+export interface StatusConfig {
+  name: string;
+  color: string | null;
+  order: number;
+  isCompleted: boolean;
+  isSelectable: boolean;
+}
+
+export interface StatusConfigResponse {
+  statuses: StatusConfig[];
+  defaultColor: string;
+}
+
+export interface FetchStatusesResponse extends StatusConfigResponse {
+  fetched: number;
+  added: number;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;

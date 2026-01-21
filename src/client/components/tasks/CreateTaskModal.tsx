@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCreateTask } from "@/client/lib/queries";
+import { useSelectableStatusesQuery } from "@/client/lib/queries/settings";
 import {
   Dialog,
   DialogContent,
@@ -25,21 +26,24 @@ interface CreateTaskModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const STATUSES = [
-  { value: "todo", label: "To Do" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "code_review", label: "Code Review" },
-  { value: "qa", label: "QA" },
-  { value: "done", label: "Done" },
-  { value: "blocked", label: "Blocked" },
-];
-
 export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("todo");
+  const [status, setStatus] = useState("");
 
   const createTask = useCreateTask();
+  const { data: statusesData } = useSelectableStatusesQuery();
+
+  const statuses = statusesData?.items || [];
+
+  // Set default status when statuses are loaded
+  useEffect(() => {
+    if (statuses.length > 0 && !status) {
+      // Find "To Do" or use first status
+      const defaultStatus = statuses.find(s => s.name.toLowerCase() === "to do") || statuses[0];
+      setStatus(defaultStatus.name);
+    }
+  }, [statuses, status]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +56,9 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
           toast.success("Task created");
           setTitle("");
           setDescription("");
-          setStatus("todo");
+          // Reset status to default
+          const defaultStatus = statuses.find(s => s.name.toLowerCase() === "to do") || statuses[0];
+          setStatus(defaultStatus?.name || "");
           onOpenChange(false);
         },
         onError: () => {
@@ -94,12 +100,12 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
               <Label htmlFor="status">Status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                  {statuses.map((s) => (
+                    <SelectItem key={s.name} value={s.name}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

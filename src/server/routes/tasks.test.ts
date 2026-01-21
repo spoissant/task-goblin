@@ -67,7 +67,7 @@ describe("Tasks endpoints", () => {
     expect(data.id).toBeDefined();
     expect(data.title).toBe("Test task");
     expect(data.description).toBe("A test description");
-    expect(data.status).toBe("todo");
+    expect(data.status).toBe("To Do");
   });
 
   it("validates required title", async () => {
@@ -112,12 +112,12 @@ describe("Tasks endpoints", () => {
 
     const res = await request("PUT", `/api/v1/tasks/${created.id}`, {
       title: "Updated",
-      status: "in_progress",
+      status: "In Progress",
     });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.title).toBe("Updated");
-    expect(data.status).toBe("in_progress");
+    expect(data.status).toBe("In Progress");
   });
 
   it("patches a task", async () => {
@@ -127,12 +127,12 @@ describe("Tasks endpoints", () => {
     const created = await createRes.json();
 
     const res = await request("PATCH", `/api/v1/tasks/${created.id}`, {
-      status: "done",
+      status: "Done",
     });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.title).toBe("Original");
-    expect(data.status).toBe("done");
+    expect(data.status).toBe("Done");
   });
 
   it("deletes a task", async () => {

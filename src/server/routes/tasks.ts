@@ -6,11 +6,12 @@ import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import {
-  MANUAL_TASK_STATUSES,
   jiraStatusNotInCondition,
   getCompletedCondition,
   getNotCompletedCondition,
   statusOrderExpr,
+  isStatusSelectable,
+  getSelectableStatuses,
 } from "../lib/task-status";
 import type { Routes } from "../router";
 
@@ -170,10 +171,15 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
-        throw new ValidationError(
-          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
-        );
+      // Validate status against selectable statuses
+      if (body.status) {
+        const isValid = await isStatusSelectable(body.status);
+        if (!isValid) {
+          const selectableStatuses = await getSelectableStatuses();
+          throw new ValidationError(
+            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
+          );
+        }
       }
 
       const timestamp = now();
@@ -182,7 +188,7 @@ export const taskRoutes: Routes = {
         .values({
           title: body.title,
           description: body.description || null,
-          status: body.status || "todo",
+          status: body.status || "To Do",
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -248,10 +254,15 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
-        throw new ValidationError(
-          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
-        );
+      // Validate status against selectable statuses
+      if (body.status) {
+        const isValid = await isStatusSelectable(body.status);
+        if (!isValid) {
+          const selectableStatuses = await getSelectableStatuses();
+          throw new ValidationError(
+            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
+          );
+        }
       }
 
       const existing = await db.select().from(tasks).where(eq(tasks.id, id));
@@ -277,10 +288,15 @@ export const taskRoutes: Routes = {
       const id = parseInt(params.id, 10);
       const body = await getBody(req);
 
-      if (body.status && !MANUAL_TASK_STATUSES.includes(body.status)) {
-        throw new ValidationError(
-          `Manual task status must be one of: ${MANUAL_TASK_STATUSES.join(", ")}`
-        );
+      // Validate status against selectable statuses
+      if (body.status) {
+        const isValid = await isStatusSelectable(body.status);
+        if (!isValid) {
+          const selectableStatuses = await getSelectableStatuses();
+          throw new ValidationError(
+            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
+          );
+        }
       }
 
       const existing = await db.select().from(tasks).where(eq(tasks.id, id));

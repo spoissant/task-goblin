@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useUpdateTask } from "@/client/lib/queries";
+import { useSelectableStatusesQuery } from "@/client/lib/queries/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Input } from "@/client/components/ui/input";
 import { Textarea } from "@/client/components/ui/textarea";
@@ -21,22 +22,15 @@ interface TaskHeaderProps {
   onStatusChange: (status: string) => void;
 }
 
-const STATUSES = [
-  { value: "todo", label: "Todo" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "code_review", label: "Code Review" },
-  { value: "qa", label: "QA" },
-  { value: "ready_to_merge", label: "Ready to Merge" },
-  { value: "done", label: "Done" },
-  { value: "blocked", label: "Blocked" },
-];
-
 export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
 
   const updateTask = useUpdateTask();
+  const { data: statusesData } = useSelectableStatusesQuery();
+
+  const statuses = statusesData?.items || [];
 
   const handleSave = () => {
     updateTask.mutate(
@@ -85,9 +79,9 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
+                {statuses.map((s) => (
+                  <SelectItem key={s.name} value={s.name}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>
