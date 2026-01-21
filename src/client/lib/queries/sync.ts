@@ -77,7 +77,7 @@ export function useSyncTask() {
       // Sync Jira if task has jiraKey
       if (task.jiraKey) {
         try {
-          results.jira = await api.post<{ status: "new" | "updated" }>(`/refresh/jira/${task.jiraKey}`);
+          results.jira = await api.post<{ status: "new" | "updated" }>(`/sync/jira/${task.jiraKey}`);
         } catch {
           // Jira sync failed, continue
         }
@@ -87,7 +87,7 @@ export function useSyncTask() {
       if (task.prNumber && repo) {
         try {
           results.github = await api.post<{ task: Task }>(
-            `/refresh/github/${repo.owner}/${repo.repo}/${task.prNumber}`
+            `/sync/github/${repo.owner}/${repo.repo}/${task.prNumber}`
           );
         } catch {
           // GitHub sync failed
