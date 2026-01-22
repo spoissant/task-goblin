@@ -271,7 +271,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
   };
 
   return (
-    <TableRow className={isCurrentTodoTask ? "!bg-yellow-50 dark:!bg-yellow-300/40" : undefined}>
+    <TableRow className={isCurrentTodoTask ? "!bg-lime-50 dark:!bg-lime-700/40" : undefined}>
       {/* Checkbox */}
       {onSelectionChange && (
         <TableCell>
