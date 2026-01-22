@@ -39,7 +39,10 @@ export async function findAutoMatches(): Promise<AutoMatchPair[]> {
       and(
         isNotNull(tasks.prNumber),
         isNull(tasks.jiraKey),
-        or(isNull(tasks.prState), ne(tasks.prState, "merged"))
+        or(
+          isNull(tasks.prState),
+          and(ne(tasks.prState, "merged"), ne(tasks.prState, "closed"))
+        )
       )
     );
 
