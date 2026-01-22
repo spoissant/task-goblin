@@ -5,6 +5,7 @@ import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/s
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
+import { Checkbox } from "@/client/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
@@ -39,9 +40,11 @@ function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): strin
 
 interface TaskTableProps {
   activeFilter?: string;
+  selectedIds?: Set<number>;
+  onSelectionChange?: (ids: Set<number>) => void;
 }
 
-export function TaskTable({ activeFilter }: TaskTableProps) {
+export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: TaskTableProps) {
   // Fetch all tasks (no server-side status filter for filter-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
@@ -124,6 +127,20 @@ export function TaskTable({ activeFilter }: TaskTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
+            {onSelectionChange && (
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={filteredTasks.length > 0 && filteredTasks.every((t) => selectedIds?.has(t.id))}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      onSelectionChange(new Set(filteredTasks.map((t) => t.id)));
+                    } else {
+                      onSelectionChange(new Set());
+                    }
+                  }}
+                />
+              </TableHead>
+            )}
             <TableHead className="w-[40px]"></TableHead>
             <TableHead className="w-[80px]">Type</TableHead>
             <TableHead className="w-[140px]">Sprint</TableHead>
@@ -157,6 +174,16 @@ export function TaskTable({ activeFilter }: TaskTableProps) {
               jiraHost={jiraHost}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
+              isSelected={selectedIds?.has(task.id) ?? false}
+              onSelectionChange={onSelectionChange ? (selected) => {
+                const newSelection = new Set(selectedIds);
+                if (selected) {
+                  newSelection.add(task.id);
+                } else {
+                  newSelection.delete(task.id);
+                }
+                onSelectionChange(newSelection);
+              } : undefined}
             />
           ))}
         </TableBody>
@@ -212,9 +239,11 @@ interface TaskRowProps {
   jiraHost: string | null;
   onOpenTodos: () => void;
   onOpenLogs: () => void;
+  isSelected: boolean;
+  onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -237,6 +266,16 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs }: TaskRowProps
 
   return (
     <TableRow>
+      {/* Checkbox */}
+      {onSelectionChange && (
+        <TableCell>
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) => onSelectionChange(!!checked)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </TableCell>
+      )}
       {/* Sync / Unread Logs */}
       <TableCell>
         {task.unreadLogCount > 0 ? (

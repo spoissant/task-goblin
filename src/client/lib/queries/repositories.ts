@@ -30,7 +30,7 @@ export function useUpdateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[] }) =>
+    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[]; localPath?: string | null }) =>
       api.patch<Repository>(`/repositories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });

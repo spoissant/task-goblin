@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
+import { useDeployBranch } from "@/client/lib/queries/deploy";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { BlockedByList } from "@/client/components/tasks/BlockedByList";
@@ -10,7 +12,20 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Badge } from "@/client/components/ui/badge";
-import { ArrowLeft, RefreshCw, Trash2, ExternalLink, GitPullRequest, Check } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/client/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/client/components/ui/dialog";
+import { ArrowLeft, RefreshCw, Trash2, ExternalLink, GitPullRequest, Check, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Log } from "@/client/lib/types";
 
@@ -23,8 +38,13 @@ export function TaskDetailPage() {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const markLogRead = useMarkLogRead();
+  const deployBranch = useDeployBranch();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
+
+  const [deployTargetBranch, setDeployTargetBranch] = useState<string>("");
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
 
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
@@ -81,6 +101,38 @@ export function TaskDetailPage() {
   };
 
   const prUrl = getPrUrl();
+
+  // Get deployment branches from repository
+  const repo = task?.repository || (task?.repositoryId ? repoMap.get(task.repositoryId) : undefined);
+  const deploymentBranches: string[] = repo?.deploymentBranches
+    ? JSON.parse(repo.deploymentBranches)
+    : [];
+  const canDeploy = task?.headBranch && repo?.localPath && deploymentBranches.length > 0;
+
+  const handleDeploy = () => {
+    if (!deployTargetBranch) {
+      toast.error("Please select a target branch");
+      return;
+    }
+
+    deployBranch.mutate(
+      { taskId, targetBranch: deployTargetBranch },
+      {
+        onSuccess: (result) => {
+          if (result.success) {
+            toast.success(`Deployed to ${deployTargetBranch}`);
+            refetch();
+          } else if (result.conflict) {
+            setConflictedFiles(result.conflictedFiles);
+            setConflictDialogOpen(true);
+          }
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Deploy failed");
+        },
+      }
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -216,6 +268,36 @@ export function TaskDetailPage() {
                       Last synced: {new Date(task.prSyncedAt).toLocaleString()}
                     </p>
                   )}
+                  {canDeploy && (
+                    <div className="pt-3 mt-3 border-t">
+                      <p className="text-sm font-medium mb-2">Deploy to Environment</p>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={deployTargetBranch}
+                          onValueChange={setDeployTargetBranch}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {deploymentBranches.map((branch) => (
+                              <SelectItem key={branch} value={branch}>
+                                {branch}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          onClick={handleDeploy}
+                          disabled={!deployTargetBranch || deployBranch.isPending}
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          {deployBranch.isPending ? "Deploying..." : "Deploy"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -277,6 +359,30 @@ export function TaskDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Merge Conflict Dialog */}
+      <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Merge Conflict</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Could not deploy due to merge conflicts in the following files:
+            </p>
+            <ul className="space-y-1">
+              {conflictedFiles.map((file) => (
+                <li key={file} className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                  {file}
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              Please resolve the conflicts locally and try again.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

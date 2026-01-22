@@ -37,6 +37,7 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
           badgeColor: body.badgeColor ?? null,
           deploymentBranches,
+          localPath: body.localPath ?? null,
         })
         .returning();
 
@@ -94,6 +95,7 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
           badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
           deploymentBranches,
+          localPath: body.localPath !== undefined ? body.localPath : existing[0].localPath,
         })
         .where(eq(repositories.id, id))
         .returning();
@@ -123,6 +125,7 @@ export const repositoryRoutes: Routes = {
           ? JSON.stringify(body.deploymentBranches)
           : null;
       }
+      if (body.localPath !== undefined) updates.localPath = body.localPath || null;
 
       if (Object.keys(updates).length === 0) {
         return json(existing[0]);

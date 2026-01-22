@@ -53,6 +53,7 @@ export const repositories = sqliteTable("repositories", {
   enabled: integer("enabled").notNull().default(1), // SQLite bool
   badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
+  localPath: text("local_path"), // Local filesystem path for git operations (e.g., "/Users/me/Code/my-repo")
 });
 
 // 4. BlockedBy - Explicit FK blocking relationships (tasks only)

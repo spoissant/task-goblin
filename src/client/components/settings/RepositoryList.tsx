@@ -49,6 +49,7 @@ export function RepositoryList() {
   const [newRepo, setNewRepo] = useState("");
   const [newBadgeColor, setNewBadgeColor] = useState<BadgeColorName | "">("gray");
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
+  const [localPathInputs, setLocalPathInputs] = useState<Record<number, string>>({});
 
   const handleCreate = () => {
     if (!newOwner.trim() || !newRepo.trim()) {
@@ -135,6 +136,24 @@ export function RepositoryList() {
     );
   };
 
+  const handleLocalPathChange = (id: number, path: string) => {
+    updateRepo.mutate(
+      { id, localPath: path.trim() || null },
+      {
+        onSuccess: () => {
+          setLocalPathInputs((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
+        },
+        onError: () => {
+          toast.error("Failed to update local path");
+        },
+      }
+    );
+  };
+
   const handleDelete = (id: number) => {
     if (confirm("Are you sure you want to delete this repository?")) {
       deleteRepo.mutate(id, {
@@ -173,6 +192,7 @@ export function RepositoryList() {
                 <TableRow>
                   <TableHead>Repository</TableHead>
                   <TableHead>Badge Color</TableHead>
+                  <TableHead>Local Path</TableHead>
                   <TableHead>Deployment Branches</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead></TableHead>
@@ -205,6 +225,29 @@ export function RepositoryList() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-8 w-56 text-xs font-mono"
+                        placeholder="/path/to/repo"
+                        value={localPathInputs[repo.id] ?? repo.localPath ?? ""}
+                        onChange={(e) => setLocalPathInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                        onBlur={() => {
+                          const value = localPathInputs[repo.id];
+                          if (value !== undefined && value !== (repo.localPath ?? "")) {
+                            handleLocalPathChange(repo.id, value);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const value = localPathInputs[repo.id];
+                            if (value !== undefined && value !== (repo.localPath ?? "")) {
+                              handleLocalPathChange(repo.id, value);
+                            }
+                          }
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       {(() => {

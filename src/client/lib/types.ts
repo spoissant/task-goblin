@@ -91,6 +91,40 @@ export interface Repository {
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names
+  localPath: string | null; // Local filesystem path for git operations
+}
+
+// Deploy types
+export interface DeployResult {
+  status: "success";
+  targetBranch: string;
+  sourceBranch: string;
+  commitSha: string;
+}
+
+export interface DeployConflictError {
+  code: "MERGE_CONFLICT";
+  message: string;
+  details: {
+    conflictedFiles: string[];
+  };
+}
+
+export interface BulkDeployTaskResult {
+  taskId: number;
+  status: "success" | "conflict" | "skipped";
+  commitSha?: string;
+  conflictedFiles?: string[];
+  reason?: string;
+}
+
+export interface BulkDeployResult {
+  results: BulkDeployTaskResult[];
+  summary: {
+    success: number;
+    conflict: number;
+    skipped: number;
+  };
 }
 
 export interface BlockedBy {
