@@ -30,11 +30,13 @@ export function RefreshButton() {
   const handleSyncJira = () => {
     syncJira.mutate(undefined, {
       onSuccess: (result) => {
-        const parts = [`${result.created ?? 0} created`, `${result.updated ?? 0} updated`];
-        if (result.merged && result.merged > 0) {
-          parts.push(`${result.merged} auto-merged`);
-        }
-        toast.success(`Jira sync: ${parts.join(", ")}`);
+        const parts: string[] = [];
+        if ((result.unchanged ?? 0) > 0) parts.push(`${result.unchanged} unchanged`);
+        if ((result.created ?? 0) > 0) parts.push(`${result.created} created`);
+        if ((result.updated ?? 0) > 0) parts.push(`${result.updated} updated`);
+        if ((result.merged ?? 0) > 0) parts.push(`${result.merged} auto-merged`);
+        const summary = parts.length > 0 ? parts.join(", ") : "no changes";
+        toast.success(`Jira sync: ${summary}`);
       },
       onError: (error) => {
         toast.error(`Jira sync failed: ${error.message}`);
@@ -45,11 +47,13 @@ export function RefreshButton() {
   const handleSyncGitHub = () => {
     syncGitHub.mutate(undefined, {
       onSuccess: (result) => {
-        const parts = [`${result.created ?? 0} created`, `${result.updated ?? 0} updated`];
-        if (result.merged && result.merged > 0) {
-          parts.push(`${result.merged} auto-merged`);
-        }
-        toast.success(`GitHub sync: ${parts.join(", ")}`);
+        const parts: string[] = [];
+        if ((result.unchanged ?? 0) > 0) parts.push(`${result.unchanged} unchanged`);
+        if ((result.created ?? 0) > 0) parts.push(`${result.created} created`);
+        if ((result.updated ?? 0) > 0) parts.push(`${result.updated} updated`);
+        if ((result.merged ?? 0) > 0) parts.push(`${result.merged} auto-merged`);
+        const summary = parts.length > 0 ? parts.join(", ") : "no changes";
+        toast.success(`GitHub sync: ${summary}`);
       },
       onError: (error) => {
         toast.error(`GitHub sync failed: ${error.message}`);
@@ -61,15 +65,19 @@ export function RefreshButton() {
     syncAll.mutate(undefined, {
       onSuccess: (results) => {
         const parts: string[] = [];
+        const jiraUnchanged = results.jira?.unchanged ?? 0;
         const jiraCreated = results.jira?.created ?? 0;
         const jiraUpdated = results.jira?.updated ?? 0;
+        const ghUnchanged = results.github?.unchanged ?? 0;
         const ghCreated = results.github?.created ?? 0;
         const ghUpdated = results.github?.updated ?? 0;
         const merged = results.merged ?? 0;
 
+        const totalUnchanged = jiraUnchanged + ghUnchanged;
         const totalCreated = jiraCreated + ghCreated;
         const totalUpdated = jiraUpdated + ghUpdated;
 
+        if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
         if (totalCreated > 0) parts.push(`${totalCreated} created`);
         if (totalUpdated > 0) parts.push(`${totalUpdated} updated`);
         if (merged > 0) parts.push(`${merged} auto-merged`);

@@ -17,6 +17,7 @@ export interface SyncResult {
   synced: number;
   new: number;
   updated: number;
+  unchanged: number;
 }
 
 export class GitHubApiError extends Error {
@@ -40,7 +41,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     .where(eq(repositories.enabled, 1));
 
   if (repos.length === 0) {
-    return { synced: 0, new: 0, updated: 0 };
+    return { synced: 0, new: 0, updated: 0, unchanged: 0 };
   }
 
   // Build repo filter: (repo:owner/name OR repo:owner/name2 ...)
@@ -49,6 +50,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
   let synced = 0;
   let newCount = 0;
   let updatedCount = 0;
+  let unchangedCount = 0;
   const syncedPrs = new Set<string>();
 
   try {
@@ -104,7 +106,8 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
         const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
         const result = await upsertPrTask(taskData);
         if (result === "new") newCount++;
-        else updatedCount++;
+        else if (result === "updated") updatedCount++;
+        else unchangedCount++;
         synced++;
       }
 
@@ -156,7 +159,8 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
         const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount);
         const result = await upsertPrTask(taskData);
         if (result === "new") newCount++;
-        else updatedCount++;
+        else if (result === "updated") updatedCount++;
+        else unchangedCount++;
         synced++;
       } catch {
         // PR may be deleted or inaccessible, skip
@@ -198,6 +202,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
 
   // Log sync completion
   const parts: string[] = [];
+  if (unchangedCount > 0) parts.push(`${unchangedCount} unchanged`);
   if (newCount > 0) parts.push(`${newCount} new`);
   if (updatedCount > 0) parts.push(`${updatedCount} updated`);
   const summary = parts.length > 0 ? parts.join(", ") : "no changes";
@@ -209,14 +214,14 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     createdAt: now(),
   });
 
-  return { synced, new: newCount, updated: updatedCount };
+  return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }
 
 export async function syncGitHubPullRequestByNumber(
   owner: string,
   repo: string,
   prNumber: number
-): Promise<{ status: "new" | "updated" }> {
+): Promise<{ status: "new" | "updated" | "unchanged" }> {
   const client = getGitHubClient();
 
   // Find repository

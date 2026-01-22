@@ -29,6 +29,7 @@ export interface SyncResult {
   synced: number;
   new: number;
   updated: number;
+  unchanged: number;
 }
 
 export class JiraApiError extends Error {
@@ -109,7 +110,7 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
   };
 }
 
-async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated"> {
+async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated" | "unchanged"> {
   const existing = await db
     .select()
     .from(tasks)
@@ -151,9 +152,10 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         source: "jira",
         createdAt: timestamp,
       });
+      return "updated";
     }
 
-    return "updated";
+    return "unchanged";
   } else {
     // Create new Jira-only task
     const timestamp = now();
@@ -189,6 +191,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
   let synced = 0;
   let newCount = 0;
   let updatedCount = 0;
+  let unchangedCount = 0;
   const syncedKeys = new Set<string>();
 
   const maxResults = 50;
@@ -217,7 +220,8 @@ export async function syncJiraItems(): Promise<SyncResult> {
         syncedKeys.add(taskData.jiraKey);
         const result = await upsertTask(taskData);
         if (result === "new") newCount++;
-        else updatedCount++;
+        else if (result === "updated") updatedCount++;
+        else unchangedCount++;
         synced++;
       }
 
@@ -253,7 +257,8 @@ export async function syncJiraItems(): Promise<SyncResult> {
         const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
         const result = await upsertTask(taskData);
         if (result === "new") newCount++;
-        else updatedCount++;
+        else if (result === "updated") updatedCount++;
+        else unchangedCount++;
         synced++;
       } catch {
         // Issue may be deleted or inaccessible, skip
@@ -283,6 +288,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
 
   // Log sync completion
   const parts: string[] = [];
+  if (unchangedCount > 0) parts.push(`${unchangedCount} unchanged`);
   if (newCount > 0) parts.push(`${newCount} new`);
   if (updatedCount > 0) parts.push(`${updatedCount} updated`);
   const summary = parts.length > 0 ? parts.join(", ") : "no changes";
@@ -294,10 +300,10 @@ export async function syncJiraItems(): Promise<SyncResult> {
     createdAt: now(),
   });
 
-  return { synced, new: newCount, updated: updatedCount };
+  return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }
 
-export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | "updated" }> {
+export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | "updated" | "unchanged" }> {
   const config = await getJiraConfig();
   const client = getJiraClient(config);
 

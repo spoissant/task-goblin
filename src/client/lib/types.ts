@@ -188,6 +188,7 @@ export interface SyncResult {
   synced: number;
   created: number;
   updated: number;
+  unchanged: number;
 }
 
 export interface MatchResult {

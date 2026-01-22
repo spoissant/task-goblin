@@ -19,7 +19,7 @@ const GITHUB_TRACKED_FIELDS = [
 
 const LARGE_FIELDS = ["checksDetails"] as const;
 
-export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
+export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
   // First, try to find by repositoryId + prNumber (if we already synced this PR)
   const existingByNumber = await db
     .select()
@@ -70,9 +70,10 @@ export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated">
         source: "github",
         createdAt: timestamp,
       });
+      return "updated";
     }
 
-    return "updated";
+    return "unchanged";
   }
 
   // Next, try to find by repositoryId + headBranch (local entry waiting for sync)
@@ -125,9 +126,10 @@ export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated">
         source: "github",
         createdAt: timestamp,
       });
+      return "updated";
     }
 
-    return "updated";
+    return "unchanged";
   }
 
   // No existing entry, create new PR-only task (orphaned)
