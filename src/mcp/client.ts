@@ -122,17 +122,15 @@ export interface ListResponse<T> {
 
 export interface SyncResult {
   synced: number;
+  new?: number;
+  updated?: number;
+  merged?: number;
   errors: string[];
 }
 
 export interface SplitResult {
   jiraTask: Task;
   prTask: Task;
-}
-
-export interface AutoMatchResult {
-  matches: Array<{ jiraTaskId: number; prTaskId: number; jiraKey: string }>;
-  total: number;
 }
 
 // Resolve task ID from various identifiers

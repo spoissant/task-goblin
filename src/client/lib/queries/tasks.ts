@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Task, TaskDetail, TaskWithRepository, TaskWithTodos, ListResponse, PaginatedResponse, AutoMatchResult, SplitResult } from "../types";
+import type { Task, TaskDetail, TaskWithRepository, TaskWithTodos, ListResponse, PaginatedResponse, SplitResult } from "../types";
 
 export const taskKeys = {
   all: ["tasks"] as const,
@@ -128,34 +128,3 @@ export function useSplitTask() {
   });
 }
 
-// Auto-match orphans
-export function useAutoMatchOrphans() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: () => api.post<AutoMatchResult>("/tasks/auto-match"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.orphanJira() });
-      queryClient.invalidateQueries({ queryKey: taskKeys.orphanPr() });
-    },
-  });
-}
-
-// Batch merge multiple task pairs
-export function useBatchMergeTasks() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (pairs: Array<{ targetId: number; sourceId: number }>) => {
-      const results = await Promise.all(
-        pairs.map(({ targetId, sourceId }) =>
-          api.post<Task>(`/tasks/${targetId}/merge`, { sourceTaskId: sourceId })
-        )
-      );
-      return results;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-    },
-  });
-}

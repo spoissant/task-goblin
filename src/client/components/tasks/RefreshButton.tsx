@@ -1,4 +1,4 @@
-import { useSyncJira, useSyncGitHub } from "@/client/lib/queries";
+import { useSyncJira, useSyncGitHub, useSyncAll } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import {
   DropdownMenu,
@@ -12,8 +12,9 @@ import { toast } from "sonner";
 export function RefreshButton() {
   const syncJira = useSyncJira();
   const syncGitHub = useSyncGitHub();
+  const syncAll = useSyncAll();
 
-  const isLoading = syncJira.isPending || syncGitHub.isPending;
+  const isLoading = syncJira.isPending || syncGitHub.isPending || syncAll.isPending;
 
   const handleSyncJira = () => {
     syncJira.mutate(undefined, {
@@ -29,7 +30,11 @@ export function RefreshButton() {
   const handleSyncGitHub = () => {
     syncGitHub.mutate(undefined, {
       onSuccess: (result) => {
-        toast.success(`GitHub sync: ${result.created ?? 0} created, ${result.updated ?? 0} updated`);
+        const parts = [`${result.created ?? 0} created`, `${result.updated ?? 0} updated`];
+        if (result.merged && result.merged > 0) {
+          parts.push(`${result.merged} auto-merged`);
+        }
+        toast.success(`GitHub sync: ${parts.join(", ")}`);
       },
       onError: (error) => {
         toast.error(`GitHub sync failed: ${error.message}`);
@@ -38,8 +43,32 @@ export function RefreshButton() {
   };
 
   const handleSyncAll = () => {
-    handleSyncJira();
-    handleSyncGitHub();
+    syncAll.mutate(undefined, {
+      onSuccess: (results) => {
+        const parts: string[] = [];
+        const jiraCreated = results.jira?.created ?? 0;
+        const jiraUpdated = results.jira?.updated ?? 0;
+        const ghCreated = results.github?.created ?? 0;
+        const ghUpdated = results.github?.updated ?? 0;
+        const merged = results.github?.merged ?? 0;
+
+        const totalCreated = jiraCreated + ghCreated;
+        const totalUpdated = jiraUpdated + ghUpdated;
+
+        if (totalCreated > 0) parts.push(`${totalCreated} created`);
+        if (totalUpdated > 0) parts.push(`${totalUpdated} updated`);
+        if (merged > 0) parts.push(`${merged} auto-merged`);
+
+        if (parts.length === 0) {
+          toast.success("Synced. No changes.");
+        } else {
+          toast.success(`Synced. ${parts.join(", ")}.`);
+        }
+      },
+      onError: () => {
+        toast.error("Sync failed");
+      },
+    });
   };
 
   return (

@@ -11,11 +11,13 @@ import {
 } from "./github-fetchers";
 import { upsertPrTask } from "./github-upsert";
 import { isApiError } from "../lib/errors";
+import { autoMatchAndMerge } from "./task-merge";
 
 export interface SyncResult {
   synced: number;
   new: number;
   updated: number;
+  merged?: number;
 }
 
 export class GitHubApiError extends Error {
@@ -195,7 +197,10 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     throw new GitHubApiError("Failed to fetch PRs from GitHub", "GITHUB_API_ERROR");
   }
 
-  return { synced, new: newCount, updated: updatedCount };
+  // Auto-match and merge orphans after sync
+  const merged = await autoMatchAndMerge();
+
+  return { synced, new: newCount, updated: updatedCount, merged };
 }
 
 export async function syncGitHubPullRequestByNumber(

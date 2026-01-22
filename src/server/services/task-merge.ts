@@ -1,12 +1,183 @@
-import { eq, and, isNotNull, isNull, or, ne, sql } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, blockedBy } from "../../db/schema";
 import { json } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
-import { JIRA_COMPLETED_STATUSES, jiraStatusNotInCondition, statusOrderExpr } from "../lib/task-status";
+import { jiraStatusNotInCondition } from "../lib/task-status";
 import type { Routes } from "../router";
+
+export interface AutoMatchPair {
+  jiraTaskId: number;
+  prTaskId: number;
+  jiraKey: string;
+}
+
+/**
+ * Find potential auto-match pairs between Jira orphans and PR orphans.
+ * Matches by finding Jira key in PR's branch name or title.
+ */
+export async function findAutoMatches(): Promise<AutoMatchPair[]> {
+  // Get all non-completed Jira orphans
+  const jiraOrphans = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        isNotNull(tasks.jiraKey),
+        isNull(tasks.prNumber),
+        jiraStatusNotInCondition()
+      )
+    );
+
+  // Get all non-merged PR orphans
+  const prOrphans = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        isNotNull(tasks.prNumber),
+        isNull(tasks.jiraKey),
+        or(isNull(tasks.prState), ne(tasks.prState, "merged"))
+      )
+    );
+
+  const matches: AutoMatchPair[] = [];
+
+  // For each PR orphan, try to find matching Jira key in branch name or title
+  for (const prTask of prOrphans) {
+    const searchText = `${prTask.headBranch || ""} ${prTask.title || ""}`.toUpperCase();
+
+    for (const jiraTask of jiraOrphans) {
+      if (!jiraTask.jiraKey) continue;
+
+      // Check if jira key appears in the PR's branch or title
+      if (searchText.includes(jiraTask.jiraKey.toUpperCase())) {
+        matches.push({
+          jiraTaskId: jiraTask.id,
+          prTaskId: prTask.id,
+          jiraKey: jiraTask.jiraKey,
+        });
+        break; // Only one match per PR
+      }
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Merge a single task pair (Jira target + PR source).
+ * Returns the merged task.
+ */
+export async function mergeSingleTask(
+  targetId: number,
+  sourceId: number
+): Promise<typeof tasks.$inferSelect> {
+  const targetTask = await db.select().from(tasks).where(eq(tasks.id, targetId));
+  if (targetTask.length === 0) {
+    throw new NotFoundError("Task", targetId);
+  }
+
+  const sourceTask = await db.select().from(tasks).where(eq(tasks.id, sourceId));
+  if (sourceTask.length === 0) {
+    throw new NotFoundError("Task", sourceId);
+  }
+
+  const target = targetTask[0];
+  const source = sourceTask[0];
+
+  // Determine which has Jira and which has PR
+  const jiraTask = target.jiraKey ? target : source.jiraKey ? source : null;
+  const prTask = target.prNumber ? target : source.prNumber ? source : null;
+
+  if (!jiraTask || !prTask) {
+    throw new ValidationError("One task must have jiraKey and the other must have prNumber");
+  }
+
+  if (jiraTask.id === prTask.id) {
+    throw new ValidationError("Cannot merge a task with itself");
+  }
+
+  // Merge: copy fields from source to target
+  const mergedFields: Record<string, unknown> = { updatedAt: now() };
+
+  // If target is Jira task, copy PR fields from source
+  if (target.jiraKey && !target.prNumber) {
+    mergedFields.prNumber = prTask.prNumber;
+    mergedFields.repositoryId = prTask.repositoryId;
+    mergedFields.headBranch = prTask.headBranch;
+    mergedFields.baseBranch = prTask.baseBranch;
+    mergedFields.prState = prTask.prState;
+    mergedFields.prAuthor = prTask.prAuthor;
+    mergedFields.isDraft = prTask.isDraft;
+    mergedFields.checksStatus = prTask.checksStatus;
+    mergedFields.checksDetails = prTask.checksDetails;
+    mergedFields.approvedReviewCount = prTask.approvedReviewCount;
+    mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
+    mergedFields.prSyncedAt = prTask.prSyncedAt;
+  }
+  // If target is PR task, copy Jira fields from source
+  else if (target.prNumber && !target.jiraKey) {
+    mergedFields.jiraKey = jiraTask.jiraKey;
+    mergedFields.type = jiraTask.type;
+    mergedFields.assignee = jiraTask.assignee;
+    mergedFields.priority = jiraTask.priority;
+    mergedFields.sprint = jiraTask.sprint;
+    mergedFields.epicKey = jiraTask.epicKey;
+    mergedFields.jiraSyncedAt = jiraTask.jiraSyncedAt;
+    // Use Jira summary as title if target doesn't have a good title
+    if (jiraTask.title && jiraTask.title !== prTask.headBranch) {
+      mergedFields.title = jiraTask.title;
+    }
+    if (jiraTask.description) {
+      mergedFields.description = jiraTask.description;
+    }
+  }
+
+  // Wrap all merge operations in a transaction for consistency
+  const result = await db.transaction(async (tx) => {
+    // Update target with merged fields
+    const updated = await tx
+      .update(tasks)
+      .set(mergedFields)
+      .where(eq(tasks.id, targetId))
+      .returning();
+
+    // Move todos from source to target
+    await tx
+      .update(todos)
+      .set({ taskId: targetId })
+      .where(eq(todos.taskId, sourceId));
+
+    // Move blockedBy relations from source to target
+    await tx
+      .update(blockedBy)
+      .set({ blockedTaskId: targetId })
+      .where(eq(blockedBy.blockedTaskId, sourceId));
+
+    // Delete source task
+    await tx.delete(tasks).where(eq(tasks.id, sourceId));
+
+    return updated[0];
+  });
+
+  return result;
+}
+
+/**
+ * Find auto-matches and merge them all. Returns the number of merged pairs.
+ */
+export async function autoMatchAndMerge(): Promise<number> {
+  const matches = await findAutoMatches();
+
+  for (const match of matches) {
+    await mergeSingleTask(match.jiraTaskId, match.prTaskId);
+  }
+
+  return matches.length;
+}
 
 export const taskMergeRoutes: Routes = {
   // Merge two orphan tasks (jira + pr) into one
@@ -19,101 +190,14 @@ export const taskMergeRoutes: Routes = {
         throw new ValidationError("sourceTaskId is required");
       }
 
-      const targetTask = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (targetTask.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
-
-      const sourceTask = await db.select().from(tasks).where(eq(tasks.id, body.sourceTaskId));
-      if (sourceTask.length === 0) {
-        throw new NotFoundError("Task", body.sourceTaskId);
-      }
-
-      const target = targetTask[0];
-      const source = sourceTask[0];
-
-      // Determine which has Jira and which has PR
-      const jiraTask = target.jiraKey ? target : source.jiraKey ? source : null;
-      const prTask = target.prNumber ? target : source.prNumber ? source : null;
-
-      if (!jiraTask || !prTask) {
-        throw new ValidationError("One task must have jiraKey and the other must have prNumber");
-      }
-
-      if (jiraTask.id === prTask.id) {
-        throw new ValidationError("Cannot merge a task with itself");
-      }
-
-      // Merge: copy fields from source to target
-      const mergedFields: Record<string, unknown> = { updatedAt: now() };
-
-      // If target is Jira task, copy PR fields from source
-      if (target.jiraKey && !target.prNumber) {
-        mergedFields.prNumber = prTask.prNumber;
-        mergedFields.repositoryId = prTask.repositoryId;
-        mergedFields.headBranch = prTask.headBranch;
-        mergedFields.baseBranch = prTask.baseBranch;
-        mergedFields.prState = prTask.prState;
-        mergedFields.prAuthor = prTask.prAuthor;
-        mergedFields.isDraft = prTask.isDraft;
-        mergedFields.checksStatus = prTask.checksStatus;
-        mergedFields.checksDetails = prTask.checksDetails;
-        mergedFields.approvedReviewCount = prTask.approvedReviewCount;
-        mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
-        mergedFields.prSyncedAt = prTask.prSyncedAt;
-      }
-      // If target is PR task, copy Jira fields from source
-      else if (target.prNumber && !target.jiraKey) {
-        mergedFields.jiraKey = jiraTask.jiraKey;
-        mergedFields.type = jiraTask.type;
-        mergedFields.assignee = jiraTask.assignee;
-        mergedFields.priority = jiraTask.priority;
-        mergedFields.sprint = jiraTask.sprint;
-        mergedFields.epicKey = jiraTask.epicKey;
-        mergedFields.jiraSyncedAt = jiraTask.jiraSyncedAt;
-        // Use Jira summary as title if target doesn't have a good title
-        if (jiraTask.title && jiraTask.title !== prTask.headBranch) {
-          mergedFields.title = jiraTask.title;
-        }
-        if (jiraTask.description) {
-          mergedFields.description = jiraTask.description;
-        }
-      }
-
-      // Wrap all merge operations in a transaction for consistency
-      const result = await db.transaction(async (tx) => {
-        // Update target with merged fields
-        const updated = await tx
-          .update(tasks)
-          .set(mergedFields)
-          .where(eq(tasks.id, id))
-          .returning();
-
-        // Move todos from source to target
-        await tx
-          .update(todos)
-          .set({ taskId: id })
-          .where(eq(todos.taskId, body.sourceTaskId));
-
-        // Move blockedBy relations from source to target
-        await tx
-          .update(blockedBy)
-          .set({ blockedTaskId: id })
-          .where(eq(blockedBy.blockedTaskId, body.sourceTaskId));
-
-        // Delete source task
-        await tx.delete(tasks).where(eq(tasks.id, body.sourceTaskId));
-
-        return updated[0];
-      });
-
+      const result = await mergeSingleTask(id, body.sourceTaskId);
       return json(result);
     },
   },
 
   // Split a merged task back into two orphans
   "/api/v1/tasks/:id/split": {
-    async POST(req, params) {
+    async POST(_req, params) {
       const id = parseInt(params.id, 10);
 
       const existing = await db.select().from(tasks).where(eq(tasks.id, id));
@@ -177,58 +261,6 @@ export const taskMergeRoutes: Routes = {
       });
 
       return json({ jiraTask, prTask });
-    },
-  },
-
-  // Auto-match orphans by finding jiraKey in branch names/titles
-  "/api/v1/tasks/auto-match": {
-    async POST() {
-      // Get all non-completed Jira orphans
-      const jiraOrphans = await db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            isNotNull(tasks.jiraKey),
-            isNull(tasks.prNumber),
-            jiraStatusNotInCondition()
-          )
-        );
-
-      // Get all non-merged PR orphans
-      const prOrphans = await db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            isNotNull(tasks.prNumber),
-            isNull(tasks.jiraKey),
-            or(isNull(tasks.prState), ne(tasks.prState, "merged"))
-          )
-        );
-
-      const matches: Array<{ jiraTaskId: number; prTaskId: number; jiraKey: string }> = [];
-
-      // For each PR orphan, try to find matching Jira key in branch name or title
-      for (const prTask of prOrphans) {
-        const searchText = `${prTask.headBranch || ""} ${prTask.title || ""}`.toUpperCase();
-
-        for (const jiraTask of jiraOrphans) {
-          if (!jiraTask.jiraKey) continue;
-
-          // Check if jira key appears in the PR's branch or title
-          if (searchText.includes(jiraTask.jiraKey.toUpperCase())) {
-            matches.push({
-              jiraTaskId: jiraTask.id,
-              prTaskId: prTask.id,
-              jiraKey: jiraTask.jiraKey,
-            });
-            break; // Only one match per PR
-          }
-        }
-      }
-
-      return json({ matches, total: matches.length });
     },
   },
 };

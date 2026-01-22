@@ -10,7 +10,6 @@ import {
   type ListResponse,
   type SyncResult,
   type SplitResult,
-  type AutoMatchResult,
 } from "../client.js";
 
 export function registerTaskTools(server: McpServer) {
@@ -185,24 +184,6 @@ export function registerTaskTools(server: McpServer) {
     }
   );
 
-  // auto_match_orphans
-  server.registerTool(
-    "auto_match_orphans",
-    {
-      description: "Find potential matches between Jira orphan tasks and PR orphan tasks by looking for Jira keys in PR branch names and titles. Returns matches but does not merge them.",
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const result = await post<AutoMatchResult>("/api/v1/tasks/auto-match");
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
   // sync_jira
   server.registerTool(
     "sync_jira",
@@ -225,7 +206,7 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "sync_github",
     {
-      description: "Sync tasks from GitHub API",
+      description: "Sync tasks from GitHub API. Automatically merges matching Jira/PR orphans based on Jira keys in branch names or PR titles.",
       inputSchema: {},
     },
     async () => {

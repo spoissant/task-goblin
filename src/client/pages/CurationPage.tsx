@@ -10,9 +10,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
-import { Button } from "@/client/components/ui/button";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { Wand2 } from "lucide-react";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import {
@@ -20,8 +18,6 @@ import {
   useOrphanJiraTasksQuery,
   useOrphanPrTasksQuery,
   useMergeTasks,
-  useAutoMatchOrphans,
-  useBatchMergeTasks,
 } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
@@ -29,29 +25,21 @@ import { OrphansPool } from "@/client/components/curation/OrphansPool";
 import { TaskRow } from "@/client/components/curation/TaskRow";
 import { DraggableJiraCard } from "@/client/components/curation/DraggableJiraCard";
 import { DraggablePRCard } from "@/client/components/curation/DraggablePRCard";
-import { AutoMatchModal } from "@/client/components/curation/AutoMatchModal";
-import type { Task, TaskWithRepository, AutoMatchResult } from "@/client/lib/types";
+import type { Task, TaskWithRepository } from "@/client/lib/types";
 
 export function CurationPage() {
-  const { data: linkedTasks, isLoading: tasksLoading, refetch: refetchLinked } = useTasksWithRelationsQuery();
-  const { data: jiraOrphans, isLoading: jiraLoading, refetch: refetchJira } = useOrphanJiraTasksQuery();
-  const { data: prOrphans, isLoading: prLoading, refetch: refetchPr } = useOrphanPrTasksQuery();
+  const { data: linkedTasks, isLoading: tasksLoading } = useTasksWithRelationsQuery();
+  const { data: jiraOrphans, isLoading: jiraLoading } = useOrphanJiraTasksQuery();
+  const { data: prOrphans, isLoading: prLoading } = useOrphanPrTasksQuery();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
 
   const mergeTasks = useMergeTasks();
-  const autoMatch = useAutoMatchOrphans();
-  const batchMerge = useBatchMergeTasks();
 
   const [activeDrag, setActiveDrag] = useState<{
     type: "jira" | "pr";
     task: Task | TaskWithRepository;
   } | null>(null);
-
-  const [autoMatchState, setAutoMatchState] = useState<{
-    open: boolean;
-    matches: AutoMatchResult["matches"];
-  }>({ open: false, matches: [] });
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -115,32 +103,6 @@ export function CurationPage() {
     }
   };
 
-  const handleAutoMatch = () => {
-    autoMatch.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.total === 0) {
-          toast.info("No auto-matches found");
-        } else {
-          setAutoMatchState({ open: true, matches: result.matches });
-        }
-      },
-      onError: () => toast.error("Auto-match failed"),
-    });
-  };
-
-  const handleBatchMerge = (pairs: Array<{ targetId: number; sourceId: number }>) => {
-    batchMerge.mutate(pairs, {
-      onSuccess: (results) => {
-        setAutoMatchState({ open: false, matches: [] });
-        toast.success(`Merged ${results.length} task${results.length !== 1 ? "s" : ""}`);
-        refetchLinked();
-        refetchJira();
-        refetchPr();
-      },
-      onError: () => toast.error("Batch merge failed"),
-    });
-  };
-
   const isLoading = tasksLoading || jiraLoading || prLoading;
 
   if (isLoading) {
@@ -172,17 +134,7 @@ export function CurationPage() {
                 Merge orphan Jira issues with PRs by dragging one onto the other
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleAutoMatch}
-                disabled={autoMatch.isPending}
-              >
-                <Wand2 className="h-4 w-4 mr-2" />
-                Auto-match
-              </Button>
-              <RefreshButton />
-            </div>
+            <RefreshButton />
           </div>
 
           {/* Linked Tasks (manual + merged) */}
@@ -227,17 +179,6 @@ export function CurationPage() {
           )}
         </DragOverlay>
 
-        {/* Auto-Match Modal */}
-        <AutoMatchModal
-          open={autoMatchState.open}
-          onOpenChange={(open) => setAutoMatchState((s) => ({ ...s, open }))}
-          matches={autoMatchState.matches}
-          jiraOrphans={jiraOrphansList}
-          prOrphans={prOrphansList}
-          jiraHost={jiraHost}
-          onMerge={handleBatchMerge}
-          isMerging={batchMerge.isPending}
-        />
       </DndContext>
     </TooltipProvider>
   );
