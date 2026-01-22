@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, GitMerge, FileEdit, MessageSquare } from "lucide-react";
+import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -73,21 +73,7 @@ interface PrStatusIconProps {
 }
 
 export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
-  if (isDraft) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex cursor-default">
-            <FileEdit className="h-4 w-4 text-muted-foreground" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Draft PR
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
+  // Check terminal states first (take precedence over draft)
   if (prState === "merged") {
     return (
       <Tooltip>
@@ -96,9 +82,33 @@ export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
             <GitMerge className="h-4 w-4 text-purple-500" />
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          Merged
-        </TooltipContent>
+        <TooltipContent>Merged</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (prState === "closed") {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-default">
+            <GitPullRequestClosed className="h-4 w-4 text-red-500" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Closed</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (isDraft) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-default">
+            <FileEdit className="h-4 w-4 text-muted-foreground" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Draft PR</TooltipContent>
       </Tooltip>
     );
   }
