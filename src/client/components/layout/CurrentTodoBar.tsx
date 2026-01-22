@@ -27,7 +27,7 @@ export function CurrentTodoBar() {
   if (isLoading || !currentTodo) return null;
 
   return (
-    <div className="w-full border-b bg-muted/30 px-4 py-2">
+    <div className="w-full border-b bg-lime-50 dark:bg-lime-700/40 px-4 py-2">
       <div className="flex items-center gap-3 max-w-4xl mx-auto">
         <Checkbox
           checked={false}
