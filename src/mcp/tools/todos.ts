@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { get, post, del, type Todo, type ListResponse } from "../client.js";
+import { get, post, type Todo, type ListResponse } from "../client.js";
 
 export function registerTodoTools(server: McpServer) {
   // list_todos
@@ -65,26 +65,6 @@ export function registerTodoTools(server: McpServer) {
       try {
         const todo = await post<Todo>(`/api/v1/todos/${id}/toggle`);
         return { content: [{ type: "text", text: JSON.stringify(todo) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // delete_todo
-  server.registerTool(
-    "delete_todo",
-    {
-      description: "Delete a todo item",
-      inputSchema: {
-        id: z.number().describe("Todo ID to delete"),
-      },
-    },
-    async ({ id }) => {
-      try {
-        await del(`/api/v1/todos/${id}`);
-        return { content: [{ type: "text", text: JSON.stringify({ success: true, deletedId: id }) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
