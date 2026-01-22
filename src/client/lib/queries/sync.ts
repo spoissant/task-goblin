@@ -1,26 +1,65 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { SyncResult, Task, Repository } from "../types";
+import type { SyncResult, MatchResult, Task, Repository } from "../types";
 import { taskKeys } from "./tasks";
 
-export function useSyncJira() {
+export type SyncStep = "jira" | "github" | "matching";
+
+export interface SyncOptions {
+  onStepChange?: (step: SyncStep | null) => void;
+}
+
+export function useSyncMatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.post<SyncResult>("/sync/jira"),
+    mutationFn: () => api.post<MatchResult>("/sync/match"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
 
-export function useSyncGitHub() {
+export function useSyncJira(options?: SyncOptions) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.post<SyncResult>("/sync/github"),
+    mutationFn: async () => {
+      options?.onStepChange?.("jira");
+      const jiraResult = await api.post<SyncResult>("/sync/jira");
+
+      options?.onStepChange?.("matching");
+      const matchResult = await api.post<MatchResult>("/sync/match");
+
+      return { ...jiraResult, merged: matchResult.merged };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+    onSettled: () => {
+      options?.onStepChange?.(null);
+    },
+  });
+}
+
+export function useSyncGitHub(options?: SyncOptions) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      options?.onStepChange?.("github");
+      const githubResult = await api.post<SyncResult>("/sync/github");
+
+      options?.onStepChange?.("matching");
+      const matchResult = await api.post<MatchResult>("/sync/match");
+
+      return { ...githubResult, merged: matchResult.merged };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+    onSettled: () => {
+      options?.onStepChange?.(null);
     },
   });
 }
@@ -28,31 +67,45 @@ export function useSyncGitHub() {
 interface SyncAllResult {
   jira?: SyncResult;
   github?: SyncResult;
+  merged?: number;
 }
 
-export function useSyncAll() {
+export function useSyncAll(options?: SyncOptions) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (): Promise<SyncAllResult> => {
       const results: SyncAllResult = {};
 
+      options?.onStepChange?.("jira");
       try {
         results.jira = await api.post<SyncResult>("/sync/jira");
       } catch {
         // Jira sync failed, continue with GitHub
       }
 
+      options?.onStepChange?.("github");
       try {
         results.github = await api.post<SyncResult>("/sync/github");
       } catch {
         // GitHub sync failed
       }
 
+      options?.onStepChange?.("matching");
+      try {
+        const matchResult = await api.post<MatchResult>("/sync/match");
+        results.merged = matchResult.merged;
+      } catch {
+        // Match failed
+      }
+
       return results;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+    onSettled: () => {
+      options?.onStepChange?.(null);
     },
   });
 }

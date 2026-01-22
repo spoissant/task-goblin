@@ -1,4 +1,5 @@
-import { useSyncJira, useSyncGitHub, useSyncAll } from "@/client/lib/queries";
+import { useState, useMemo } from "react";
+import { useSyncJira, useSyncGitHub, useSyncAll, type SyncStep } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import {
   DropdownMenu,
@@ -9,17 +10,31 @@ import {
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+const stepLabels: Record<SyncStep, string> = {
+  jira: "Jira...",
+  github: "GitHub...",
+  matching: "matching...",
+};
+
 export function RefreshButton() {
-  const syncJira = useSyncJira();
-  const syncGitHub = useSyncGitHub();
-  const syncAll = useSyncAll();
+  const [syncStep, setSyncStep] = useState<SyncStep | null>(null);
+
+  const syncOptions = useMemo(() => ({ onStepChange: setSyncStep }), []);
+
+  const syncJira = useSyncJira(syncOptions);
+  const syncGitHub = useSyncGitHub(syncOptions);
+  const syncAll = useSyncAll(syncOptions);
 
   const isLoading = syncJira.isPending || syncGitHub.isPending || syncAll.isPending;
 
   const handleSyncJira = () => {
     syncJira.mutate(undefined, {
       onSuccess: (result) => {
-        toast.success(`Jira sync: ${result.created ?? 0} created, ${result.updated ?? 0} updated`);
+        const parts = [`${result.created ?? 0} created`, `${result.updated ?? 0} updated`];
+        if (result.merged && result.merged > 0) {
+          parts.push(`${result.merged} auto-merged`);
+        }
+        toast.success(`Jira sync: ${parts.join(", ")}`);
       },
       onError: (error) => {
         toast.error(`Jira sync failed: ${error.message}`);
@@ -50,7 +65,7 @@ export function RefreshButton() {
         const jiraUpdated = results.jira?.updated ?? 0;
         const ghCreated = results.github?.created ?? 0;
         const ghUpdated = results.github?.updated ?? 0;
-        const merged = results.github?.merged ?? 0;
+        const merged = results.merged ?? 0;
 
         const totalCreated = jiraCreated + ghCreated;
         const totalUpdated = jiraUpdated + ghUpdated;
@@ -71,12 +86,14 @@ export function RefreshButton() {
     });
   };
 
+  const buttonLabel = syncStep ? stepLabels[syncStep] : "Sync";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Sync
+          {buttonLabel}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

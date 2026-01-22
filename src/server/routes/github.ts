@@ -9,6 +9,7 @@ import {
 } from "../services/github-sync";
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
 import { backfillDescriptions } from "../services/backfill-descriptions";
+import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
 
 export const githubRoutes: Routes = {
@@ -47,6 +48,13 @@ export const githubRoutes: Routes = {
         }
         throw err;
       }
+    },
+  },
+
+  "/api/v1/sync/match": {
+    async POST() {
+      const merged = await autoMatchAndMerge();
+      return json({ merged });
     },
   },
 
