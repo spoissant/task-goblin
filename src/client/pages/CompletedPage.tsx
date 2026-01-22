@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import type { TaskWithRepository } from "@/client/lib/types";
 
@@ -48,6 +48,13 @@ export function CompletedPage() {
             {data.total} completed task{data.total !== 1 ? "s" : ""}
           </span>
         )}
+      </div>
+
+      <div className="flex items-center gap-2 mb-6 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-800 dark:text-amber-200 text-sm">
+        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+        <span>
+          Completed issues are NOT synced during the "Sync all" action. Use the sync button on individual rows if you need the latest state.
+        </span>
       </div>
 
       {isLoading && (
