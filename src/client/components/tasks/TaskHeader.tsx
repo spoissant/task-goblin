@@ -74,7 +74,7 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Select value={task.status} onValueChange={onStatusChange}>
+            <Select value={task.status} onValueChange={onStatusChange} disabled={!!task.jiraKey}>
               <SelectTrigger className="w-36">
                 <SelectValue />
               </SelectTrigger>
@@ -95,11 +95,11 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
                   <X className="h-4 w-4" />
                 </Button>
               </>
-            ) : (
+            ) : !task.jiraKey ? (
               <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)}>
                 <Pencil className="h-4 w-4" />
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </CardHeader>
