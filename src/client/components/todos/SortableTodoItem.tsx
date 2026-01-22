@@ -8,11 +8,12 @@ import type { TodoWithTask } from "@/client/lib/types";
 
 interface SortableTodoItemProps {
   todo: TodoWithTask;
+  remainingCount?: number;
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
 }
 
-export function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemProps) {
+export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete }: SortableTodoItemProps) {
   const {
     attributes,
     listeners,
@@ -32,8 +33,13 @@ export function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemP
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-muted/50 group"
+      className="relative flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-muted/50 group"
     >
+      {remainingCount !== undefined && remainingCount > 0 && (
+        <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+          +{remainingCount}
+        </span>
+      )}
       <button
         {...attributes}
         {...listeners}
@@ -46,13 +52,6 @@ export function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemP
         onCheckedChange={() => onToggle(todo.id)}
       />
       <div className="flex-1 min-w-0">
-        <span
-          className={`text-sm block ${
-            todo.done ? "line-through text-muted-foreground" : ""
-          }`}
-        >
-          {todo.content}
-        </span>
         {todo.task && (
           <Link
             to={`/tasks/${todo.taskId}`}
@@ -62,6 +61,13 @@ export function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemP
             {todo.task.title}
           </Link>
         )}
+        <span
+          className={`text-sm block ${
+            todo.done ? "line-through text-muted-foreground" : ""
+          }`}
+        >
+          {todo.content}
+        </span>
       </div>
       <Button
         size="icon"

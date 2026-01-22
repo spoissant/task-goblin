@@ -31,6 +31,7 @@ import { toast } from "sonner";
 
 export function TodosPage() {
   const [hideCompleted, setHideCompleted] = useState(true);
+  const [groupByTask, setGroupByTask] = useState(false);
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
@@ -47,13 +48,43 @@ export function TodosPage() {
     })
   );
 
+  const remainingByTask = useMemo(() => {
+    if (!groupByTask || !data?.items) return new Map<number, number>();
+    const counts = new Map<number, number>();
+    for (const todo of data.items) {
+      if (todo.taskId && !todo.done) {
+        counts.set(todo.taskId, (counts.get(todo.taskId) ?? 0) + 1);
+      }
+    }
+    // Subtract 1 since we show the first one
+    for (const [taskId, count] of counts) {
+      counts.set(taskId, count - 1);
+    }
+    return counts;
+  }, [groupByTask, data?.items]);
+
   const filteredTodos = useMemo(() => {
     if (!data?.items) return [];
+
+    let todos = data.items;
+
     if (hideCompleted) {
-      return data.items.filter((todo) => !todo.done);
+      todos = todos.filter((todo) => !todo.done);
     }
-    return data.items;
-  }, [data?.items, hideCompleted]);
+
+    if (groupByTask) {
+      const seenTasks = new Set<number>();
+      todos = todos.filter((todo) => {
+        if (!todo.taskId) return true; // Keep standalone todos
+        if (todo.done) return false; // Skip done when grouping
+        if (seenTasks.has(todo.taskId)) return false; // Already showed one for this task
+        seenTasks.add(todo.taskId);
+        return true;
+      });
+    }
+
+    return todos;
+  }, [data?.items, hideCompleted, groupByTask]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -164,6 +195,16 @@ export function TodosPage() {
               Hide completed
             </Label>
           </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="group-by-task"
+              checked={groupByTask}
+              onCheckedChange={(checked) => setGroupByTask(checked === true)}
+            />
+            <Label htmlFor="group-by-task" className="text-sm cursor-pointer">
+              Group by task
+            </Label>
+          </div>
           {!isAdding && (
             <Button onClick={() => setIsAdding(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -219,6 +260,7 @@ export function TodosPage() {
               <SortableTodoItem
                 key={todo.id}
                 todo={todo}
+                remainingCount={groupByTask && todo.taskId ? remainingByTask.get(todo.taskId) ?? 0 : 0}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
               />
