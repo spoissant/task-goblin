@@ -1,7 +1,8 @@
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
 import { StatusBadge } from "@/client/components/tasks/StatusBadge";
-import { ExternalLink, GitPullRequest, Scissors, MessageSquare } from "lucide-react";
+import { ExternalLink, Scissors, MessageSquare } from "lucide-react";
+import { PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import { useSplitTask } from "@/client/lib/queries";
 import { toast } from "sonner";
 import type { TaskWithRepository } from "@/client/lib/types";
@@ -52,14 +53,14 @@ export function TaskRow({ task, jiraHost, getPrUrl }: Props) {
               rel="noopener noreferrer"
               className="flex items-center gap-1 hover:text-primary"
             >
-              <GitPullRequest className="h-3 w-3" />
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
               <Badge variant="secondary">#{task.prNumber}</Badge>
               <ExternalLink className="h-3 w-3 opacity-50" />
             </a>
           )}
           {task.prNumber && !prUrl && (
             <div className="flex items-center gap-1">
-              <GitPullRequest className="h-3 w-3" />
+              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
               <Badge variant="secondary">#{task.prNumber}</Badge>
             </div>
           )}

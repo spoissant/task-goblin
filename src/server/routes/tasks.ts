@@ -461,8 +461,11 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.prNumber),
             isNull(tasks.jiraKey),
-            // Exclude merged PRs
-            or(isNull(tasks.prState), ne(tasks.prState, "merged"))
+            // Exclude merged and closed PRs
+            or(
+              isNull(tasks.prState),
+              and(ne(tasks.prState, "merged"), ne(tasks.prState, "closed"))
+            )
           )
         )
         .orderBy(statusOrderExpr);

@@ -234,11 +234,11 @@ export async function getCompletedConditionAsync(): Promise<ReturnType<typeof or
       isNull(tasks.prNumber),
       jiraStatusInCondition()
     ),
-    // PR-only completed: prNumber set, no jiraKey, prState = merged
+    // PR-only completed: prNumber set, no jiraKey, prState = merged or closed
     and(
       isNotNull(tasks.prNumber),
       isNull(tasks.jiraKey),
-      eq(tasks.prState, "merged")
+      or(eq(tasks.prState, "merged"), eq(tasks.prState, "closed"))
     ),
     // Both completed: jiraKey AND prNumber set, both conditions met
     and(
@@ -353,11 +353,11 @@ export function getCompletedCondition() {
       isNull(tasks.prNumber),
       jiraStatusInCondition()
     ),
-    // PR-only completed: prNumber set, no jiraKey, prState = merged
+    // PR-only completed: prNumber set, no jiraKey, prState = merged or closed
     and(
       isNotNull(tasks.prNumber),
       isNull(tasks.jiraKey),
-      eq(tasks.prState, "merged")
+      or(eq(tasks.prState, "merged"), eq(tasks.prState, "closed"))
     ),
     // Both completed: jiraKey AND prNumber set, both conditions met
     and(

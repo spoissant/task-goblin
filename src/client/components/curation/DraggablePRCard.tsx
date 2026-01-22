@@ -1,6 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Badge } from "@/client/components/ui/badge";
-import { GripVertical, GitPullRequest, ExternalLink, MessageSquare } from "lucide-react";
+import { GripVertical, ExternalLink, MessageSquare } from "lucide-react";
+import { PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import type { Task, TaskWithRepository } from "@/client/lib/types";
 
 interface Props {
@@ -46,7 +47,7 @@ export function DraggablePRCard({ task, isOrphan = false, prUrl }: Props) {
       {...listeners}
     >
       <GripVertical className="h-3 w-3 text-muted-foreground flex-shrink-0 cursor-grab" />
-      <GitPullRequest className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+      <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
       <Badge variant="outline" className="flex-shrink-0">
         #{task.prNumber}
       </Badge>
