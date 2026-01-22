@@ -6,34 +6,24 @@ import { tasks, settings } from "../../db/schema";
  * Status configuration stored in settings as JSON
  */
 export interface StatusConfig {
-  name: string;          // Jira status name (e.g., "In Progress")
+  name: string;          // Display name (our status, not necessarily Jira's)
   color: string | null;  // Tailwind class, null = use default
   order: number;         // Sort position
   isCompleted: boolean;  // Show in Completed vs Tasks page
-  isSelectable: boolean; // Show in manual task dropdowns
+  isDefault?: boolean;   // Default status for unknown statuses (exactly one should be true)
   filter?: string | null; // Filter group for dashboard tabs (null = not in any filter)
-  isDefault?: boolean;    // Default status for unknown statuses (exactly one should be true)
+  jiraMapping?: string[]; // Jira statuses that map to this status
 }
 
 // Default statuses when no config exists (for backwards compatibility)
 const DEFAULT_STATUS_CONFIG: StatusConfig[] = [
-  { name: "To Do", color: "bg-slate-500", order: 10, isCompleted: false, isSelectable: true, filter: "Backlog", isDefault: true },
-  { name: "In Progress", color: "bg-fuchsia-500", order: 9, isCompleted: false, isSelectable: true, filter: "Active" },
-  { name: "Code Review", color: "bg-yellow-600", order: 8, isCompleted: false, isSelectable: true, filter: "Active" },
-  { name: "Ready for Test", color: "bg-blue-600", order: 7, isCompleted: false, isSelectable: false, filter: "Active" },
-  { name: "QA", color: "bg-blue-600", order: 6, isCompleted: false, isSelectable: true, filter: "Active" },
-  { name: "Ready to Merge", color: "bg-green-700", order: 5, isCompleted: false, isSelectable: true, filter: "Review" },
-  { name: "Ready to Prod", color: "bg-green-700", order: 4, isCompleted: true, isSelectable: false, filter: null },
-  { name: "Closed", color: "bg-green-700", order: 3, isCompleted: true, isSelectable: false, filter: null },
-  { name: "Cancelled", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false, filter: null },
-  { name: "Rejected", color: "bg-green-700", order: 2, isCompleted: true, isSelectable: false, filter: null },
-  { name: "Done", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: true, filter: null },
-  { name: "Blocked", color: "bg-red-500", order: 13, isCompleted: false, isSelectable: true, filter: "Backlog" },
-  { name: "Accepted", color: "bg-slate-500", order: 11, isCompleted: false, isSelectable: false, filter: "Backlog" },
-  { name: "Backlog", color: "bg-slate-500", order: 12, isCompleted: false, isSelectable: false, filter: "Backlog" },
-  { name: "On Hold", color: "bg-slate-500", order: 13, isCompleted: false, isSelectable: false, filter: "Backlog" },
-  { name: "Define Preventive Measures", color: "bg-green-700", order: 1, isCompleted: true, isSelectable: false, filter: null },
-  { name: "Completed", color: "bg-green-700", order: 0, isCompleted: true, isSelectable: false, filter: null },
+  { name: "Backlog", color: "bg-slate-500", order: 10, isCompleted: false, isDefault: true, filter: "Backlog", jiraMapping: ["To Do", "Open", "Reopened", "Accepted", "Backlog", "On Hold"] },
+  { name: "In Progress", color: "bg-fuchsia-500", order: 9, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["In Progress"] },
+  { name: "Code Review", color: "bg-yellow-600", order: 8, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["Code Review", "Review"] },
+  { name: "QA", color: "bg-blue-600", order: 7, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["Ready for Test", "QA", "Testing"] },
+  { name: "Ready to Merge", color: "bg-green-700", order: 6, isCompleted: false, isDefault: false, filter: "Review", jiraMapping: ["Ready to Merge"] },
+  { name: "Blocked", color: "bg-red-500", order: 5, isCompleted: false, isDefault: false, filter: "Backlog", jiraMapping: ["Blocked"] },
+  { name: "Done", color: "bg-green-700", order: 0, isCompleted: true, isDefault: false, filter: null, jiraMapping: ["Done", "Closed", "Ready to Prod", "Cancelled", "Rejected", "Completed", "Define Preventive Measures"] },
 ];
 
 const DEFAULT_COLOR = "bg-slate-500";
@@ -130,29 +120,92 @@ export async function saveStatusConfig(config: StatusConfig[]): Promise<void> {
 }
 
 /**
- * Get selectable statuses for manual task creation/editing
+ * Get all statuses (for manual task creation/editing - all are now selectable)
  */
-export async function getSelectableStatuses(): Promise<StatusConfig[]> {
+export async function getAllStatuses(): Promise<StatusConfig[]> {
   const config = await getStatusConfig();
-  return config.filter(s => s.isSelectable).sort((a, b) => a.order - b.order);
+  return [...config].sort((a, b) => b.order - a.order);
+}
+
+// For backwards compatibility
+export const getSelectableStatuses = getAllStatuses;
+
+/**
+ * Build reverse mapping from Jira status (lowercase) -> our status config
+ */
+export async function buildJiraStatusMap(): Promise<Map<string, StatusConfig>> {
+  const config = await getStatusConfig();
+  const map = new Map<string, StatusConfig>();
+
+  for (const status of config) {
+    // Map our status name to itself
+    map.set(normalizeStatus(status.name), status);
+
+    // Map all jiraMapping entries to this status
+    if (status.jiraMapping) {
+      for (const jiraStatus of status.jiraMapping) {
+        map.set(normalizeStatus(jiraStatus), status);
+      }
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Resolve a Jira/task status to our status config
+ * Returns the matching config, or the default status config if not found
+ */
+export async function resolveStatusConfig(status: string): Promise<StatusConfig> {
+  const map = await buildJiraStatusMap();
+  const normalized = normalizeStatus(status);
+  const resolved = map.get(normalized);
+
+  if (resolved) {
+    return resolved;
+  }
+
+  // Fallback to default status
+  return getDefaultStatus();
 }
 
 /**
  * Get completed status names (for filtering)
+ * Returns all Jira status names (from jiraMapping) and our status names that are completed
  */
 export async function getCompletedStatusNames(): Promise<string[]> {
   const config = await getStatusConfig();
-  return config.filter(s => s.isCompleted).map(s => s.name.toLowerCase());
+  const names: string[] = [];
+
+  for (const status of config) {
+    if (status.isCompleted) {
+      // Add our status name
+      names.push(status.name.toLowerCase());
+
+      // Add all mapped Jira statuses
+      if (status.jiraMapping) {
+        for (const jiraStatus of status.jiraMapping) {
+          names.push(jiraStatus.toLowerCase());
+        }
+      }
+    }
+  }
+
+  return [...new Set(names)]; // Deduplicate
 }
 
 /**
- * Validate if a status is selectable for manual tasks
+ * Validate if a status is valid for manual tasks (any of our defined statuses)
  */
-export async function isStatusSelectable(status: string): Promise<boolean> {
+export async function isStatusValid(status: string): Promise<boolean> {
   const config = await getStatusConfig();
-  const s = status.toLowerCase();
-  return config.some(c => c.isSelectable && c.name.toLowerCase() === s);
+  const s = normalizeStatus(status);
+  // Allow any of our status names (including completed ones like "Done")
+  return config.some(c => normalizeStatus(c.name) === s);
 }
+
+// For backwards compatibility
+export const isStatusSelectable = isStatusValid;
 
 // Helper to normalize status name (for comparison)
 function normalizeStatus(status: string): string {
@@ -213,27 +266,46 @@ export async function getNotCompletedConditionAsync(): Promise<ReturnType<typeof
 
 /**
  * Generate SQL CASE expression for status ordering from config
+ * Maps all jiraMapping statuses to their corresponding order values
  */
 export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>> {
   const config = await getStatusConfig();
+  const defaultStatus = config.find(s => s.isDefault);
+  const defaultOrder = defaultStatus?.order ?? 999;
 
   // Build CASE expression from config
   const cases: ReturnType<typeof sql>[] = [];
 
   for (const status of config) {
-    const normalizedName = normalizeStatus(status.name);
-    // Handle both underscore and space variants
-    const underscoreName = normalizedName.replace(/ /g, "_");
+    // Collect all status names to map (our name + jiraMapping)
+    const allNames: string[] = [status.name];
+    if (status.jiraMapping) {
+      allNames.push(...status.jiraMapping);
+    }
 
-    if (normalizedName === underscoreName) {
-      cases.push(sql`WHEN LOWER(${tasks.status}) = ${normalizedName} THEN ${status.order}`);
+    // Build list of normalized variants (both space and underscore versions)
+    const variants: string[] = [];
+    for (const name of allNames) {
+      const normalized = normalizeStatus(name);
+      variants.push(normalized);
+      const underscored = normalized.replace(/ /g, "_");
+      if (underscored !== normalized) {
+        variants.push(underscored);
+      }
+    }
+
+    // Deduplicate
+    const uniqueVariants = [...new Set(variants)];
+
+    if (uniqueVariants.length === 1) {
+      cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueVariants[0]} THEN ${status.order}`);
     } else {
-      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${normalizedName}, ${underscoreName}) THEN ${status.order}`);
+      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${sql.join(uniqueVariants.map(v => sql`${v}`), sql`, `)}) THEN ${status.order}`);
     }
   }
 
-  // Default case for unknown statuses
-  cases.push(sql`ELSE 999`);
+  // Default case for unknown statuses (use default status's order)
+  cases.push(sql`ELSE ${defaultOrder}`);
 
   return sql`CASE ${sql.join(cases, sql` `)} END`;
 }

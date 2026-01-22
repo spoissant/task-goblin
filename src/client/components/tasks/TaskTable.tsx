@@ -65,15 +65,27 @@ export function TaskTable({ filterGroup }: TaskTableProps) {
   }, [reposData?.items]);
 
   // Build a map of normalized status name -> filter for the selected filter group
+  // Includes jiraMapping entries mapped to their parent status's filter
   const { statusFilterMap, defaultFilter } = useMemo(() => {
     const map = new Map<string, string | null>();
     let defaultFilterValue: string | null = null;
 
     if (statusConfig?.statuses) {
       for (const status of statusConfig.statuses) {
-        map.set(normalizeStatus(status.name), status.filter ?? null);
+        const filter = status.filter ?? null;
+
+        // Map our status name
+        map.set(normalizeStatus(status.name), filter);
+
+        // Map all jiraMapping entries to the same filter
+        if (status.jiraMapping) {
+          for (const jiraStatus of status.jiraMapping) {
+            map.set(normalizeStatus(jiraStatus), filter);
+          }
+        }
+
         if (status.isDefault) {
-          defaultFilterValue = status.filter ?? null;
+          defaultFilterValue = filter;
         }
       }
     }

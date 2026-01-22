@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useStatusConfigQuery,
   useUpdateStatusConfig,
@@ -7,6 +7,7 @@ import {
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
+import { Badge } from "@/client/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -23,11 +24,72 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { ArrowUp, ArrowDown, RefreshCw, Save, Loader2, Trash2 } from "lucide-react";
+import { ArrowUp, ArrowDown, RefreshCw, Save, Loader2, Trash2, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { StatusConfig } from "@/client/lib/types";
 
 const USE_DEFAULT_VALUE = "__default__";
+
+// Simple tag input component for jiraMapping
+interface TagInputProps {
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  placeholder?: string;
+}
+
+function TagInput({ tags, onChange, placeholder = "Add status..." }: TagInputProps) {
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && inputValue.trim()) {
+      e.preventDefault();
+      const newTag = inputValue.trim();
+      if (!tags.some(t => t.toLowerCase() === newTag.toLowerCase())) {
+        onChange([...tags, newTag]);
+      }
+      setInputValue("");
+    } else if (e.key === "Backspace" && !inputValue && tags.length > 0) {
+      onChange(tags.slice(0, -1));
+    }
+  };
+
+  const removeTag = (index: number) => {
+    onChange(tags.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div
+      className="flex flex-wrap gap-1 p-1 border rounded-md min-h-[2rem] cursor-text bg-background"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {tags.map((tag, index) => (
+        <Badge key={index} variant="secondary" className="h-6 text-xs gap-1 pr-1">
+          {tag}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeTag(index);
+            }}
+            className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </Badge>
+      ))}
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={tags.length === 0 ? placeholder : ""}
+        className="flex-1 min-w-[80px] h-6 text-xs bg-transparent outline-none"
+      />
+    </div>
+  );
+}
 
 const COLOR_OPTIONS = [
   { value: USE_DEFAULT_VALUE, label: "Use Default" },
@@ -158,13 +220,35 @@ export function StatusConfigForm() {
   const handleFetchStatuses = () => {
     fetchStatuses.mutate(undefined, {
       onSuccess: (result) => {
-        toast.success(`Fetched ${result.fetched} statuses, added ${result.added} new`);
-        setHasChanges(false);
+        if (result.unmapped.length > 0) {
+          toast.info(`Found ${result.unmapped.length} unmapped Jira statuses: ${result.unmapped.join(", ")}`);
+        } else {
+          toast.success(`All ${result.fetched} Jira statuses are mapped`);
+        }
       },
       onError: (err) => {
         toast.error(`Failed to fetch: ${err.message}`);
       },
     });
+  };
+
+  const handleJiraMappingChange = (index: number, mapping: string[]) => {
+    handleStatusChange(index, "jiraMapping", mapping);
+  };
+
+  const handleAddStatus = () => {
+    const maxOrder = Math.max(...statuses.map(s => s.order), 0);
+    const newStatus: StatusConfig = {
+      name: "New Status",
+      color: null,
+      order: maxOrder + 1,
+      isCompleted: false,
+      isDefault: false,
+      filter: null,
+      jiraMapping: [],
+    };
+    setStatuses(prev => [...prev, newStatus]);
+    setHasChanges(true);
   };
 
   if (isLoading) {
@@ -207,6 +291,10 @@ export function StatusConfigForm() {
           </Select>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleAddStatus}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Status
+          </Button>
           <Button
             variant="outline"
             onClick={handleFetchStatuses}
@@ -230,18 +318,18 @@ export function StatusConfigForm() {
         </div>
       </div>
 
-      <div className="border rounded-lg">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[50px]">Order</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead className="w-[120px]">Filter</TableHead>
-              <TableHead className="w-[180px]">Color</TableHead>
-              <TableHead className="w-[80px] text-center">Completed</TableHead>
-              <TableHead className="w-[80px] text-center">Selectable</TableHead>
-              <TableHead className="w-[80px] text-center">Default</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[120px]">Name</TableHead>
+              <TableHead className="w-[100px]">Filter</TableHead>
+              <TableHead className="w-[150px]">Color</TableHead>
+              <TableHead className="min-w-[200px]">Jira Mapping</TableHead>
+              <TableHead className="w-[70px] text-center">Done</TableHead>
+              <TableHead className="w-[70px] text-center">Default</TableHead>
+              <TableHead className="w-[40px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -269,13 +357,19 @@ export function StatusConfigForm() {
                     </Button>
                   </div>
                 </TableCell>
-                <TableCell className="font-medium">{status.name}</TableCell>
+                <TableCell>
+                  <Input
+                    value={status.name}
+                    onChange={(e) => handleStatusChange(index, "name", e.target.value)}
+                    className="h-8 font-medium"
+                  />
+                </TableCell>
                 <TableCell>
                   <Input
                     value={status.filter || ""}
                     onChange={(e) => handleStatusChange(index, "filter", e.target.value || null)}
                     placeholder="None"
-                    className="h-8"
+                    className="h-8 text-xs"
                   />
                 </TableCell>
                 <TableCell>
@@ -283,7 +377,7 @@ export function StatusConfigForm() {
                     value={status.color || USE_DEFAULT_VALUE}
                     onValueChange={(v) => handleStatusChange(index, "color", v === USE_DEFAULT_VALUE ? null : v)}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full h-8">
                       <SelectValue placeholder="Use Default" />
                     </SelectTrigger>
                     <SelectContent>
@@ -300,19 +394,18 @@ export function StatusConfigForm() {
                     </SelectContent>
                   </Select>
                 </TableCell>
+                <TableCell>
+                  <TagInput
+                    tags={status.jiraMapping || []}
+                    onChange={(mapping) => handleJiraMappingChange(index, mapping)}
+                    placeholder="Add Jira status..."
+                  />
+                </TableCell>
                 <TableCell className="text-center">
                   <Checkbox
                     checked={status.isCompleted}
                     onCheckedChange={(checked) =>
                       handleStatusChange(index, "isCompleted", !!checked)
-                    }
-                  />
-                </TableCell>
-                <TableCell className="text-center">
-                  <Checkbox
-                    checked={status.isSelectable}
-                    onCheckedChange={(checked) =>
-                      handleStatusChange(index, "isSelectable", !!checked)
                     }
                   />
                 </TableCell>
@@ -347,13 +440,13 @@ export function StatusConfigForm() {
           <strong>Filter:</strong> Groups statuses into tabs on the dashboard (empty = not in any filter tab)
         </p>
         <p>
-          <strong>Completed:</strong> Tasks with these statuses appear in the Completed page
+          <strong>Jira Mapping:</strong> Jira statuses that should use this status's color, filter, and order. Press Enter to add.
         </p>
         <p>
-          <strong>Selectable:</strong> These statuses are available when creating/editing manual tasks
+          <strong>Done:</strong> Tasks with these statuses (and their mappings) appear in the Completed page
         </p>
         <p>
-          <strong>Default:</strong> Unknown statuses inherit this status's filter and color
+          <strong>Default:</strong> Unmapped Jira statuses inherit this status's filter and color
         </p>
       </div>
     </div>

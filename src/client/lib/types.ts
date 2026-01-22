@@ -135,9 +135,9 @@ export interface StatusConfig {
   color: string | null;
   order: number;
   isCompleted: boolean;
-  isSelectable: boolean;
-  filter?: string | null;
   isDefault?: boolean;
+  filter?: string | null;
+  jiraMapping?: string[];
 }
 
 export interface StatusConfigResponse {
@@ -147,7 +147,7 @@ export interface StatusConfigResponse {
 
 export interface FetchStatusesResponse extends StatusConfigResponse {
   fetched: number;
-  added: number;
+  unmapped: string[];
 }
 
 export interface ListResponse<T> {

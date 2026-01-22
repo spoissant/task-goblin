@@ -1,9 +1,15 @@
 import { Badge } from "@/client/components/ui/badge";
 import { cn } from "@/client/lib/utils";
 import { useStatusConfigQuery } from "@/client/lib/queries/settings";
+import type { StatusConfig } from "@/client/lib/types";
 
 // Fallback config for when query is loading or unknown status
 const FALLBACK_COLOR = "bg-slate-500";
+
+// Normalize status name for comparison (case-insensitive, handles underscore/space variants)
+function normalizeStatus(status: string): string {
+  return status.toLowerCase().replace(/_/g, " ");
+}
 
 interface StatusBadgeProps {
   status: string;
@@ -14,19 +20,34 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   const { data } = useStatusConfigQuery();
 
   const getStatusConfig = (status: string): { label: string; color: string } => {
-    const s = status.toLowerCase();
-    const normalizedS = s.replace(/_/g, " ");
+    const normalized = normalizeStatus(status);
 
-    // Try to find in config
     if (data?.statuses) {
-      for (const config of data.statuses) {
-        const configName = config.name.toLowerCase();
-        if (configName === s || configName === normalizedS) {
-          return {
-            label: config.name,
-            color: config.color || data.defaultColor || FALLBACK_COLOR,
-          };
+      // Build a lookup function that checks both name and jiraMapping
+      const findMatchingConfig = (): StatusConfig | undefined => {
+        for (const config of data.statuses) {
+          // Check our status name
+          if (normalizeStatus(config.name) === normalized) {
+            return config;
+          }
+          // Check jiraMapping array
+          if (config.jiraMapping) {
+            for (const jiraStatus of config.jiraMapping) {
+              if (normalizeStatus(jiraStatus) === normalized) {
+                return config;
+              }
+            }
+          }
         }
+        return undefined;
+      };
+
+      const matchedConfig = findMatchingConfig();
+      if (matchedConfig) {
+        return {
+          label: status, // Keep original label (e.g., show "Ready for Test" not "QA")
+          color: matchedConfig.color || data.defaultColor || FALLBACK_COLOR,
+        };
       }
 
       // Fallback for unknown status - use default status's color

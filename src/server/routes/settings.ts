@@ -201,9 +201,6 @@ export const settingsRoutes: Routes = {
         if (typeof status.isCompleted !== "boolean") {
           throw new ValidationError("Each status must have isCompleted boolean");
         }
-        if (typeof status.isSelectable !== "boolean") {
-          throw new ValidationError("Each status must have isSelectable boolean");
-        }
         // filter can be string, null, or undefined (optional)
         if (status.filter !== undefined && status.filter !== null && typeof status.filter !== "string") {
           throw new ValidationError("Status filter must be a string or null");
@@ -211,6 +208,17 @@ export const settingsRoutes: Routes = {
         // isDefault can be boolean or undefined (optional)
         if (status.isDefault !== undefined && typeof status.isDefault !== "boolean") {
           throw new ValidationError("Status isDefault must be a boolean");
+        }
+        // jiraMapping must be an array of strings if present
+        if (status.jiraMapping !== undefined) {
+          if (!Array.isArray(status.jiraMapping)) {
+            throw new ValidationError("Status jiraMapping must be an array");
+          }
+          for (const mapping of status.jiraMapping) {
+            if (typeof mapping !== "string" || !mapping.trim()) {
+              throw new ValidationError("Each jiraMapping entry must be a non-empty string");
+            }
+          }
         }
         if (status.isDefault) {
           defaultCount++;
@@ -259,7 +267,7 @@ export const settingsRoutes: Routes = {
 
   "/api/v1/settings/statuses/fetch": {
     async POST() {
-      // Fetch statuses from Jira and merge with existing config
+      // Fetch statuses from Jira and return suggestions for mapping
       let config: JiraConfig;
       try {
         config = await getJiraConfig();
@@ -278,61 +286,33 @@ export const settingsRoutes: Routes = {
 
         // Get existing config
         const existingConfig = await getStatusConfig();
-        const existingMap = new Map(
-          existingConfig.map((s) => [s.name.toLowerCase(), s])
-        );
 
-        // Merge: preserve user settings for known statuses, add new ones with defaults
-        const mergedConfig: StatusConfig[] = [];
-        const seenNames = new Set<string>();
-
-        // First, add all existing statuses (preserving their settings)
-        for (const existing of existingConfig) {
-          mergedConfig.push(existing);
-          seenNames.add(existing.name.toLowerCase());
+        // Build a set of all already-mapped Jira statuses (lowercase)
+        const mappedStatuses = new Set<string>();
+        for (const status of existingConfig) {
+          mappedStatuses.add(status.name.toLowerCase());
+          if (status.jiraMapping) {
+            for (const jiraStatus of status.jiraMapping) {
+              mappedStatuses.add(jiraStatus.toLowerCase());
+            }
+          }
         }
 
-        // Then add new statuses from Jira with defaults
-        let maxOrder = Math.max(...existingConfig.map((s) => s.order), 0);
+        // Find unmapped Jira statuses
+        const unmappedStatuses: string[] = [];
         for (const jiraStatus of jiraStatuses) {
           const name = jiraStatus.name || "";
-          if (!name || seenNames.has(name.toLowerCase())) {
-            continue;
+          if (name && !mappedStatuses.has(name.toLowerCase())) {
+            unmappedStatuses.push(name);
           }
-
-          seenNames.add(name.toLowerCase());
-          maxOrder++;
-
-          // Determine if this is likely a completed status
-          const lowerName = name.toLowerCase();
-          const isCompleted =
-            lowerName.includes("done") ||
-            lowerName.includes("closed") ||
-            lowerName.includes("completed") ||
-            lowerName.includes("cancelled") ||
-            lowerName.includes("rejected") ||
-            lowerName === "ready to prod";
-
-          mergedConfig.push({
-            name,
-            color: null, // Use default
-            order: maxOrder,
-            isCompleted,
-            isSelectable: false, // New statuses are not selectable by default
-            filter: null, // New statuses have no filter by default
-            isDefault: false, // New statuses are not the default
-          });
         }
-
-        // Save merged config
-        await saveStatusConfig(mergedConfig);
 
         const defaultColor = await getDefaultStatusColor();
         return json({
-          statuses: mergedConfig,
+          statuses: existingConfig,
           defaultColor,
           fetched: jiraStatuses.length,
-          added: mergedConfig.length - existingConfig.length,
+          unmapped: unmappedStatuses,
         });
       } catch (err: unknown) {
         const message =
