@@ -5,6 +5,7 @@ import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
 import { useDeployBranch } from "@/client/lib/queries/deploy";
+import { useSyncTask } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskNotes } from "@/client/components/tasks/TaskNotes";
 import { TaskInstructions } from "@/client/components/tasks/TaskInstructions";
@@ -36,11 +37,12 @@ export function TaskDetailPage() {
   const navigate = useNavigate();
   const taskId = parseInt(id || "0", 10);
 
-  const { data: task, isLoading, error, refetch, isFetching } = useTaskQuery(taskId);
+  const { data: task, isLoading, error } = useTaskQuery(taskId);
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const markLogRead = useMarkLogRead();
   const deployBranch = useDeployBranch();
+  const syncTask = useSyncTask();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
 
@@ -123,7 +125,6 @@ export function TaskDetailPage() {
         onSuccess: (result) => {
           if (result.success) {
             toast.success(`Deployed to ${deployTargetBranch}`);
-            refetch();
           } else if (result.conflict) {
             setConflictedFiles(result.conflictedFiles);
             setConflictDialogOpen(true);
@@ -144,9 +145,14 @@ export function TaskDetailPage() {
           Back
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncTask.mutate({ task, repo })}
+            disabled={syncTask.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncTask.isPending ? "animate-spin" : ""}`} />
+            Sync
           </Button>
           <Button variant="destructive" size="sm" onClick={handleDelete}>
             <Trash2 className="h-4 w-4 mr-2" />
