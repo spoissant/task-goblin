@@ -172,27 +172,25 @@ export async function detectDeploymentBranches(
 ): Promise<string[]> {
   if (deploymentBranches.length === 0) return [];
 
-  const onBranches: string[] = [];
-
-  for (const branch of deploymentBranches) {
-    try {
-      // Compare deployment branch against PR head branch
-      // ahead_by = commits in PR branch not in deployment branch
-      // If ahead_by === 0, the deployment branch contains all PR commits
-      const { data: comparison } = await client.repos.compareCommits({
+  // Fetch all branch comparisons in parallel
+  const results = await Promise.allSettled(
+    deploymentBranches.map((branch) =>
+      client.repos.compareCommits({
         owner,
         repo,
         base: branch,
         head: headBranch,
-      });
+      })
+    )
+  );
 
-      if (comparison.ahead_by === 0) {
-        onBranches.push(branch);
+  // Return branches where PR head is fully merged (ahead_by === 0)
+  return results
+    .map((result, i) => {
+      if (result.status === "fulfilled" && result.value.data.ahead_by === 0) {
+        return deploymentBranches[i];
       }
-    } catch {
-      // Branch may not exist or be inaccessible, skip
-    }
-  }
-
-  return onBranches;
+      return null;
+    })
+    .filter((branch): branch is string => branch !== null);
 }

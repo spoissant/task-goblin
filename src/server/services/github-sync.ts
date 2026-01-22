@@ -44,6 +44,10 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     return { synced: 0, new: 0, updated: 0, unchanged: 0 };
   }
 
+  // Build lookup maps for O(1) repo access
+  const reposByKey = new Map(repos.map((r) => [`${r.owner}/${r.repo}`, r]));
+  const reposById = new Map(repos.map((r) => [r.id, r]));
+
   // Build repo filter: (repo:owner/name OR repo:owner/name2 ...)
   const repoFilters = repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ");
 
@@ -67,48 +71,62 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
         page,
       });
 
-      for (const item of data.items) {
-        // Extract owner/repo from repository_url
-        const repoUrl = item.repository_url || "";
-        const match = repoUrl.match(/repos\/([^/]+)\/([^/]+)$/);
-        if (!match) continue;
+      // Filter items to valid PRs with matching repos
+      const validItems = data.items
+        .map((item) => {
+          const repoUrl = item.repository_url || "";
+          const match = repoUrl.match(/repos\/([^/]+)\/([^/]+)$/);
+          if (!match) return null;
+          const [, owner, repoName] = match;
+          const repo = reposByKey.get(`${owner}/${repoName}`);
+          if (!repo) return null;
+          return { item, owner, repoName, repo };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
 
-        const [, owner, repoName] = match;
-        const repo = repos.find((r) => r.owner === owner && r.repo === repoName);
-        if (!repo) continue;
+      // Process PRs in batches for parallel API calls
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < validItems.length; i += BATCH_SIZE) {
+        const batch = validItems.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(async ({ item, owner, repoName, repo }) => {
+            syncedPrs.add(`${repo.id}:${item.number}`);
 
-        syncedPrs.add(`${repo.id}:${item.number}`);
+            // Fetch full PR to get head/base branch refs (search API doesn't include them)
+            const { data: fullPr } = await client.pulls.get({
+              owner,
+              repo: repoName,
+              pull_number: item.number,
+            });
 
-        // Fetch full PR to get head/base branch refs (search API doesn't include them)
-        const { data: fullPr } = await client.pulls.get({
-          owner,
-          repo: repoName,
-          pull_number: item.number,
-        });
+            // Parse deployment branches for this repo
+            const deploymentBranches: string[] = repo.deploymentBranches
+              ? JSON.parse(repo.deploymentBranches)
+              : [];
 
-        // Parse deployment branches for this repo
-        const deploymentBranches: string[] = repo.deploymentBranches
-          ? JSON.parse(repo.deploymentBranches)
-          : [];
+            // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
+            const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
+              fetchApprovedReviewCount(client, owner, repoName, item.number),
+              fullPr.head?.sha
+                ? fetchCheckRunsStatus(client, owner, repoName, fullPr.head.sha)
+                : Promise.resolve({ checksStatus: null, checksDetails: null }),
+              fullPr.head?.ref && deploymentBranches.length > 0
+                ? detectDeploymentBranches(client, owner, repoName, fullPr.head.ref, deploymentBranches)
+                : Promise.resolve([]),
+              fetchUnresolvedCommentCount(client, owner, repoName, item.number),
+            ]);
 
-        // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
-        const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
-          fetchApprovedReviewCount(client, owner, repoName, item.number),
-          fullPr.head?.sha
-            ? fetchCheckRunsStatus(client, owner, repoName, fullPr.head.sha)
-            : Promise.resolve({ checksStatus: null, checksDetails: null }),
-          fullPr.head?.ref && deploymentBranches.length > 0
-            ? detectDeploymentBranches(client, owner, repoName, fullPr.head.ref, deploymentBranches)
-            : Promise.resolve([]),
-          fetchUnresolvedCommentCount(client, owner, repoName, item.number),
-        ]);
+            const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
+            return upsertPrTask(taskData);
+          })
+        );
 
-        const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
-        const result = await upsertPrTask(taskData);
-        if (result === "new") newCount++;
-        else if (result === "updated") updatedCount++;
-        else unchangedCount++;
-        synced++;
+        for (const result of results) {
+          if (result === "new") newCount++;
+          else if (result === "updated") updatedCount++;
+          else unchangedCount++;
+          synced++;
+        }
       }
 
       hasMore = data.items.length === 100;
@@ -134,36 +152,50 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
         )
       );
 
-    for (const task of orphanedTasks) {
-      if (!task.prNumber || !task.repositoryId) continue;
-      const repo = repos.find((r) => r.id === task.repositoryId);
-      if (!repo) continue;
+    // Filter to valid orphaned tasks with matching repos
+    const validOrphans = orphanedTasks
+      .filter((task) => task.prNumber && task.repositoryId)
+      .map((task) => {
+        const repo = reposById.get(task.repositoryId!);
+        return repo ? { task, repo } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
 
-      try {
-        const { data: pr } = await client.pulls.get({
-          owner: repo.owner,
-          repo: repo.repo,
-          pull_number: task.prNumber,
-        });
+    // Process orphans in batches
+    const ORPHAN_BATCH_SIZE = 5;
+    for (let i = 0; i < validOrphans.length; i += ORPHAN_BATCH_SIZE) {
+      const batch = validOrphans.slice(i, i + ORPHAN_BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async ({ task, repo }) => {
+          const { data: pr } = await client.pulls.get({
+            owner: repo.owner,
+            repo: repo.repo,
+            pull_number: task.prNumber!,
+          });
 
-        // Fetch approved review count, check runs, and unresolved comments in parallel
-        const [approvedCount, checksResult, unresolvedCount] = await Promise.all([
-          fetchApprovedReviewCount(client, repo.owner, repo.repo, task.prNumber),
-          pr.head?.sha
-            ? fetchCheckRunsStatus(client, repo.owner, repo.repo, pr.head.sha)
-            : Promise.resolve({ checksStatus: null, checksDetails: null }),
-          fetchUnresolvedCommentCount(client, repo.owner, repo.repo, task.prNumber),
-        ]);
+          // Fetch approved review count, check runs, and unresolved comments in parallel
+          const [approvedCount, checksResult, unresolvedCount] = await Promise.all([
+            fetchApprovedReviewCount(client, repo.owner, repo.repo, task.prNumber!),
+            pr.head?.sha
+              ? fetchCheckRunsStatus(client, repo.owner, repo.repo, pr.head.sha)
+              : Promise.resolve({ checksStatus: null, checksDetails: null }),
+            fetchUnresolvedCommentCount(client, repo.owner, repo.repo, task.prNumber!),
+          ]);
 
-        // Orphaned PRs are closed/merged, clear deployment branches
-        const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount);
-        const result = await upsertPrTask(taskData);
-        if (result === "new") newCount++;
-        else if (result === "updated") updatedCount++;
-        else unchangedCount++;
-        synced++;
-      } catch {
-        // PR may be deleted or inaccessible, skip
+          // Orphaned PRs are closed/merged, clear deployment branches
+          const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount);
+          return upsertPrTask(taskData);
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          if (result.value === "new") newCount++;
+          else if (result.value === "updated") updatedCount++;
+          else unchangedCount++;
+          synced++;
+        }
+        // Rejected results are skipped (PR may be deleted or inaccessible)
       }
     }
   } catch (err: unknown) {
