@@ -1,84 +1,146 @@
-import { sql, or, and, isNotNull, isNull, eq } from "drizzle-orm";
+import { sql, or, and, isNotNull, isNull, eq, asc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, settings } from "../../db/schema";
+import { tasks, settings, statusCategories, taskFilters } from "../../db/schema";
 
 /**
- * Status configuration stored in settings as JSON
+ * Status Category - color + completion state + display order
  */
-export interface StatusConfig {
-  name: string;          // Display name (our status, not necessarily Jira's)
-  color: string | null;  // Tailwind class, null = use default
-  order: number;         // Sort position
-  isCompleted: boolean;  // Show in Completed vs Tasks page
-  isDefault?: boolean;   // Default status for unknown statuses (exactly one should be true)
-  filter?: string | null; // Filter group for dashboard tabs (null = not in any filter)
-  jiraMapping?: string[]; // Jira statuses that map to this status
+export interface StatusCategory {
+  id: number;
+  name: string;
+  color: string;
+  done: boolean;
+  displayOrder: number;
+  jiraMappings: string[];
 }
 
-// Default statuses when no config exists (for backwards compatibility)
-const DEFAULT_STATUS_CONFIG: StatusConfig[] = [
-  { name: "Backlog", color: "bg-slate-500", order: 10, isCompleted: false, isDefault: true, filter: "Backlog", jiraMapping: ["To Do", "Open", "Reopened", "Accepted", "Backlog", "On Hold"] },
-  { name: "In Progress", color: "bg-fuchsia-500", order: 9, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["In Progress"] },
-  { name: "Code Review", color: "bg-yellow-600", order: 8, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["Code Review", "Review"] },
-  { name: "QA", color: "bg-blue-600", order: 7, isCompleted: false, isDefault: false, filter: "Active", jiraMapping: ["Ready for Test", "QA", "Testing"] },
-  { name: "Ready to Merge", color: "bg-green-700", order: 6, isCompleted: false, isDefault: false, filter: "Review", jiraMapping: ["Ready to Merge"] },
-  { name: "Blocked", color: "bg-red-500", order: 5, isCompleted: false, isDefault: false, filter: "Backlog", jiraMapping: ["Blocked"] },
-  { name: "Done", color: "bg-green-700", order: 0, isCompleted: true, isDefault: false, filter: null, jiraMapping: ["Done", "Closed", "Ready to Prod", "Cancelled", "Rejected", "Completed", "Define Preventive Measures"] },
-];
+/**
+ * Task Filter - filter bar entries with position
+ */
+export interface TaskFilter {
+  id: number;
+  name: string;
+  position: number;
+  jiraMappings: string[];
+}
 
+/**
+ * Combined status settings response
+ */
+export interface StatusSettings {
+  categories: StatusCategory[];
+  filters: TaskFilter[];
+  defaultColor: string;
+}
+
+// Default values
 const DEFAULT_COLOR = "bg-slate-500";
 
-// Cache for status config
-let statusConfigCache: StatusConfig[] | null = null;
+// Default categories when no data exists
+const DEFAULT_CATEGORIES: Omit<StatusCategory, "id">[] = [
+  { name: "Backlog", color: "bg-slate-500", done: false, displayOrder: 0, jiraMappings: ["To Do", "Open", "Backlog", "On Hold"] },
+  { name: "In Progress", color: "bg-fuchsia-500", done: false, displayOrder: 1, jiraMappings: ["In Progress"] },
+  { name: "Code Review", color: "bg-yellow-600", done: false, displayOrder: 2, jiraMappings: ["Code Review", "Review"] },
+  { name: "Ready for Test", color: "bg-blue-600", done: false, displayOrder: 3, jiraMappings: ["Ready for Test"] },
+  { name: "QA", color: "bg-blue-600", done: false, displayOrder: 4, jiraMappings: ["QA", "Design QA"] },
+  { name: "Ready to Merge", color: "bg-green-700", done: false, displayOrder: 5, jiraMappings: ["Ready to Merge"] },
+  { name: "Done", color: "bg-green-700", done: true, displayOrder: 6, jiraMappings: ["Done", "Closed", "Ready to Prod", "Cancelled"] },
+  { name: "Blocked", color: "bg-red-500", done: false, displayOrder: 7, jiraMappings: ["Blocked"] },
+];
+
+// Default filters when no data exists
+const DEFAULT_FILTERS: Omit<TaskFilter, "id">[] = [
+  { name: "Active", position: 0, jiraMappings: ["In Progress", "Code Review", "Ready for Test", "QA", "Design QA", "Review"] },
+  { name: "Review", position: 1, jiraMappings: ["Ready to Merge"] },
+  { name: "Backlog", position: 2, jiraMappings: ["To Do", "Open", "Backlog", "On Hold", "Blocked"] },
+];
+
+// Cache for status data
+let categoriesCache: StatusCategory[] | null = null;
+let filtersCache: TaskFilter[] | null = null;
 let defaultColorCache: string | null = null;
 
 /**
- * Invalidate the status config cache (call when config is updated)
+ * Invalidate all caches (call when config is updated)
  */
 export function invalidateStatusConfigCache(): void {
-  statusConfigCache = null;
+  categoriesCache = null;
+  filtersCache = null;
   defaultColorCache = null;
 }
 
-/**
- * Get status configuration from settings
- */
-export async function getStatusConfig(): Promise<StatusConfig[]> {
-  if (statusConfigCache !== null) {
-    return statusConfigCache;
-  }
-
-  const result = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "status_config"));
-
-  if (result.length === 0 || !result[0].value) {
-    statusConfigCache = DEFAULT_STATUS_CONFIG;
-    return statusConfigCache;
-  }
-
+// Helper to parse jiraMappings JSON
+function parseJiraMappings(value: string | null): string[] {
+  if (!value) return [];
   try {
-    statusConfigCache = JSON.parse(result[0].value) as StatusConfig[];
-    return statusConfigCache;
+    return JSON.parse(value);
   } catch {
-    statusConfigCache = DEFAULT_STATUS_CONFIG;
-    return statusConfigCache;
+    return [];
   }
 }
 
 /**
- * Get the default status (for unknown/deleted statuses to inherit from)
+ * Get all status categories from database
  */
-export async function getDefaultStatus(): Promise<StatusConfig> {
-  const config = await getStatusConfig();
-  const defaultStatus = config.find(s => s.isDefault);
-  // Fallback to first status if none marked as default (shouldn't happen with valid config)
-  return defaultStatus || config[0] || DEFAULT_STATUS_CONFIG[0];
+export async function getStatusCategories(): Promise<StatusCategory[]> {
+  if (categoriesCache !== null) {
+    return categoriesCache;
+  }
+
+  const rows = await db
+    .select()
+    .from(statusCategories)
+    .orderBy(asc(statusCategories.displayOrder));
+
+  if (rows.length === 0) {
+    // Seed with defaults
+    await seedDefaultCategories();
+    return getStatusCategories();
+  }
+
+  categoriesCache = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    done: row.done === 1,
+    displayOrder: row.displayOrder,
+    jiraMappings: parseJiraMappings(row.jiraMappings),
+  }));
+
+  return categoriesCache;
 }
 
 /**
- * Get default color for statuses without custom color
+ * Get all task filters from database
+ */
+export async function getTaskFilters(): Promise<TaskFilter[]> {
+  if (filtersCache !== null) {
+    return filtersCache;
+  }
+
+  const rows = await db
+    .select()
+    .from(taskFilters)
+    .orderBy(asc(taskFilters.position));
+
+  if (rows.length === 0) {
+    // Seed with defaults
+    await seedDefaultFilters();
+    return getTaskFilters();
+  }
+
+  filtersCache = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    position: row.position,
+    jiraMappings: parseJiraMappings(row.jiraMappings),
+  }));
+
+  return filtersCache;
+}
+
+/**
+ * Get default color for unmapped statuses
  */
 export async function getDefaultStatusColor(): Promise<string> {
   if (defaultColorCache !== null) {
@@ -95,57 +157,128 @@ export async function getDefaultStatusColor(): Promise<string> {
 }
 
 /**
- * Save status configuration to settings
+ * Get combined status settings
  */
-export async function saveStatusConfig(config: StatusConfig[]): Promise<void> {
-  const existing = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "status_config"));
+export async function getStatusSettings(): Promise<StatusSettings> {
+  const [categories, filters, defaultColor] = await Promise.all([
+    getStatusCategories(),
+    getTaskFilters(),
+    getDefaultStatusColor(),
+  ]);
 
-  const value = JSON.stringify(config);
+  return { categories, filters, defaultColor };
+}
 
-  if (existing.length > 0) {
-    await db
-      .update(settings)
-      .set({ value })
-      .where(eq(settings.key, "status_config"));
-  } else {
-    await db
-      .insert(settings)
-      .values({ key: "status_config", value });
+/**
+ * Save status categories (bulk replace)
+ */
+export async function saveStatusCategories(categories: Omit<StatusCategory, "id">[]): Promise<void> {
+  await db.delete(statusCategories);
+
+  if (categories.length > 0) {
+    await db.insert(statusCategories).values(
+      categories.map((cat) => ({
+        name: cat.name,
+        color: cat.color,
+        done: cat.done ? 1 : 0,
+        displayOrder: cat.displayOrder,
+        jiraMappings: JSON.stringify(cat.jiraMappings),
+      }))
+    );
   }
 
   invalidateStatusConfigCache();
 }
 
 /**
- * Get all statuses (for manual task creation/editing - all are now selectable)
+ * Save task filters (bulk replace)
  */
-export async function getAllStatuses(): Promise<StatusConfig[]> {
-  const config = await getStatusConfig();
-  return [...config].sort((a, b) => b.order - a.order);
+export async function saveTaskFilters(filters: Omit<TaskFilter, "id">[]): Promise<void> {
+  await db.delete(taskFilters);
+
+  if (filters.length > 0) {
+    await db.insert(taskFilters).values(
+      filters.map((filter) => ({
+        name: filter.name,
+        position: filter.position,
+        jiraMappings: JSON.stringify(filter.jiraMappings),
+      }))
+    );
+  }
+
+  invalidateStatusConfigCache();
 }
 
-// For backwards compatibility
-export const getSelectableStatuses = getAllStatuses;
+/**
+ * Save default color
+ */
+export async function saveDefaultColor(color: string): Promise<void> {
+  const existing = await db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, "status_default_color"));
+
+  if (existing.length > 0) {
+    await db
+      .update(settings)
+      .set({ value: color })
+      .where(eq(settings.key, "status_default_color"));
+  } else {
+    await db
+      .insert(settings)
+      .values({ key: "status_default_color", value: color });
+  }
+
+  invalidateStatusConfigCache();
+}
 
 /**
- * Build reverse mapping from Jira status (lowercase) -> our status config
+ * Seed default categories
  */
-export async function buildJiraStatusMap(): Promise<Map<string, StatusConfig>> {
-  const config = await getStatusConfig();
-  const map = new Map<string, StatusConfig>();
+async function seedDefaultCategories(): Promise<void> {
+  await db.insert(statusCategories).values(
+    DEFAULT_CATEGORIES.map((cat) => ({
+      name: cat.name,
+      color: cat.color,
+      done: cat.done ? 1 : 0,
+      displayOrder: cat.displayOrder,
+      jiraMappings: JSON.stringify(cat.jiraMappings),
+    }))
+  );
+}
 
-  for (const status of config) {
-    // Map our status name to itself
-    map.set(normalizeStatus(status.name), status);
+/**
+ * Seed default filters
+ */
+async function seedDefaultFilters(): Promise<void> {
+  await db.insert(taskFilters).values(
+    DEFAULT_FILTERS.map((filter) => ({
+      name: filter.name,
+      position: filter.position,
+      jiraMappings: JSON.stringify(filter.jiraMappings),
+    }))
+  );
+}
 
-    // Map all jiraMapping entries to this status
-    if (status.jiraMapping) {
-      for (const jiraStatus of status.jiraMapping) {
-        map.set(normalizeStatus(jiraStatus), status);
-      }
+// Helper to normalize status name (for comparison)
+function normalizeStatus(status: string): string {
+  return status.toLowerCase().replace(/_/g, " ");
+}
+
+/**
+ * Build reverse mapping from status name (normalized) -> category
+ */
+export async function buildStatusCategoryMap(): Promise<Map<string, StatusCategory>> {
+  const categories = await getStatusCategories();
+  const map = new Map<string, StatusCategory>();
+
+  for (const category of categories) {
+    // Map category name to itself
+    map.set(normalizeStatus(category.name), category);
+
+    // Map all jiraMappings to this category
+    for (const jiraStatus of category.jiraMappings) {
+      map.set(normalizeStatus(jiraStatus), category);
     }
   }
 
@@ -153,40 +286,49 @@ export async function buildJiraStatusMap(): Promise<Map<string, StatusConfig>> {
 }
 
 /**
- * Resolve a Jira/task status to our status config
- * Returns the matching config, or the default status config if not found
+ * Resolve a status to its category
  */
-export async function resolveStatusConfig(status: string): Promise<StatusConfig> {
-  const map = await buildJiraStatusMap();
+export async function resolveStatusCategory(status: string): Promise<StatusCategory | null> {
+  const map = await buildStatusCategoryMap();
   const normalized = normalizeStatus(status);
-  const resolved = map.get(normalized);
-
-  if (resolved) {
-    return resolved;
-  }
-
-  // Fallback to default status
-  return getDefaultStatus();
+  return map.get(normalized) || null;
 }
 
 /**
- * Get completed status names (for filtering)
- * Returns all Jira status names (from jiraMapping) and our status names that are completed
+ * Get color for a status (returns defaultColor if not mapped)
+ */
+export async function getStatusColor(status: string): Promise<string> {
+  const category = await resolveStatusCategory(status);
+  if (category) {
+    return category.color;
+  }
+  return getDefaultStatusColor();
+}
+
+/**
+ * Check if a status is completed (done=true in its category)
+ */
+export async function isStatusCompleted(status: string): Promise<boolean> {
+  const category = await resolveStatusCategory(status);
+  return category?.done ?? false;
+}
+
+/**
+ * Get all completed status names (for filtering)
+ * Returns all status names (category names + jira mappings) where done=true
  */
 export async function getCompletedStatusNames(): Promise<string[]> {
-  const config = await getStatusConfig();
+  const categories = await getStatusCategories();
   const names: string[] = [];
 
-  for (const status of config) {
-    if (status.isCompleted) {
-      // Add our status name
-      names.push(status.name.toLowerCase());
+  for (const category of categories) {
+    if (category.done) {
+      // Add category name
+      names.push(category.name.toLowerCase());
 
-      // Add all mapped Jira statuses
-      if (status.jiraMapping) {
-        for (const jiraStatus of status.jiraMapping) {
-          names.push(jiraStatus.toLowerCase());
-        }
+      // Add all mapped statuses
+      for (const jiraStatus of category.jiraMappings) {
+        names.push(jiraStatus.toLowerCase());
       }
     }
   }
@@ -195,26 +337,30 @@ export async function getCompletedStatusNames(): Promise<string[]> {
 }
 
 /**
- * Validate if a status is valid for manual tasks (any of our defined statuses)
+ * Get all status categories (for manual task creation/editing)
+ * Returns categories sorted by displayOrder
+ */
+export async function getAllStatuses(): Promise<StatusCategory[]> {
+  return getStatusCategories();
+}
+
+// For backwards compatibility
+export const getSelectableStatuses = getAllStatuses;
+
+/**
+ * Validate if a status is valid for manual tasks
  */
 export async function isStatusValid(status: string): Promise<boolean> {
-  const config = await getStatusConfig();
+  const categories = await getStatusCategories();
   const s = normalizeStatus(status);
-  // Allow any of our status names (including completed ones like "Done")
-  return config.some(c => normalizeStatus(c.name) === s);
+  return categories.some((c) => normalizeStatus(c.name) === s);
 }
 
 // For backwards compatibility
 export const isStatusSelectable = isStatusValid;
 
-// Helper to normalize status name (for comparison)
-function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
-
 /**
- * Get SQL condition for checking if a task is completed based on its type
- * This now uses dynamic config for Jira completed statuses
+ * Get SQL condition for completed tasks based on dynamic config
  */
 export async function getCompletedConditionAsync(): Promise<ReturnType<typeof or>> {
   const completedStatuses = await getCompletedStatusNames();
@@ -224,7 +370,7 @@ export async function getCompletedConditionAsync(): Promise<ReturnType<typeof or
     if (completedStatuses.length === 0) {
       return sql`1 = 0`; // No completed statuses configured
     }
-    return sql`LOWER(${tasks.status}) IN (${sql.join(completedStatuses.map(s => sql`${s}`), sql`, `)})`;
+    return sql`LOWER(${tasks.status}) IN (${sql.join(completedStatuses.map((s) => sql`${s}`), sql`, `)})`;
   };
 
   return or(
@@ -265,23 +411,19 @@ export async function getNotCompletedConditionAsync(): Promise<ReturnType<typeof
 }
 
 /**
- * Generate SQL CASE expression for status ordering from config
- * Maps all jiraMapping statuses to their corresponding order values
+ * Generate SQL CASE expression for status ordering from categories
+ * Maps all jiraMappings to their corresponding displayOrder values
  */
 export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>> {
-  const config = await getStatusConfig();
-  const defaultStatus = config.find(s => s.isDefault);
-  const defaultOrder = defaultStatus?.order ?? 999;
+  const categories = await getStatusCategories();
+  const defaultOrder = 999;
 
-  // Build CASE expression from config
+  // Build CASE expression from categories
   const cases: ReturnType<typeof sql>[] = [];
 
-  for (const status of config) {
-    // Collect all status names to map (our name + jiraMapping)
-    const allNames: string[] = [status.name];
-    if (status.jiraMapping) {
-      allNames.push(...status.jiraMapping);
-    }
+  for (const category of categories) {
+    // Collect all status names to map (category name + jiraMappings)
+    const allNames: string[] = [category.name, ...category.jiraMappings];
 
     // Build list of normalized variants (both space and underscore versions)
     const variants: string[] = [];
@@ -298,13 +440,13 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
     const uniqueVariants = [...new Set(variants)];
 
     if (uniqueVariants.length === 1) {
-      cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueVariants[0]} THEN ${status.order}`);
+      cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueVariants[0]} THEN ${category.displayOrder}`);
     } else {
-      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${sql.join(uniqueVariants.map(v => sql`${v}`), sql`, `)}) THEN ${status.order}`);
+      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${sql.join(uniqueVariants.map((v) => sql`${v}`), sql`, `)}) THEN ${category.displayOrder}`);
     }
   }
 
-  // Default case for unknown statuses (use default status's order)
+  // Default case for unknown statuses
   cases.push(sql`ELSE ${defaultOrder}`);
 
   return sql`CASE ${sql.join(cases, sql` `)} END`;
@@ -312,13 +454,11 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
 
 // ============================================
 // SYNCHRONOUS VERSIONS (for backwards compatibility)
-// These use the hardcoded defaults if config isn't loaded
+// These use hardcoded defaults
 // ============================================
 
 /**
- * Legacy: Valid statuses for manually-created tasks (no Jira/GitHub integration).
- * Jira-synced tasks store raw Jira statuses (e.g., "In Progress", "Ready to Prod")
- * and are not validated against this list.
+ * Legacy: Valid statuses for manually-created tasks
  * @deprecated Use getSelectableStatuses() instead
  */
 export const MANUAL_TASK_STATUSES = ["To Do", "In Progress", "Code Review", "QA", "Done", "Blocked", "Ready to Merge"];
@@ -336,12 +476,12 @@ export const JIRA_COMPLETED_STATUSES = [
 
 // Helper to generate parameterized SQL for status IN check (case-insensitive)
 function jiraStatusInCondition() {
-  return sql`LOWER(${tasks.status}) IN (${sql.join(JIRA_COMPLETED_STATUSES.map(s => sql`${s}`), sql`, `)})`;
+  return sql`LOWER(${tasks.status}) IN (${sql.join(JIRA_COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
 }
 
 // Helper to generate parameterized SQL for status NOT IN check (case-insensitive)
 export function jiraStatusNotInCondition() {
-  return sql`LOWER(${tasks.status}) NOT IN (${sql.join(JIRA_COMPLETED_STATUSES.map(s => sql`${s}`), sql`, `)})`;
+  return sql`LOWER(${tasks.status}) NOT IN (${sql.join(JIRA_COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
 }
 
 // SQL condition for checking if a task is completed based on its type
@@ -381,7 +521,6 @@ export function getNotCompletedCondition() {
 }
 
 // SQL CASE expression for status ordering (lower = higher priority)
-// Handles both underscore and space variants (e.g., "code_review" and "code review")
 export const statusOrderExpr = sql`CASE
   WHEN LOWER(${tasks.status}) = 'done' THEN 0
   WHEN LOWER(${tasks.status}) = 'cancelled' THEN 1
@@ -399,3 +538,75 @@ export const statusOrderExpr = sql`CASE
   WHEN LOWER(${tasks.status}) IN ('on hold', 'on_hold') THEN 13
   ELSE 14
 END`;
+
+// ============================================
+// Legacy StatusConfig type for backwards compatibility
+// ============================================
+
+/**
+ * @deprecated Use StatusCategory and TaskFilter instead
+ */
+export interface StatusConfig {
+  name: string;
+  color: string | null;
+  order: number;
+  isCompleted: boolean;
+  isDefault?: boolean;
+  filter?: string | null;
+  jiraMapping?: string[];
+}
+
+/**
+ * @deprecated Use getStatusCategories() instead
+ */
+export async function getStatusConfig(): Promise<StatusConfig[]> {
+  const categories = await getStatusCategories();
+  const filters = await getTaskFilters();
+
+  // Build a map of status -> filter name
+  const statusToFilter = new Map<string, string>();
+  for (const filter of filters) {
+    for (const jiraStatus of filter.jiraMappings) {
+      statusToFilter.set(normalizeStatus(jiraStatus), filter.name);
+    }
+  }
+
+  // Convert categories to old StatusConfig format
+  return categories.map((cat, index) => {
+    // Find filter for this category's jiraMappings
+    let filterName: string | null = null;
+    for (const jiraStatus of cat.jiraMappings) {
+      const mapped = statusToFilter.get(normalizeStatus(jiraStatus));
+      if (mapped) {
+        filterName = mapped;
+        break;
+      }
+    }
+
+    return {
+      name: cat.name,
+      color: cat.color,
+      order: categories.length - cat.displayOrder, // Reverse order for old format
+      isCompleted: cat.done,
+      isDefault: index === 0, // First category is default
+      filter: filterName,
+      jiraMapping: cat.jiraMappings,
+    };
+  });
+}
+
+/**
+ * @deprecated Use saveStatusCategories() instead
+ */
+export async function saveStatusConfig(config: StatusConfig[]): Promise<void> {
+  // Convert old format to new categories
+  const categories: Omit<StatusCategory, "id">[] = config.map((sc, index) => ({
+    name: sc.name,
+    color: sc.color || DEFAULT_COLOR,
+    done: sc.isCompleted,
+    displayOrder: config.length - index - 1, // Reverse order
+    jiraMappings: sc.jiraMapping || [],
+  }));
+
+  await saveStatusCategories(categories);
+}

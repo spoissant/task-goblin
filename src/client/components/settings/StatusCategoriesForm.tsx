@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  useStatusConfigQuery,
-  useUpdateStatusConfig,
-  useFetchJiraStatuses,
+  useStatusCategoriesQuery,
+  useUpdateStatusCategories,
+  useStatusSettingsQuery,
+  useUpdateDefaultColor,
 } from "@/client/lib/queries/settings";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -24,13 +25,11 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { ArrowUp, ArrowDown, RefreshCw, Save, Loader2, Trash2, X, Plus } from "lucide-react";
+import { ArrowUp, ArrowDown, Save, Loader2, Trash2, X, Plus } from "lucide-react";
 import { toast } from "sonner";
-import type { StatusConfig } from "@/client/lib/types";
+import type { StatusCategory } from "@/client/lib/types";
 
-const USE_DEFAULT_VALUE = "__default__";
-
-// Simple tag input component for jiraMapping
+// Simple tag input component for jiraMappings
 interface TagInputProps {
   tags: string[];
   onChange: (tags: string[]) => void;
@@ -92,7 +91,6 @@ function TagInput({ tags, onChange, placeholder = "Add status..." }: TagInputPro
 }
 
 const COLOR_OPTIONS = [
-  { value: USE_DEFAULT_VALUE, label: "Use Default" },
   { value: "bg-slate-500", label: "Slate" },
   { value: "bg-gray-500", label: "Gray" },
   { value: "bg-red-500", label: "Red" },
@@ -117,53 +115,59 @@ const COLOR_OPTIONS = [
   { value: "bg-rose-500", label: "Rose" },
 ];
 
-export function StatusConfigForm() {
-  const { data, isLoading, error } = useStatusConfigQuery();
-  const updateConfig = useUpdateStatusConfig();
-  const fetchStatuses = useFetchJiraStatuses();
+// Local state type (without id since we're bulk replacing)
+type CategoryDraft = Omit<StatusCategory, "id">;
 
-  const [statuses, setStatuses] = useState<StatusConfig[]>([]);
+export function StatusCategoriesForm() {
+  const { data: categoriesData, isLoading: categoriesLoading, error: categoriesError } = useStatusCategoriesQuery();
+  const { data: settingsData, isLoading: settingsLoading } = useStatusSettingsQuery();
+  const updateCategories = useUpdateStatusCategories();
+  const updateDefaultColor = useUpdateDefaultColor();
+
+  const [categories, setCategories] = useState<CategoryDraft[]>([]);
   const [defaultColor, setDefaultColor] = useState("bg-slate-500");
   const [hasChanges, setHasChanges] = useState(false);
 
   // Initialize from query data
   useEffect(() => {
-    if (data) {
-      setStatuses(data.statuses);
-      setDefaultColor(data.defaultColor);
+    if (categoriesData?.items) {
+      // Remove id from each category for local state
+      setCategories(categoriesData.items.map(({ name, color, done, displayOrder, jiraMappings }) => ({
+        name,
+        color,
+        done,
+        displayOrder,
+        jiraMappings,
+      })));
       setHasChanges(false);
     }
-  }, [data]);
+  }, [categoriesData?.items]);
 
-  const handleStatusChange = (
+  useEffect(() => {
+    if (settingsData?.defaultColor) {
+      setDefaultColor(settingsData.defaultColor);
+    }
+  }, [settingsData?.defaultColor]);
+
+  const handleCategoryChange = (
     index: number,
-    field: keyof StatusConfig,
-    value: StatusConfig[keyof StatusConfig]
+    field: keyof CategoryDraft,
+    value: CategoryDraft[keyof CategoryDraft]
   ) => {
-    setStatuses((prev) => {
+    setCategories((prev) => {
       const next = [...prev];
-      // Special handling for isDefault - only one can be true
-      if (field === "isDefault" && value === true) {
-        // Clear isDefault from all other statuses
-        for (let i = 0; i < next.length; i++) {
-          if (i !== index) {
-            next[i] = { ...next[i], isDefault: false };
-          }
-        }
-      }
       next[index] = { ...next[index], [field]: value };
       return next;
     });
     setHasChanges(true);
   };
 
-  const handleDeleteStatus = (index: number) => {
-    const status = statuses[index];
-    if (status.isDefault) {
-      toast.error("Cannot delete the default status");
+  const handleDeleteCategory = (index: number) => {
+    if (categories.length <= 1) {
+      toast.error("Cannot delete the last category");
       return;
     }
-    setStatuses((prev) => prev.filter((_, i) => i !== index));
+    setCategories((prev) => prev.filter((_, i) => i !== index));
     setHasChanges(true);
   };
 
@@ -174,12 +178,12 @@ export function StatusConfigForm() {
 
   const handleMoveUp = (index: number) => {
     if (index === 0) return;
-    setStatuses((prev) => {
+    setCategories((prev) => {
       const next = [...prev];
-      // Swap order values
-      const temp = next[index].order;
-      next[index].order = next[index - 1].order;
-      next[index - 1].order = temp;
+      // Swap displayOrder values
+      const temp = next[index].displayOrder;
+      next[index].displayOrder = next[index - 1].displayOrder;
+      next[index - 1].displayOrder = temp;
       // Swap positions
       [next[index], next[index - 1]] = [next[index - 1], next[index]];
       return next;
@@ -188,13 +192,13 @@ export function StatusConfigForm() {
   };
 
   const handleMoveDown = (index: number) => {
-    if (index === statuses.length - 1) return;
-    setStatuses((prev) => {
+    if (index === categories.length - 1) return;
+    setCategories((prev) => {
       const next = [...prev];
-      // Swap order values
-      const temp = next[index].order;
-      next[index].order = next[index + 1].order;
-      next[index + 1].order = temp;
+      // Swap displayOrder values
+      const temp = next[index].displayOrder;
+      next[index].displayOrder = next[index + 1].displayOrder;
+      next[index + 1].displayOrder = temp;
       // Swap positions
       [next[index], next[index + 1]] = [next[index + 1], next[index]];
       return next;
@@ -202,56 +206,46 @@ export function StatusConfigForm() {
     setHasChanges(true);
   };
 
-  const handleSave = () => {
-    updateConfig.mutate(
-      { statuses, defaultColor },
-      {
-        onSuccess: () => {
-          toast.success("Status configuration saved");
-          setHasChanges(false);
-        },
-        onError: (err) => {
-          toast.error(`Failed to save: ${err.message}`);
-        },
-      }
-    );
-  };
+  const handleSave = async () => {
+    // Normalize displayOrder to be sequential
+    const normalizedCategories = categories.map((cat, index) => ({
+      ...cat,
+      displayOrder: index,
+    }));
 
-  const handleFetchStatuses = () => {
-    fetchStatuses.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.unmapped.length > 0) {
-          toast.info(`Found ${result.unmapped.length} unmapped Jira statuses: ${result.unmapped.join(", ")}`);
-        } else {
-          toast.success(`All ${result.fetched} Jira statuses are mapped`);
-        }
-      },
-      onError: (err) => {
-        toast.error(`Failed to fetch: ${err.message}`);
-      },
-    });
+    try {
+      await updateCategories.mutateAsync(normalizedCategories);
+
+      // Also update default color if it changed
+      if (settingsData?.defaultColor !== defaultColor) {
+        await updateDefaultColor.mutateAsync(defaultColor);
+      }
+
+      toast.success("Status categories saved");
+      setHasChanges(false);
+    } catch (err) {
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
   };
 
   const handleJiraMappingChange = (index: number, mapping: string[]) => {
-    handleStatusChange(index, "jiraMapping", mapping);
+    handleCategoryChange(index, "jiraMappings", mapping);
   };
 
-  const handleAddStatus = () => {
-    const maxOrder = Math.max(...statuses.map(s => s.order), 0);
-    const newStatus: StatusConfig = {
-      name: "New Status",
-      color: null,
-      order: maxOrder + 1,
-      isCompleted: false,
-      isDefault: false,
-      filter: null,
-      jiraMapping: [],
+  const handleAddCategory = () => {
+    const maxOrder = Math.max(...categories.map(c => c.displayOrder), -1);
+    const newCategory: CategoryDraft = {
+      name: "New Category",
+      color: "bg-slate-500",
+      done: false,
+      displayOrder: maxOrder + 1,
+      jiraMappings: [],
     };
-    setStatuses(prev => [...prev, newStatus]);
+    setCategories(prev => [...prev, newCategory]);
     setHasChanges(true);
   };
 
-  if (isLoading) {
+  if (categoriesLoading || settingsLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -260,9 +254,9 @@ export function StatusConfigForm() {
     );
   }
 
-  if (error) {
+  if (categoriesError) {
     return (
-      <div className="text-destructive">Failed to load status configuration</div>
+      <div className="text-destructive">Failed to load status categories</div>
     );
   }
 
@@ -272,14 +266,14 @@ export function StatusConfigForm() {
         <div className="flex-1">
           <label className="text-sm font-medium">Default Color</label>
           <p className="text-xs text-muted-foreground mb-2">
-            Applied to statuses without a custom color
+            Applied to unmapped statuses
           </p>
           <Select value={defaultColor} onValueChange={handleDefaultColorChange}>
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {COLOR_OPTIONS.filter((c) => c.value !== USE_DEFAULT_VALUE).map((color) => (
+              {COLOR_OPTIONS.map((color) => (
                 <SelectItem key={color.value} value={color.value}>
                   <div className="flex items-center gap-2">
                     <div className={`w-4 h-4 rounded ${color.value}`} />
@@ -291,24 +285,12 @@ export function StatusConfigForm() {
           </Select>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleAddStatus}>
+          <Button variant="outline" onClick={handleAddCategory}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Status
+            Add Category
           </Button>
-          <Button
-            variant="outline"
-            onClick={handleFetchStatuses}
-            disabled={fetchStatuses.isPending}
-          >
-            {fetchStatuses.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Fetch from Jira
-          </Button>
-          <Button onClick={handleSave} disabled={!hasChanges || updateConfig.isPending}>
-            {updateConfig.isPending ? (
+          <Button onClick={handleSave} disabled={!hasChanges || updateCategories.isPending}>
+            {updateCategories.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Save className="h-4 w-4 mr-2" />
@@ -324,17 +306,15 @@ export function StatusConfigForm() {
             <TableRow>
               <TableHead className="w-[50px]">Order</TableHead>
               <TableHead className="w-[120px]">Name</TableHead>
-              <TableHead className="w-[100px]">Filter</TableHead>
               <TableHead className="w-[150px]">Color</TableHead>
               <TableHead className="min-w-[200px]">Jira Mapping</TableHead>
               <TableHead className="w-[70px] text-center">Done</TableHead>
-              <TableHead className="w-[70px] text-center">Default</TableHead>
               <TableHead className="w-[40px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {statuses.map((status, index) => (
-              <TableRow key={status.name}>
+            {categories.map((category, index) => (
+              <TableRow key={index}>
                 <TableCell>
                   <div className="flex items-center gap-1">
                     <Button
@@ -351,7 +331,7 @@ export function StatusConfigForm() {
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => handleMoveDown(index)}
-                      disabled={index === statuses.length - 1}
+                      disabled={index === categories.length - 1}
                     >
                       <ArrowDown className="h-3 w-3" />
                     </Button>
@@ -359,34 +339,24 @@ export function StatusConfigForm() {
                 </TableCell>
                 <TableCell>
                   <Input
-                    value={status.name}
-                    onChange={(e) => handleStatusChange(index, "name", e.target.value)}
+                    value={category.name}
+                    onChange={(e) => handleCategoryChange(index, "name", e.target.value)}
                     className="h-8 font-medium"
                   />
                 </TableCell>
                 <TableCell>
-                  <Input
-                    value={status.filter || ""}
-                    onChange={(e) => handleStatusChange(index, "filter", e.target.value || null)}
-                    placeholder="None"
-                    className="h-8 text-xs"
-                  />
-                </TableCell>
-                <TableCell>
                   <Select
-                    value={status.color || USE_DEFAULT_VALUE}
-                    onValueChange={(v) => handleStatusChange(index, "color", v === USE_DEFAULT_VALUE ? null : v)}
+                    value={category.color}
+                    onValueChange={(v) => handleCategoryChange(index, "color", v)}
                   >
                     <SelectTrigger className="w-full h-8">
-                      <SelectValue placeholder="Use Default" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {COLOR_OPTIONS.map((color) => (
                         <SelectItem key={color.value} value={color.value}>
                           <div className="flex items-center gap-2">
-                            {color.value !== USE_DEFAULT_VALUE && (
-                              <div className={`w-4 h-4 rounded ${color.value}`} />
-                            )}
+                            <div className={`w-4 h-4 rounded ${color.value}`} />
                             {color.label}
                           </div>
                         </SelectItem>
@@ -396,24 +366,16 @@ export function StatusConfigForm() {
                 </TableCell>
                 <TableCell>
                   <TagInput
-                    tags={status.jiraMapping || []}
+                    tags={category.jiraMappings}
                     onChange={(mapping) => handleJiraMappingChange(index, mapping)}
                     placeholder="Add Jira status..."
                   />
                 </TableCell>
                 <TableCell className="text-center">
                   <Checkbox
-                    checked={status.isCompleted}
+                    checked={category.done}
                     onCheckedChange={(checked) =>
-                      handleStatusChange(index, "isCompleted", !!checked)
-                    }
-                  />
-                </TableCell>
-                <TableCell className="text-center">
-                  <Checkbox
-                    checked={status.isDefault || false}
-                    onCheckedChange={(checked) =>
-                      handleStatusChange(index, "isDefault", !!checked)
+                      handleCategoryChange(index, "done", !!checked)
                     }
                   />
                 </TableCell>
@@ -422,9 +384,9 @@ export function StatusConfigForm() {
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteStatus(index)}
-                    disabled={status.isDefault}
-                    title={status.isDefault ? "Cannot delete default status" : "Delete status"}
+                    onClick={() => handleDeleteCategory(index)}
+                    disabled={categories.length <= 1}
+                    title={categories.length <= 1 ? "Cannot delete the last category" : "Delete category"}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -437,16 +399,13 @@ export function StatusConfigForm() {
 
       <div className="text-sm text-muted-foreground space-y-1">
         <p>
-          <strong>Filter:</strong> Groups statuses into tabs on the dashboard (empty = not in any filter tab)
+          <strong>Jira Mapping:</strong> Jira statuses that map to this category's color. Press Enter to add.
         </p>
         <p>
-          <strong>Jira Mapping:</strong> Jira statuses that should use this status's color, filter, and order. Press Enter to add.
+          <strong>Done:</strong> Tasks with these statuses appear only in the Completed page
         </p>
         <p>
-          <strong>Done:</strong> Tasks with these statuses (and their mappings) appear in the Completed page
-        </p>
-        <p>
-          <strong>Default:</strong> Unmapped Jira statuses inherit this status's filter and color
+          <strong>Order:</strong> Determines sort order for tasks (top = sorted first)
         </p>
       </div>
     </div>

@@ -5,14 +5,16 @@ import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import {
-  getStatusConfig,
-  saveStatusConfig,
+  getStatusCategories,
+  getTaskFilters,
   getDefaultStatusColor,
-  getSelectableStatuses,
-  invalidateStatusConfigCache,
-  type StatusConfig,
+  getStatusSettings,
+  saveStatusCategories,
+  saveTaskFilters,
+  saveDefaultColor,
+  type StatusCategory,
+  type TaskFilter,
 } from "../lib/task-status";
-import { getJiraClient, getJiraConfig, JiraConfigError, type JiraConfig } from "../lib/jira-client";
 import type { Routes } from "../router";
 
 export const settingsRoutes: Routes = {
@@ -62,7 +64,7 @@ export const settingsRoutes: Routes = {
   },
 
   "/api/v1/settings/:key": {
-    async GET(req, params) {
+    async GET(_req, params) {
       const { key } = params;
       const result = await db
         .select()
@@ -103,7 +105,7 @@ export const settingsRoutes: Routes = {
       return json(result[0]);
     },
 
-    async DELETE(req, params) {
+    async DELETE(_req, params) {
       const { key } = params;
 
       const existing = await db
@@ -174,12 +176,163 @@ export const settingsRoutes: Routes = {
     },
   },
 
-  // Status configuration endpoints
+  // ============================================
+  // NEW Status Settings Endpoints
+  // ============================================
+
+  // Combined status settings (categories + filters + defaultColor)
+  "/api/v1/settings/status-settings": {
+    async GET() {
+      const settings = await getStatusSettings();
+      return json(settings);
+    },
+  },
+
+  // Status Categories
+  "/api/v1/settings/status-categories": {
+    async GET() {
+      const categories = await getStatusCategories();
+      return json({ items: categories });
+    },
+
+    async PUT(req) {
+      const body = await getBody(req);
+
+      if (!body.categories || !Array.isArray(body.categories)) {
+        throw new ValidationError("categories array is required");
+      }
+
+      // Validate each category
+      for (let i = 0; i < body.categories.length; i++) {
+        const cat = body.categories[i];
+        if (typeof cat.name !== "string" || !cat.name.trim()) {
+          throw new ValidationError(`Category ${i}: name is required`);
+        }
+        if (typeof cat.color !== "string" || !cat.color.trim()) {
+          throw new ValidationError(`Category ${i}: color is required`);
+        }
+        if (typeof cat.done !== "boolean") {
+          throw new ValidationError(`Category ${i}: done must be a boolean`);
+        }
+        if (typeof cat.displayOrder !== "number") {
+          throw new ValidationError(`Category ${i}: displayOrder must be a number`);
+        }
+        if (!Array.isArray(cat.jiraMappings)) {
+          throw new ValidationError(`Category ${i}: jiraMappings must be an array`);
+        }
+        for (const mapping of cat.jiraMappings) {
+          if (typeof mapping !== "string") {
+            throw new ValidationError(`Category ${i}: jiraMappings must contain only strings`);
+          }
+        }
+      }
+
+      const categories: Omit<StatusCategory, "id">[] = body.categories.map((cat: StatusCategory) => ({
+        name: cat.name.trim(),
+        color: cat.color,
+        done: cat.done,
+        displayOrder: cat.displayOrder,
+        jiraMappings: cat.jiraMappings,
+      }));
+
+      await saveStatusCategories(categories);
+
+      const updated = await getStatusCategories();
+      return json({ items: updated });
+    },
+  },
+
+  // Task Filters
+  "/api/v1/settings/task-filters": {
+    async GET() {
+      const filters = await getTaskFilters();
+      return json({ items: filters });
+    },
+
+    async PUT(req) {
+      const body = await getBody(req);
+
+      if (!body.filters || !Array.isArray(body.filters)) {
+        throw new ValidationError("filters array is required");
+      }
+
+      // Validate each filter
+      const names = new Set<string>();
+      for (let i = 0; i < body.filters.length; i++) {
+        const filter = body.filters[i];
+        if (typeof filter.name !== "string" || !filter.name.trim()) {
+          throw new ValidationError(`Filter ${i}: name is required`);
+        }
+        if (names.has(filter.name.toLowerCase())) {
+          throw new ValidationError(`Filter ${i}: duplicate name "${filter.name}"`);
+        }
+        names.add(filter.name.toLowerCase());
+        if (typeof filter.position !== "number") {
+          throw new ValidationError(`Filter ${i}: position must be a number`);
+        }
+        if (!Array.isArray(filter.jiraMappings)) {
+          throw new ValidationError(`Filter ${i}: jiraMappings must be an array`);
+        }
+        for (const mapping of filter.jiraMappings) {
+          if (typeof mapping !== "string") {
+            throw new ValidationError(`Filter ${i}: jiraMappings must contain only strings`);
+          }
+        }
+      }
+
+      const filters: Omit<TaskFilter, "id">[] = body.filters.map((f: TaskFilter) => ({
+        name: f.name.trim(),
+        position: f.position,
+        jiraMappings: f.jiraMappings,
+      }));
+
+      await saveTaskFilters(filters);
+
+      const updated = await getTaskFilters();
+      return json({ items: updated });
+    },
+  },
+
+  // Default Color
+  "/api/v1/settings/status-default-color": {
+    async GET() {
+      const color = await getDefaultStatusColor();
+      return json({ defaultColor: color });
+    },
+
+    async PUT(req) {
+      const body = await getBody(req);
+
+      if (typeof body.defaultColor !== "string" || !body.defaultColor.trim()) {
+        throw new ValidationError("defaultColor is required");
+      }
+
+      await saveDefaultColor(body.defaultColor);
+
+      const color = await getDefaultStatusColor();
+      return json({ defaultColor: color });
+    },
+  },
+
+  // ============================================
+  // Legacy Status Configuration endpoints (for backwards compatibility)
+  // ============================================
+
   "/api/v1/settings/statuses": {
     async GET() {
-      const config = await getStatusConfig();
-      const defaultColor = await getDefaultStatusColor();
-      return json({ statuses: config, defaultColor });
+      // Return in legacy format
+      const settings = await getStatusSettings();
+      // Convert to old format
+      const statuses = settings.categories.map((cat, index) => ({
+        name: cat.name,
+        color: cat.color,
+        order: settings.categories.length - cat.displayOrder,
+        isCompleted: cat.done,
+        isDefault: index === 0,
+        filter: null, // Legacy format doesn't have filter at category level
+        jiraMapping: cat.jiraMappings,
+      }));
+      return json({ statuses, defaultColor: settings.defaultColor });
     },
 
     async PUT(req) {
@@ -189,136 +342,57 @@ export const settingsRoutes: Routes = {
         throw new ValidationError("statuses array is required");
       }
 
-      // Validate each status config
-      let defaultCount = 0;
-      for (const status of body.statuses) {
-        if (typeof status.name !== "string" || !status.name.trim()) {
-          throw new ValidationError("Each status must have a name");
-        }
-        if (typeof status.order !== "number") {
-          throw new ValidationError("Each status must have an order number");
-        }
-        if (typeof status.isCompleted !== "boolean") {
-          throw new ValidationError("Each status must have isCompleted boolean");
-        }
-        // filter can be string, null, or undefined (optional)
-        if (status.filter !== undefined && status.filter !== null && typeof status.filter !== "string") {
-          throw new ValidationError("Status filter must be a string or null");
-        }
-        // isDefault can be boolean or undefined (optional)
-        if (status.isDefault !== undefined && typeof status.isDefault !== "boolean") {
-          throw new ValidationError("Status isDefault must be a boolean");
-        }
-        // jiraMapping must be an array of strings if present
-        if (status.jiraMapping !== undefined) {
-          if (!Array.isArray(status.jiraMapping)) {
-            throw new ValidationError("Status jiraMapping must be an array");
-          }
-          for (const mapping of status.jiraMapping) {
-            if (typeof mapping !== "string" || !mapping.trim()) {
-              throw new ValidationError("Each jiraMapping entry must be a non-empty string");
-            }
-          }
-        }
-        if (status.isDefault) {
-          defaultCount++;
-        }
-      }
+      // Convert from legacy format to new categories
+      const categories: Omit<StatusCategory, "id">[] = body.statuses.map((s: {
+        name: string;
+        color: string | null;
+        order: number;
+        isCompleted: boolean;
+        jiraMapping?: string[];
+      }, index: number) => ({
+        name: s.name,
+        color: s.color || "bg-slate-500",
+        done: s.isCompleted,
+        displayOrder: body.statuses.length - index - 1,
+        jiraMappings: s.jiraMapping || [],
+      }));
 
-      // Validate exactly one status has isDefault: true
-      if (defaultCount !== 1) {
-        throw new ValidationError("Exactly one status must be marked as default");
-      }
-
-      await saveStatusConfig(body.statuses as StatusConfig[]);
+      await saveStatusCategories(categories);
 
       // Update default color if provided
-      if (body.defaultColor !== undefined) {
-        const existing = await db
-          .select()
-          .from(settings)
-          .where(eq(settings.key, "status_default_color"));
-
-        if (existing.length > 0) {
-          await db
-            .update(settings)
-            .set({ value: body.defaultColor })
-            .where(eq(settings.key, "status_default_color"));
-        } else {
-          await db
-            .insert(settings)
-            .values({ key: "status_default_color", value: body.defaultColor });
-        }
-        invalidateStatusConfigCache();
+      if (body.defaultColor) {
+        await saveDefaultColor(body.defaultColor);
       }
 
-      const config = await getStatusConfig();
-      const defaultColor = await getDefaultStatusColor();
-      return json({ statuses: config, defaultColor });
+      // Return in legacy format
+      const settings = await getStatusSettings();
+      const statuses = settings.categories.map((cat, index) => ({
+        name: cat.name,
+        color: cat.color,
+        order: settings.categories.length - cat.displayOrder,
+        isCompleted: cat.done,
+        isDefault: index === 0,
+        filter: null,
+        jiraMapping: cat.jiraMappings,
+      }));
+      return json({ statuses, defaultColor: settings.defaultColor });
     },
   },
 
   "/api/v1/settings/statuses/selectable": {
     async GET() {
-      const statuses = await getSelectableStatuses();
-      return json({ items: statuses });
-    },
-  },
-
-  "/api/v1/settings/statuses/fetch": {
-    async POST() {
-      // Fetch statuses from Jira and return suggestions for mapping
-      let config: JiraConfig;
-      try {
-        config = await getJiraConfig();
-      } catch (err) {
-        if (err instanceof JiraConfigError) {
-          throw new ValidationError(err.message);
-        }
-        throw err;
-      }
-
-      const client = getJiraClient(config);
-
-      try {
-        // Fetch all statuses from Jira
-        const jiraStatuses = await client.workflowStatuses.getStatuses();
-
-        // Get existing config
-        const existingConfig = await getStatusConfig();
-
-        // Build a set of all already-mapped Jira statuses (lowercase)
-        const mappedStatuses = new Set<string>();
-        for (const status of existingConfig) {
-          mappedStatuses.add(status.name.toLowerCase());
-          if (status.jiraMapping) {
-            for (const jiraStatus of status.jiraMapping) {
-              mappedStatuses.add(jiraStatus.toLowerCase());
-            }
-          }
-        }
-
-        // Find unmapped Jira statuses
-        const unmappedStatuses: string[] = [];
-        for (const jiraStatus of jiraStatuses) {
-          const name = jiraStatus.name || "";
-          if (name && !mappedStatuses.has(name.toLowerCase())) {
-            unmappedStatuses.push(name);
-          }
-        }
-
-        const defaultColor = await getDefaultStatusColor();
-        return json({
-          statuses: existingConfig,
-          defaultColor,
-          fetched: jiraStatuses.length,
-          unmapped: unmappedStatuses,
-        });
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Failed to fetch statuses from Jira";
-        throw new ValidationError(`Jira API error: ${message}`);
-      }
+      const categories = await getStatusCategories();
+      // Return categories formatted as selectable statuses
+      const items = categories.map((cat, index) => ({
+        name: cat.name,
+        color: cat.color,
+        order: categories.length - cat.displayOrder,
+        isCompleted: cat.done,
+        isDefault: index === 0,
+        filter: null,
+        jiraMapping: cat.jiraMappings,
+      }));
+      return json({ items });
     },
   },
 };

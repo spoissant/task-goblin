@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
-import { useSettingsQuery, useStatusConfigQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
@@ -19,9 +19,9 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { RefreshCw, ListTodo, MessageSquare, Bell } from "lucide-react";
-import { toast } from "sonner";
 import { TodosDialog } from "./TodosDialog";
 import { TaskLogsModal } from "./TaskLogsModal";
+import { toast } from "sonner";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
 // Normalize status name for comparison (case-insensitive, handles underscore/space variants)
@@ -38,15 +38,15 @@ function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): strin
 }
 
 interface TaskTableProps {
-  filterGroup?: string;
+  activeFilter?: string;
 }
 
-export function TaskTable({ filterGroup }: TaskTableProps) {
-  // Fetch all tasks (no server-side status filter for category-based filtering)
+export function TaskTable({ activeFilter }: TaskTableProps) {
+  // Fetch all tasks (no server-side status filter for filter-based filtering)
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
-  const { data: statusConfig } = useStatusConfigQuery();
+  const { data: statusSettings } = useStatusSettingsQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
@@ -64,47 +64,34 @@ export function TaskTable({ filterGroup }: TaskTableProps) {
     return map;
   }, [reposData?.items]);
 
-  // Build a map of normalized status name -> filter for the selected filter group
-  // Includes jiraMapping entries mapped to their parent status's filter
-  const { statusFilterMap, defaultFilter } = useMemo(() => {
-    const map = new Map<string, string | null>();
-    let defaultFilterValue: string | null = null;
+  // Build a map of normalized status name -> filter name
+  // Used to determine which filter a task belongs to
+  const statusToFilterMap = useMemo(() => {
+    const map = new Map<string, string>();
 
-    if (statusConfig?.statuses) {
-      for (const status of statusConfig.statuses) {
-        const filter = status.filter ?? null;
-
-        // Map our status name
-        map.set(normalizeStatus(status.name), filter);
-
-        // Map all jiraMapping entries to the same filter
-        if (status.jiraMapping) {
-          for (const jiraStatus of status.jiraMapping) {
-            map.set(normalizeStatus(jiraStatus), filter);
-          }
-        }
-
-        if (status.isDefault) {
-          defaultFilterValue = filter;
+    if (statusSettings?.filters) {
+      for (const filter of statusSettings.filters) {
+        for (const jiraStatus of filter.jiraMappings) {
+          map.set(normalizeStatus(jiraStatus), filter.name);
         }
       }
     }
 
-    return { statusFilterMap: map, defaultFilter: defaultFilterValue };
-  }, [statusConfig?.statuses]);
+    return map;
+  }, [statusSettings?.filters]);
 
-  // Client-side filtering by filter group
+  // Client-side filtering by active filter
   const filteredTasks = useMemo(() => {
     if (!data?.items) return [];
-    if (!filterGroup) return data.items;
+    if (!activeFilter) return data.items; // "All" tab shows everything
 
     return data.items.filter((task) => {
       const normalizedStatus = normalizeStatus(task.status);
-      // Get filter for this status, or use default filter for unknown statuses
-      const taskFilter = statusFilterMap.get(normalizedStatus) ?? defaultFilter;
-      return taskFilter === filterGroup;
+      // Get filter for this status
+      const taskFilter = statusToFilterMap.get(normalizedStatus);
+      return taskFilter === activeFilter;
     });
-  }, [data?.items, filterGroup, statusFilterMap, defaultFilter]);
+  }, [data?.items, activeFilter, statusToFilterMap]);
 
   if (isLoading) {
     return (

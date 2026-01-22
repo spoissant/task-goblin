@@ -130,6 +130,30 @@ export interface JiraConfig {
   jira_sprint_field?: string | null;
 }
 
+// New Status Settings types
+export interface StatusCategory {
+  id: number;
+  name: string;
+  color: string;
+  done: boolean;
+  displayOrder: number;
+  jiraMappings: string[];
+}
+
+export interface TaskFilter {
+  id: number;
+  name: string;
+  position: number;
+  jiraMappings: string[];
+}
+
+export interface StatusSettings {
+  categories: StatusCategory[];
+  filters: TaskFilter[];
+  defaultColor: string;
+}
+
+// Legacy types (for backwards compatibility)
 export interface StatusConfig {
   name: string;
   color: string | null;

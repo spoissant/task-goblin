@@ -68,6 +68,8 @@ export function generateTestSchema(): string {
     schema.todos,
     schema.blockedBy,
     schema.logs,
+    schema.statusCategories,
+    schema.taskFilters,
   ];
 
   return tables.map((table) => generateCreateTable(table)).join("\n\n");

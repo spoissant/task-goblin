@@ -80,3 +80,21 @@ export const logs = sqliteTable("logs", {
   readAt: text("read_at"), // null = unread
   source: text("source").notNull(),
 });
+
+// 7. Status Categories - color + completion state + display order
+export const statusCategories = sqliteTable("status_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  color: text("color").notNull(),
+  done: integer("done").notNull().default(0), // SQLite bool - true=CompletedPage, false=TasksPage
+  displayOrder: integer("display_order").notNull(),
+  jiraMappings: text("jira_mappings"), // JSON array
+});
+
+// 8. Task Filters - filter bar entries with position
+export const taskFilters = sqliteTable("task_filters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  position: integer("position").notNull(),
+  jiraMappings: text("jira_mappings"), // JSON array
+});
