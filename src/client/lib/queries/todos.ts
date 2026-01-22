@@ -109,3 +109,25 @@ export function usePendingTodoCountQuery() {
   const { data } = useTodosQuery({ done: false });
   return data?.total ?? 0;
 }
+
+export function useCurrentTodo() {
+  const { data, isLoading } = useTodosQuery({ done: false });
+
+  const currentTodo = (() => {
+    if (!data?.items) return null;
+
+    // Apply grouping logic: non-task todos always included, first undone todo per task only
+    const seenTasks = new Set<number>();
+    const grouped = data.items.filter((todo) => {
+      if (!todo.taskId) return true;
+      if (seenTasks.has(todo.taskId)) return false;
+      seenTasks.add(todo.taskId);
+      return true;
+    });
+
+    // Return first item (already sorted by position from API)
+    return grouped[0] ?? null;
+  })();
+
+  return { currentTodo, isLoading };
+}

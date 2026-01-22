@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
+import { useTasksQuery, useRepositoriesQuery, useSyncTask, useCurrentTodo } from "@/client/lib/queries";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
@@ -50,8 +50,12 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
   const { data: statusSettings } = useStatusSettingsQuery();
+  const { currentTodo } = useCurrentTodo();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
+
+  // Get task ID from current todo for highlighting
+  const currentTodoTaskId = currentTodo?.taskId ?? null;
 
   // Extract jiraHost from settings
   const jiraHost = settingsData?.jira_host || null;
@@ -175,6 +179,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
+              isCurrentTodoTask={task.id === currentTodoTaskId}
               onSelectionChange={onSelectionChange ? (selected) => {
                 const newSelection = new Set(selectedIds);
                 if (selected) {
@@ -240,10 +245,11 @@ interface TaskRowProps {
   onOpenTodos: () => void;
   onOpenLogs: () => void;
   isSelected: boolean;
+  isCurrentTodoTask: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, isCurrentTodoTask, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -265,7 +271,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, on
   };
 
   return (
-    <TableRow>
+    <TableRow className={isCurrentTodoTask ? "!bg-yellow-50 dark:!bg-yellow-300/40" : undefined}>
       {/* Checkbox */}
       {onSelectionChange && (
         <TableCell>
