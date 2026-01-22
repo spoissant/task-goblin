@@ -1,6 +1,7 @@
 import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
 import { useUnreadCountQuery } from "@/client/lib/queries";
+import { usePendingTodoCountQuery } from "@/client/lib/queries/todos";
 import {
   SquareCheck,
   FolderSearch,
@@ -20,7 +21,7 @@ import {
 
 const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
-  { to: "/todos", icon: SquareCheck, label: "Todos" },
+  { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
@@ -35,6 +36,13 @@ interface SidebarProps {
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: unreadData } = useUnreadCountQuery();
   const unreadCount = unreadData?.count ?? 0;
+  const pendingTodoCount = usePendingTodoCountQuery();
+
+  const getBadgeCount = (to: string) => {
+    if (to === "/todos") return pendingTodoCount;
+    if (to === "/logs") return unreadCount;
+    return 0;
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -65,6 +73,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </div>
         <nav className={cn("space-y-1", isCollapsed && "flex flex-col items-center")}>
           {navItems.map((item) => {
+            const badgeCount = getBadgeCount(item.to);
             const linkContent = (
               <NavLink
                 key={item.to}
@@ -82,18 +91,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               >
                 <span className="relative">
                   <item.icon className="h-4 w-4" />
-                  {item.showBadge && unreadCount > 0 && isCollapsed && (
+                  {item.showBadge && badgeCount > 0 && isCollapsed && (
                     <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                      {unreadCount > 99 ? "99+" : unreadCount}
+                      {badgeCount > 99 ? "99+" : badgeCount}
                     </span>
                   )}
                 </span>
                 {!isCollapsed && (
                   <>
                     {item.label}
-                    {item.showBadge && unreadCount > 0 && (
+                    {item.showBadge && badgeCount > 0 && (
                       <span className="ml-auto bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
-                        {unreadCount}
+                        {badgeCount > 99 ? "99+" : badgeCount}
                       </span>
                     )}
                   </>
@@ -107,7 +116,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                   <TooltipContent side="right">
                     {item.label}
-                    {item.showBadge && unreadCount > 0 && ` (${unreadCount})`}
+                    {item.showBadge && badgeCount > 0 && ` (${badgeCount})`}
                   </TooltipContent>
                 </Tooltip>
               );

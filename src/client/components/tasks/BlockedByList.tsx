@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useDeleteBlocker, useCreateBlocker, useTasksQuery } from "@/client/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
@@ -65,15 +66,23 @@ export function BlockedByList({ blockedBy, taskId }: BlockedByListProps) {
     );
   };
 
-  const getBlockerLabel = (blocker: BlockedBy) => {
+  const renderBlockerLabel = (blocker: BlockedBy) => {
     if (blocker.blockerTaskId) {
       const task = tasks?.items.find((t) => t.id === blocker.blockerTaskId);
-      return task ? `Task: ${task.title}` : `Task #${blocker.blockerTaskId}`;
+      const label = task ? `Task: ${task.title}` : `Task #${blocker.blockerTaskId}`;
+      return (
+        <Link
+          to={`/tasks/${blocker.blockerTaskId}`}
+          className="text-sm truncate hover:underline hover:text-primary"
+        >
+          {label}
+        </Link>
+      );
     }
     if (blocker.blockerTodoId) {
-      return `Todo #${blocker.blockerTodoId}`;
+      return <span className="text-sm truncate">Todo #{blocker.blockerTodoId}</span>;
     }
-    return "Unknown";
+    return <span className="text-sm truncate">Unknown</span>;
   };
 
   const getBlockerType = (blocker: BlockedBy) => {
@@ -104,7 +113,7 @@ export function BlockedByList({ blockedBy, taskId }: BlockedByListProps) {
                 >
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{getBlockerType(blocker)}</Badge>
-                    <span className="text-sm truncate">{getBlockerLabel(blocker)}</span>
+                    {renderBlockerLabel(blocker)}
                   </div>
                   <Button
                     size="icon"

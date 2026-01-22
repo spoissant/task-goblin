@@ -92,3 +92,8 @@ export function useReorderTodo() {
     },
   });
 }
+
+export function usePendingTodoCountQuery() {
+  const { data } = useTodosQuery({ done: false });
+  return data?.total ?? 0;
+}

@@ -40,6 +40,10 @@ export interface Task {
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
   unresolvedCommentCount: number | null;
+
+  // User-editable markdown fields
+  notes: string | null;
+  instructions: string | null;
 }
 
 // Task detail with relations

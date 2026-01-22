@@ -6,6 +6,8 @@ import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
 import { useDeployBranch } from "@/client/lib/queries/deploy";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
+import { TaskNotes } from "@/client/components/tasks/TaskNotes";
+import { TaskInstructions } from "@/client/components/tasks/TaskInstructions";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { BlockedByList } from "@/client/components/tasks/BlockedByList";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -154,6 +156,9 @@ export function TaskDetailPage() {
       </div>
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
+
+      <TaskNotes task={task} />
+      <TaskInstructions task={task} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-6">

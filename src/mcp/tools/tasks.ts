@@ -100,6 +100,8 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
+        notes: z.string().optional().describe("Task notes (markdown)"),
+        instructions: z.string().optional().describe("Implementation instructions (markdown)"),
         blockedBy: z
           .array(
             z.object({
@@ -111,7 +113,7 @@ export function registerTaskTools(server: McpServer) {
           .describe("Array of blockers to add (each must have exactly one of taskId or todoId)"),
       },
     },
-    async ({ id, jiraKey, title, description, status, blockedBy }) => {
+    async ({ id, jiraKey, title, description, status, notes, instructions, blockedBy }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey });
 
@@ -119,6 +121,8 @@ export function registerTaskTools(server: McpServer) {
         if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status;
+        if (notes !== undefined) updates.notes = notes;
+        if (instructions !== undefined) updates.instructions = instructions;
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);

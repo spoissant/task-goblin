@@ -82,6 +82,9 @@ export interface Task {
   isDraft: number | null;
   checksStatus: string | null;
   prSyncedAt: string | null;
+  // User-editable markdown fields
+  notes: string | null;
+  instructions: string | null;
 }
 
 export interface Repository {

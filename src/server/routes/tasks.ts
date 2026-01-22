@@ -189,6 +189,8 @@ export const taskRoutes: Routes = {
           title: body.title,
           description: body.description || null,
           status: body.status || "To Do",
+          notes: body.notes || null,
+          instructions: body.instructions || null,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -308,6 +310,8 @@ export const taskRoutes: Routes = {
       if (body.title !== undefined) updates.title = body.title;
       if (body.description !== undefined) updates.description = body.description;
       if (body.status !== undefined) updates.status = body.status;
+      if (body.notes !== undefined) updates.notes = body.notes;
+      if (body.instructions !== undefined) updates.instructions = body.instructions;
 
       const result = await db
         .update(tasks)
