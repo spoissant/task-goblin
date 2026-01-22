@@ -198,6 +198,56 @@ export const todoRoutes: Routes = {
     },
   },
 
+  "/api/v1/todos/:id/skip": {
+    async POST(_req, params) {
+      const id = parseInt(params.id, 10);
+
+      const existing = await db.select().from(todos).where(eq(todos.id, id));
+      if (existing.length === 0) {
+        throw new NotFoundError("Todo", id);
+      }
+
+      const todo = existing[0];
+      const oldPosition = todo.position ?? 0;
+      const timestamp = now();
+
+      // Find max position among undone todos
+      const maxPosResult = await db
+        .select({ maxPos: sql<number>`COALESCE(MAX(${todos.position}), 0)` })
+        .from(todos)
+        .where(isNull(todos.done));
+      const maxUndonePosition = maxPosResult[0]?.maxPos ?? 0;
+
+      // If already at the end of undone todos, nothing to do
+      if (oldPosition >= maxUndonePosition) {
+        return json(todo);
+      }
+
+      // Shift todos between old position and max undone position up by 1
+      await db
+        .update(todos)
+        .set({
+          position: sql`${todos.position} - 1`,
+          updatedAt: timestamp,
+        })
+        .where(
+          and(
+            gt(todos.position, oldPosition),
+            lte(todos.position, maxUndonePosition)
+          )
+        );
+
+      // Move skipped todo to end of undone list
+      const result = await db
+        .update(todos)
+        .set({ position: maxUndonePosition, updatedAt: timestamp })
+        .where(eq(todos.id, id))
+        .returning();
+
+      return json(result[0]);
+    },
+  },
+
   "/api/v1/todos/:id/reorder": {
     async PUT(req, params) {
       const id = parseInt(params.id, 10);

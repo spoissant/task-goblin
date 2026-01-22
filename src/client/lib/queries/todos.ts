@@ -93,6 +93,18 @@ export function useReorderTodo() {
   });
 }
 
+export function useSkipTodo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => api.post<Todo>(`/todos/${id}/skip`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: todoKeys.all });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
 export function usePendingTodoCountQuery() {
   const { data } = useTodosQuery({ done: false });
   return data?.total ?? 0;
