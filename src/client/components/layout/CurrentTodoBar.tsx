@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useCurrentTodo, useToggleTodo, useSkipTodo } from "@/client/lib/queries";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Button } from "@/client/components/ui/button";
+import { Linkify } from "@/client/components/ui/Linkify";
 import { SkipForward } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +45,7 @@ export function CurrentTodoBar() {
               {currentTodo.task.title}
             </Link>
           )}
-          <span className="text-sm block truncate">{currentTodo.content}</span>
+          <span className="text-sm block truncate"><Linkify>{currentTodo.content}</Linkify></span>
         </div>
         <Button
           size="sm"

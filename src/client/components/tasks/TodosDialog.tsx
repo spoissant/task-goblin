@@ -36,6 +36,7 @@ import { Label } from "@/client/components/ui/label";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { GripVertical, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { Linkify } from "@/client/components/ui/Linkify";
 import type { TodoWithTask } from "@/client/lib/types";
 
 interface TodosDialogProps {
@@ -144,7 +145,7 @@ export function TodosDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Todos</DialogTitle>
           <p className="text-sm text-muted-foreground truncate" title={taskTitle}>
@@ -315,7 +316,7 @@ function SortableTodoRow({ todo, onToggle, onDelete }: SortableTodoRowProps) {
             todo.done ? "line-through text-muted-foreground" : ""
           }`}
         >
-          {todo.content}
+          <Linkify>{todo.content}</Linkify>
         </span>
       )}
       <Button

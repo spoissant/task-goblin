@@ -22,6 +22,7 @@ import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import { Linkify } from "@/client/components/ui/Linkify";
 import type { Todo } from "@/client/lib/types";
 
 interface TodoListProps {
@@ -73,7 +74,7 @@ function SortableTodo({ todo, onToggle, onDelete }: SortableTodoProps) {
           todo.done ? "line-through text-muted-foreground" : ""
         }`}
       >
-        {todo.content}
+        <Linkify>{todo.content}</Linkify>
       </span>
       <Button
         size="icon"

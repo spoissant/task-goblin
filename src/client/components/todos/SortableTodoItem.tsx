@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Button } from "@/client/components/ui/button";
 import { GripVertical, Trash2 } from "lucide-react";
+import { Linkify } from "@/client/components/ui/Linkify";
 import type { TodoWithTask } from "@/client/lib/types";
 
 interface SortableTodoItemProps {
@@ -66,7 +67,7 @@ export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete }: S
             todo.done ? "line-through text-muted-foreground" : ""
           }`}
         >
-          {todo.content}
+          <Linkify>{todo.content}</Linkify>
         </span>
       </div>
       <Button
