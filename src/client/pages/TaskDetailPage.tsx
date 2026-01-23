@@ -161,17 +161,9 @@ export function TaskDetailPage() {
         </div>
       </div>
 
-      <TaskHeader task={task} onStatusChange={handleStatusChange} />
-
-      <TaskNotes task={task} />
-      <TaskInstructions task={task} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-6">
-          <TodoList todos={task.todos} taskId={taskId} />
-          <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
-        </div>
-        <div className="space-y-6">
+      {/* Jira and PR cards side by side */}
+      {(task.jiraKey || task.prNumber) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Jira Info Section */}
           {task.jiraKey && (
             <Card>
@@ -313,7 +305,20 @@ export function TaskDetailPage() {
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
 
+      <TaskHeader task={task} onStatusChange={handleStatusChange} />
+
+      <TaskNotes task={task} />
+      <TaskInstructions task={task} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <TodoList todos={task.todos} taskId={taskId} />
+          <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
+        </div>
+        <div className="space-y-6">
           {/* No integrations message */}
           {!task.jiraKey && !task.prNumber && (
             <Card>
