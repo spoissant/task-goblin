@@ -47,6 +47,7 @@ export function useMarkLogRead() {
     mutationFn: (id: number) => api.post<Log>(`/logs/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 }
@@ -58,6 +59,7 @@ export function useMarkAllLogsRead() {
     mutationFn: () => api.post<{ success: boolean }>("/logs/mark-all-read"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 }
@@ -69,6 +71,7 @@ export function useDeleteLog() {
     mutationFn: (id: number) => api.delete(`/logs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 }
