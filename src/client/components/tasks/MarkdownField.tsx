@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Textarea } from "@/client/components/ui/textarea";
 import { Button } from "@/client/components/ui/button";
 import { Check, X } from "lucide-react";
@@ -62,7 +63,7 @@ export function MarkdownField({
 
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown>{value}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
     </div>
   );
 }

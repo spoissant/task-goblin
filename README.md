@@ -79,9 +79,39 @@ bun test <file>      # Run single test file
 ## Architecture
 
 ```
-[Frontend Web App] ──→ [Bun API Backend]
+[Frontend Web App] ──→ [Bun API Backend] ←── [MCP Server]
                             ↓
                       [SQLite Database]
                             ↓
                    [Jira/GitHub APIs]
 ```
+
+## MCP Server
+
+Task Goblin exposes an MCP server for AI agent integration. The server provides 5 tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_task` | Get a single task by ID or Jira key (returns task with todos and blockers) |
+| `update_task` | Update task fields: title, description, status, notes, instructions, blockedBy |
+| `list_todos` | List todos with optional filters (taskId, done) |
+| `create_todo` | Create a new todo item (optionally linked to a task) |
+| `toggle_todo` | Toggle a todo's completion status |
+
+### Setup
+
+Add to your Claude Code MCP config (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "task-goblin": {
+      "command": "bun",
+      "args": ["run", "mcp"],
+      "cwd": "/path/to/task-goblin"
+    }
+  }
+}
+```
+
+The MCP server requires the API server to be running (`bun run dev:api`).

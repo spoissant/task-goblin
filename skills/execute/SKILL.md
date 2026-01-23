@@ -58,3 +58,8 @@ The `instructions` field contains a markdown plan with implementation steps. Exe
 - Follow the steps in order
 - Use the appropriate tools for each step
 - Track progress with TodoWrite
+
+### Step 6: Save the implementation summary in the task's notes
+
+- Generate a summary of the fix/implementation you just made
+- Append this summary to the tasks's notes field
