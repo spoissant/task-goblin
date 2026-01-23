@@ -77,7 +77,7 @@ export function BulkDeployResultsDialog({
                     {result.status === "skipped" && (
                       <SkipForward className="h-4 w-4 text-muted-foreground" />
                     )}
-                    <span className="font-medium text-sm truncate">
+                    <span className="font-medium text-sm truncate text-gray-900">
                       {task?.jiraKey || task?.title || `Task #${result.taskId}`}
                     </span>
                   </div>
