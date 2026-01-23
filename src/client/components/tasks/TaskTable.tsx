@@ -11,6 +11,7 @@ import { StatusBadge } from "./StatusBadge";
 import { ChecksStatusCell } from "./ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "./StatusIcons";
 import { RepoBadge } from "./RepoBadge";
+import { DeploymentBadges } from "./DeploymentBadges";
 import {
   Table,
   TableBody,
@@ -213,31 +214,6 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
   );
 }
 
-interface DeploymentBadgesProps {
-  branches: string | null;
-}
-
-function DeploymentBadges({ branches }: DeploymentBadgesProps) {
-  if (!branches) return <span className="text-muted-foreground">—</span>;
-
-  try {
-    const parsed: string[] = JSON.parse(branches);
-    if (!parsed.length) return <span className="text-muted-foreground">—</span>;
-
-    return (
-      <div className="flex flex-wrap gap-1">
-        {parsed.map((branch) => (
-          <Badge key={branch} variant="secondary" className="text-xs">
-            {branch}
-          </Badge>
-        ))}
-      </div>
-    );
-  } catch {
-    return <span className="text-muted-foreground">—</span>;
-  }
-}
-
 interface TaskRowProps {
   task: TaskWithTodos;
   repo?: Repository;
@@ -316,7 +292,23 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
       {/* Type */}
       <TableCell>
         {task.type ? (
-          <Badge variant="outline" className="text-xs">{task.type}</Badge>
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className="text-xs">{task.type}</Badge>
+            {task.type.toLowerCase() === "bug" && task.priority && task.priority !== "To be qualified" && (
+              <Badge
+                className={`text-xs ${
+                  task.priority === "P0" ? "bg-red-600 text-white hover:bg-red-600" :
+                  task.priority === "P1" ? "bg-red-500 text-white hover:bg-red-500" :
+                  task.priority === "P2" ? "bg-red-400 text-white hover:bg-red-400" :
+                  task.priority === "P3" ? "bg-yellow-600 text-white hover:bg-yellow-600" :
+                  task.priority === "P4" ? "bg-blue-500 text-white hover:bg-blue-500" :
+                  ""
+                }`}
+              >
+                {task.priority}
+              </Badge>
+            )}
+          </div>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
