@@ -252,7 +252,16 @@ export function TaskDetailPage() {
                   </div>
                   {task.headBranch && (
                     <p className="text-sm text-muted-foreground font-mono">
-                      {task.headBranch}
+                      <button
+                        type="button"
+                        className="hover:text-blue-600 cursor-pointer"
+                        onClick={() => {
+                          navigator.clipboard.writeText(task.headBranch!);
+                          toast.success("Branch copied to clipboard");
+                        }}
+                      >
+                        {task.headBranch}
+                      </button>
                       {task.baseBranch && ` → ${task.baseBranch}`}
                     </p>
                   )}
