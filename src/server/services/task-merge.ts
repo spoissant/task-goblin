@@ -5,6 +5,7 @@ import { json } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
+import { parseId } from "../lib/validation";
 import { jiraStatusNotInCondition } from "../lib/task-status";
 import type { Routes } from "../router";
 
@@ -186,7 +187,7 @@ export const taskMergeRoutes: Routes = {
   // Merge two orphan tasks (jira + pr) into one
   "/api/v1/tasks/:id/merge": {
     async POST(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       if (!body.sourceTaskId || typeof body.sourceTaskId !== "number") {
@@ -201,7 +202,7 @@ export const taskMergeRoutes: Routes = {
   // Split a merged task back into two orphans
   "/api/v1/tasks/:id/split": {
     async POST(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(tasks).where(eq(tasks.id, id));
       if (existing.length === 0) {

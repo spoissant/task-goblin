@@ -4,6 +4,7 @@ import { blockedBy } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
+import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
 export const blockedByRoutes: Routes = {
@@ -16,13 +17,13 @@ export const blockedByRoutes: Routes = {
 
       const conditions = [];
       if (blockedTaskId) {
-        conditions.push(eq(blockedBy.blockedTaskId, parseInt(blockedTaskId, 10)));
+        conditions.push(eq(blockedBy.blockedTaskId, parseId(blockedTaskId, "blockedTaskId")));
       }
       if (blockerTaskId) {
-        conditions.push(eq(blockedBy.blockerTaskId, parseInt(blockerTaskId, 10)));
+        conditions.push(eq(blockedBy.blockerTaskId, parseId(blockerTaskId, "blockerTaskId")));
       }
       if (blockerTodoId) {
-        conditions.push(eq(blockedBy.blockerTodoId, parseInt(blockerTodoId, 10)));
+        conditions.push(eq(blockedBy.blockerTodoId, parseId(blockerTodoId, "blockerTodoId")));
       }
 
       const items =
@@ -70,7 +71,7 @@ export const blockedByRoutes: Routes = {
 
   "/api/v1/blocked-by/:id": {
     async GET(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const result = await db
         .select()
         .from(blockedBy)
@@ -84,7 +85,7 @@ export const blockedByRoutes: Routes = {
     },
 
     async DELETE(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db
         .select()

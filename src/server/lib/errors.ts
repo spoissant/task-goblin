@@ -24,13 +24,6 @@ export class ValidationError extends AppError {
   }
 }
 
-export class BadRequestError extends AppError {
-  constructor(message: string) {
-    super(message, 400, "BAD_REQUEST");
-    this.name = "BadRequestError";
-  }
-}
-
 // Type guard for API errors from external services (Jira, GitHub)
 export interface ApiError {
   status?: number;
@@ -38,10 +31,12 @@ export interface ApiError {
 }
 
 export function isApiError(err: unknown): err is ApiError {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (typeof (err as ApiError).status === "number" || typeof (err as ApiError).status === "undefined") &&
-    (typeof (err as ApiError).message === "string" || typeof (err as ApiError).message === "undefined")
-  );
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const obj = err as Record<string, unknown>;
+  const hasValidStatus = typeof obj.status === "number";
+  const hasValidMessage = typeof obj.message === "string";
+  // Require at least one of status or message to be defined
+  return hasValidStatus || hasValidMessage;
 }

@@ -5,6 +5,7 @@ import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
+import { parseId, validatePagination } from "../lib/validation";
 import {
   jiraStatusNotInCondition,
   getCompletedCondition,
@@ -25,8 +26,10 @@ export const taskRoutes: Routes = {
       const orphanPr = url.searchParams.get("orphanPr");
       const linked = url.searchParams.get("linked");
       const excludeCompleted = url.searchParams.get("excludeCompleted") !== "false"; // default true
-      const limit = url.searchParams.get("limit");
-      const offset = url.searchParams.get("offset");
+      const { limit, offset } = validatePagination(
+        url.searchParams.get("limit"),
+        url.searchParams.get("offset")
+      );
 
       const conditions = [];
 
@@ -81,13 +84,8 @@ export const taskRoutes: Routes = {
 
       query = query.orderBy(statusOrderExpr) as typeof query;
 
-      // Apply pagination if specified
-      if (limit) {
-        query = query.limit(parseInt(limit, 10)) as typeof query;
-      }
-      if (offset) {
-        query = query.offset(parseInt(offset, 10)) as typeof query;
-      }
+      // Apply pagination
+      query = query.limit(limit).offset(offset) as typeof query;
 
       const taskList = await query;
 
@@ -202,7 +200,7 @@ export const taskRoutes: Routes = {
 
   "/api/v1/tasks/:id": {
     async GET(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const result = await db.select().from(tasks).where(eq(tasks.id, id));
 
       if (result.length === 0) {
@@ -249,7 +247,7 @@ export const taskRoutes: Routes = {
     },
 
     async PUT(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       if (!body.title || typeof body.title !== "string") {
@@ -287,7 +285,7 @@ export const taskRoutes: Routes = {
     },
 
     async PATCH(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       // Validate status against selectable statuses
@@ -307,11 +305,12 @@ export const taskRoutes: Routes = {
       }
 
       const updates: Record<string, unknown> = { updatedAt: now() };
-      if (body.title !== undefined) updates.title = body.title;
-      if (body.description !== undefined) updates.description = body.description;
-      if (body.status !== undefined) updates.status = body.status;
-      if (body.notes !== undefined) updates.notes = body.notes;
-      if (body.instructions !== undefined) updates.instructions = body.instructions;
+      // Use 'in' operator to allow explicitly setting fields to null
+      if ("title" in body) updates.title = body.title;
+      if ("description" in body) updates.description = body.description;
+      if ("status" in body) updates.status = body.status;
+      if ("notes" in body) updates.notes = body.notes;
+      if ("instructions" in body) updates.instructions = body.instructions;
 
       const result = await db
         .update(tasks)
@@ -323,7 +322,7 @@ export const taskRoutes: Routes = {
     },
 
     async DELETE(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(tasks).where(eq(tasks.id, id));
       if (existing.length === 0) {
@@ -348,8 +347,10 @@ export const taskRoutes: Routes = {
   "/api/v1/tasks/completed": {
     async GET(req) {
       const url = new URL(req.url);
-      const limit = parseInt(url.searchParams.get("limit") || "25", 10);
-      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+      const { limit, offset } = validatePagination(
+        url.searchParams.get("limit") || "25",
+        url.searchParams.get("offset")
+      );
 
       const completedCondition = getCompletedCondition();
 

@@ -1,10 +1,13 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories, logs } from "../../db/schema";
+import { tasks, repositories } from "../../db/schema";
 import { json } from "../response";
 import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
-import { now } from "../lib/timestamp";
+import { parseId, parseDeploymentBranches } from "../lib/validation";
+import { expandPath } from "../lib/path";
+import { logActivity } from "../lib/logging";
+import { getTaskWithRepository } from "../lib/queries";
 import {
   deployBranch,
   deployBulk,
@@ -13,28 +16,11 @@ import {
 } from "../services/deploy-branch";
 import type { Routes } from "../router";
 import { existsSync } from "fs";
-import { homedir } from "os";
-
-function expandPath(path: string): string {
-  if (path.startsWith("~/")) {
-    return path.replace("~", homedir());
-  }
-  return path;
-}
-
-async function logActivity(taskId: number, message: string) {
-  await db.insert(logs).values({
-    taskId,
-    content: message,
-    createdAt: now(),
-    source: "deploy",
-  });
-}
 
 export const deployRoutes: Routes = {
   "/api/v1/deploy/:taskId": {
     async POST(req, params) {
-      const taskId = parseInt(params.taskId, 10);
+      const taskId = parseId(params.taskId, "taskId");
       const body = await getBody(req);
 
       if (!body.targetBranch || typeof body.targetBranch !== "string") {
@@ -42,20 +28,13 @@ export const deployRoutes: Routes = {
       }
 
       // Fetch task with repository
-      const taskResult = await db
-        .select({
-          task: tasks,
-          repository: repositories,
-        })
-        .from(tasks)
-        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-        .where(eq(tasks.id, taskId));
+      const taskResult = await getTaskWithRepository(taskId);
 
-      if (taskResult.length === 0) {
+      if (!taskResult) {
         throw new NotFoundError("Task", taskId);
       }
 
-      const { task, repository } = taskResult[0];
+      const { task, repository } = taskResult;
 
       // Validate task has a branch
       if (!task.headBranch) {
@@ -87,9 +66,7 @@ export const deployRoutes: Routes = {
       }
 
       // Validate targetBranch is in deploymentBranches
-      const deploymentBranches: string[] = repository.deploymentBranches
-        ? JSON.parse(repository.deploymentBranches)
-        : [];
+      const deploymentBranches = parseDeploymentBranches(repository.deploymentBranches);
       if (!deploymentBranches.includes(body.targetBranch)) {
         throw new ValidationError(
           `Invalid target branch. Allowed: ${deploymentBranches.join(", ")}`
@@ -106,7 +83,8 @@ export const deployRoutes: Routes = {
         if (result.status === "conflict") {
           await logActivity(
             taskId,
-            `Deploy to ${body.targetBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`
+            `Deploy to ${body.targetBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`,
+            "deploy"
           );
           return json(
             {
@@ -122,7 +100,8 @@ export const deployRoutes: Routes = {
 
         await logActivity(
           taskId,
-          `Deployed to ${body.targetBranch} (${result.commitSha.substring(0, 7)})`
+          `Deployed to ${body.targetBranch} (${result.commitSha.substring(0, 7)})`,
+          "deploy"
         );
 
         return json(result);
@@ -217,9 +196,7 @@ export const deployRoutes: Routes = {
       }
 
       // Validate targetBranch is in deploymentBranches
-      const deploymentBranches: string[] = repository.deploymentBranches
-        ? JSON.parse(repository.deploymentBranches)
-        : [];
+      const deploymentBranches = parseDeploymentBranches(repository.deploymentBranches);
       if (!deploymentBranches.includes(body.targetBranch)) {
         throw new ValidationError(
           `Invalid target branch. Allowed: ${deploymentBranches.join(", ")}`
@@ -244,12 +221,14 @@ export const deployRoutes: Routes = {
           if (taskResult.status === "success") {
             await logActivity(
               taskResult.taskId,
-              `Deployed to ${body.targetBranch} (${taskResult.commitSha?.substring(0, 7)})`
+              `Deployed to ${body.targetBranch} (${taskResult.commitSha?.substring(0, 7)})`,
+              "deploy"
             );
           } else if (taskResult.status === "conflict") {
             await logActivity(
               taskResult.taskId,
-              `Deploy to ${body.targetBranch} failed: merge conflict in ${taskResult.conflictedFiles?.join(", ")}`
+              `Deploy to ${body.targetBranch} failed: merge conflict in ${taskResult.conflictedFiles?.join(", ")}`,
+              "deploy"
             );
           }
         }

@@ -5,6 +5,7 @@ import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
+import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
 export const todoRoutes: Routes = {
@@ -16,7 +17,7 @@ export const todoRoutes: Routes = {
 
       const conditions = [];
       if (taskId) {
-        conditions.push(eq(todos.taskId, parseInt(taskId, 10)));
+        conditions.push(eq(todos.taskId, parseId(taskId, "taskId")));
       }
       if (done === "true") {
         conditions.push(isNotNull(todos.done));
@@ -102,7 +103,7 @@ export const todoRoutes: Routes = {
 
   "/api/v1/todos/:id": {
     async GET(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const result = await db.select().from(todos).where(eq(todos.id, id));
 
       if (result.length === 0) {
@@ -113,7 +114,7 @@ export const todoRoutes: Routes = {
     },
 
     async PUT(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       if (!body.content || typeof body.content !== "string") {
@@ -140,7 +141,7 @@ export const todoRoutes: Routes = {
     },
 
     async PATCH(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       const existing = await db.select().from(todos).where(eq(todos.id, id));
@@ -149,9 +150,10 @@ export const todoRoutes: Routes = {
       }
 
       const updates: Record<string, unknown> = { updatedAt: now() };
-      if (body.content !== undefined) updates.content = body.content;
-      if (body.done !== undefined) updates.done = body.done;
-      if (body.taskId !== undefined) updates.taskId = body.taskId;
+      // Use 'in' operator to allow explicitly setting fields to null
+      if ("content" in body) updates.content = body.content;
+      if ("done" in body) updates.done = body.done;
+      if ("taskId" in body) updates.taskId = body.taskId;
 
       const result = await db
         .update(todos)
@@ -163,7 +165,7 @@ export const todoRoutes: Routes = {
     },
 
     async DELETE(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
@@ -178,7 +180,7 @@ export const todoRoutes: Routes = {
 
   "/api/v1/todos/:id/toggle": {
     async POST(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
@@ -200,7 +202,7 @@ export const todoRoutes: Routes = {
 
   "/api/v1/todos/:id/skip": {
     async POST(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
@@ -250,7 +252,7 @@ export const todoRoutes: Routes = {
 
   "/api/v1/todos/:id/promote": {
     async POST(_req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(todos).where(eq(todos.id, id));
       if (existing.length === 0) {
@@ -288,7 +290,7 @@ export const todoRoutes: Routes = {
 
   "/api/v1/todos/:id/reorder": {
     async PUT(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       if (typeof body.position !== "number" || body.position < 1) {

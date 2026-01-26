@@ -12,24 +12,35 @@ export function noContent(): Response {
   return new Response(null, { status: 204 });
 }
 
-export function error(err: Error | AppError): Response {
+interface ErrorDetails {
+  [key: string]: unknown;
+}
+
+interface ErrorResponseBody {
+  error: {
+    code: string;
+    message: string;
+    details?: ErrorDetails;
+  };
+}
+
+export function error(
+  err: Error | AppError,
+  details?: ErrorDetails
+): Response {
   if (err instanceof AppError) {
-    return json(
-      { error: { code: err.code, message: err.message } },
-      err.statusCode
-    );
+    const body: ErrorResponseBody = {
+      error: { code: err.code, message: err.message },
+    };
+    if (details) {
+      body.error.details = details;
+    }
+    return json(body, err.statusCode);
   }
-  console.error("Unexpected error:", err);
+  // Unexpected errors - don't log here, middleware handles it
   return json(
     { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
     500
   );
 }
 
-export function notFound(message: string = "Not found"): Response {
-  return json({ error: { code: "NOT_FOUND", message } }, 404);
-}
-
-export function badRequest(message: string): Response {
-  return json({ error: { code: "BAD_REQUEST", message } }, 400);
-}

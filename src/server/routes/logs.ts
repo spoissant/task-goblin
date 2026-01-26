@@ -5,6 +5,7 @@ import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
+import { parseId, validatePagination } from "../lib/validation";
 import type { Routes } from "../router";
 
 export const logRoutes: Routes = {
@@ -12,8 +13,10 @@ export const logRoutes: Routes = {
     async GET(req) {
       const url = new URL(req.url);
       const includeRead = url.searchParams.get("includeRead") === "true";
-      const limit = parseInt(url.searchParams.get("limit") || "25", 10);
-      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+      const { limit, offset } = validatePagination(
+        url.searchParams.get("limit") || "25",
+        url.searchParams.get("offset")
+      );
 
       // Build where condition
       const whereCondition = includeRead ? undefined : isNull(logs.readAt);
@@ -119,7 +122,7 @@ export const logRoutes: Routes = {
 
   "/api/v1/logs/:id": {
     async GET(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const result = await db.select().from(logs).where(eq(logs.id, id));
 
       if (result.length === 0) {
@@ -130,7 +133,7 @@ export const logRoutes: Routes = {
     },
 
     async DELETE(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(logs).where(eq(logs.id, id));
       if (existing.length === 0) {
@@ -145,7 +148,7 @@ export const logRoutes: Routes = {
 
   "/api/v1/logs/:id/read": {
     async POST(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db.select().from(logs).where(eq(logs.id, id));
       if (existing.length === 0) {
@@ -164,7 +167,7 @@ export const logRoutes: Routes = {
 
   "/api/v1/tasks/:taskId/logs": {
     async GET(req, params) {
-      const taskId = parseInt(params.taskId, 10);
+      const taskId = parseId(params.taskId, "taskId");
 
       // Check task exists
       const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId));
@@ -216,7 +219,7 @@ export const logRoutes: Routes = {
 
   "/api/v1/tasks/:taskId/logs/mark-read": {
     async POST(req, params) {
-      const taskId = parseInt(params.taskId, 10);
+      const taskId = parseId(params.taskId, "taskId");
 
       // Check task exists
       const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId));

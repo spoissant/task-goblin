@@ -1,53 +1,29 @@
-import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { tasks, repositories, logs } from "../../db/schema";
 import { json } from "../response";
 import { NotFoundError, AppError } from "../lib/errors";
-import { now } from "../lib/timestamp";
+import { parseId } from "../lib/validation";
+import { expandPath } from "../lib/path";
+import { logActivity } from "../lib/logging";
+import { getTaskWithRepository } from "../lib/queries";
 import {
   syncBranch,
   SyncBranchError,
 } from "../services/sync-branch";
 import type { Routes } from "../router";
 import { existsSync } from "fs";
-import { homedir } from "os";
-
-function expandPath(path: string): string {
-  if (path.startsWith("~/")) {
-    return path.replace("~", homedir());
-  }
-  return path;
-}
-
-async function logActivity(taskId: number, message: string) {
-  await db.insert(logs).values({
-    taskId,
-    content: message,
-    createdAt: now(),
-    source: "sync",
-  });
-}
 
 export const syncBranchRoutes: Routes = {
   "/api/v1/sync-branch/:taskId": {
     async POST(req, params) {
-      const taskId = parseInt(params.taskId, 10);
+      const taskId = parseId(params.taskId, "taskId");
 
       // Fetch task with repository
-      const taskResult = await db
-        .select({
-          task: tasks,
-          repository: repositories,
-        })
-        .from(tasks)
-        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-        .where(eq(tasks.id, taskId));
+      const taskResult = await getTaskWithRepository(taskId);
 
-      if (taskResult.length === 0) {
+      if (!taskResult) {
         throw new NotFoundError("Task", taskId);
       }
 
-      const { task, repository } = taskResult[0];
+      const { task, repository } = taskResult;
 
       // Validate task has a head branch
       if (!task.headBranch) {
@@ -93,7 +69,8 @@ export const syncBranchRoutes: Routes = {
         if (result.status === "conflict") {
           await logActivity(
             taskId,
-            `Sync from ${task.baseBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`
+            `Sync from ${task.baseBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`,
+            "sync"
           );
           return json(
             {
@@ -109,7 +86,8 @@ export const syncBranchRoutes: Routes = {
 
         await logActivity(
           taskId,
-          `Synced from ${task.baseBranch} (${result.commitSha.substring(0, 7)})`
+          `Synced from ${task.baseBranch} (${result.commitSha.substring(0, 7)})`,
+          "sync"
         );
 
         return json(result);

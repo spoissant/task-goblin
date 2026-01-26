@@ -1,9 +1,10 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories } from "../../db/schema";
+import { repositories, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
+import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
 export const repositoryRoutes: Routes = {
@@ -47,7 +48,7 @@ export const repositoryRoutes: Routes = {
 
   "/api/v1/repositories/:id": {
     async GET(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const result = await db
         .select()
         .from(repositories)
@@ -61,7 +62,7 @@ export const repositoryRoutes: Routes = {
     },
 
     async PUT(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       if (!body.owner || typeof body.owner !== "string") {
@@ -104,7 +105,7 @@ export const repositoryRoutes: Routes = {
     },
 
     async PATCH(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
       const body = await getBody(req);
 
       const existing = await db
@@ -141,7 +142,7 @@ export const repositoryRoutes: Routes = {
     },
 
     async DELETE(req, params) {
-      const id = parseInt(params.id, 10);
+      const id = parseId(params.id);
 
       const existing = await db
         .select()
@@ -149,6 +150,20 @@ export const repositoryRoutes: Routes = {
         .where(eq(repositories.id, id));
       if (existing.length === 0) {
         throw new NotFoundError("Repository", id);
+      }
+
+      // Check for referential integrity - prevent deletion if tasks reference this repository
+      const taskCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(tasks)
+        .where(eq(tasks.repositoryId, id));
+
+      if (taskCount[0]?.count > 0) {
+        throw new AppError(
+          `Cannot delete repository: ${taskCount[0].count} task(s) reference it`,
+          409,
+          "REFERENTIAL_INTEGRITY"
+        );
       }
 
       await db.delete(repositories).where(eq(repositories.id, id));
