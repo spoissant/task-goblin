@@ -65,7 +65,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     let hasMore = true;
 
     while (hasMore) {
-      const { data } = await client.search.issuesAndPullRequests({
+      const { data } = await client.request("GET /search/issues", {
         q: query,
         per_page: 100,
         page,
