@@ -6,7 +6,7 @@ import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
 import { useDeployBranch } from "@/client/lib/queries/deploy";
-import { useSyncTask } from "@/client/lib/queries/sync";
+import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskNotes } from "@/client/components/tasks/TaskNotes";
 import { TaskInstructions } from "@/client/components/tasks/TaskInstructions";
@@ -31,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/client/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Trash2, Check, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, Check, Upload, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import type { Log } from "@/client/lib/types";
 
@@ -45,6 +45,7 @@ export function TaskDetailPage() {
   const deleteTask = useDeleteTask();
   const markLogRead = useMarkLogRead();
   const deployBranch = useDeployBranch();
+  const syncBranch = useSyncBranch();
   const syncTask = useSyncTask();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
@@ -55,6 +56,7 @@ export function TaskDetailPage() {
   const [deployTargetBranch, setDeployTargetBranch] = useState<string>("");
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
+  const [conflictSource, setConflictSource] = useState<"deploy" | "sync">("deploy");
   const [showCompleted, setShowCompleted] = useState(false);
   const [showReadLogs, setShowReadLogs] = useState(false);
 
@@ -111,6 +113,7 @@ export function TaskDetailPage() {
     ? JSON.parse(repo.deploymentBranches)
     : [];
   const canDeploy = task?.headBranch && repo?.localPath && deploymentBranches.length > 0;
+  const canSyncBranch = task?.headBranch && task?.baseBranch && repo?.localPath;
 
   const handleDeploy = () => {
     if (!deployTargetBranch) {
@@ -125,12 +128,33 @@ export function TaskDetailPage() {
           if (result.success) {
             toast.success(`Deployed to ${deployTargetBranch}`);
           } else if (result.conflict) {
+            setConflictSource("deploy");
             setConflictedFiles(result.conflictedFiles);
             setConflictDialogOpen(true);
           }
         },
         onError: (err) => {
           toast.error(err instanceof Error ? err.message : "Deploy failed");
+        },
+      }
+    );
+  };
+
+  const handleSyncBranch = () => {
+    syncBranch.mutate(
+      { taskId },
+      {
+        onSuccess: (result) => {
+          if (result.success) {
+            toast.success(`Synced with ${task?.baseBranch}`);
+          } else if (result.conflict) {
+            setConflictSource("sync");
+            setConflictedFiles(result.conflictedFiles);
+            setConflictDialogOpen(true);
+          }
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Sync failed");
         },
       }
     );
@@ -171,6 +195,18 @@ export function TaskDetailPage() {
                 {deployBranch.isPending ? "Deploying..." : "Deploy"}
               </Button>
             </>
+          )}
+          {canSyncBranch && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncBranch}
+              disabled={syncBranch.isPending}
+              title={`Merge ${task.baseBranch} into ${task.headBranch}`}
+            >
+              <GitMerge className="h-4 w-4 mr-2" />
+              {syncBranch.isPending ? "Syncing..." : "Update Branch"}
+            </Button>
           )}
           <Button
             variant="outline"
@@ -270,7 +306,9 @@ export function TaskDetailPage() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Could not deploy due to merge conflicts in the following files:
+              {conflictSource === "deploy"
+                ? "Could not deploy due to merge conflicts in the following files:"
+                : `Could not sync from ${task.baseBranch} due to merge conflicts in the following files:`}
             </p>
             <ul className="space-y-1">
               {conflictedFiles.map((file) => (

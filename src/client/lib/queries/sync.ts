@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
-import type { SyncResult, MatchResult, Task, Repository } from "../types";
+import { api, ApiError } from "../api";
+import type { SyncResult, MatchResult, Task, Repository, SyncBranchResult } from "../types";
 import { taskKeys } from "./tasks";
+import { logKeys } from "./logs";
 
 export type SyncStep = "jira" | "github" | "matching";
 
@@ -151,6 +152,61 @@ export function useSyncTask() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
+// Sync branch types
+interface SyncBranchConflictResponse {
+  error: {
+    code: "MERGE_CONFLICT";
+    message: string;
+    details: {
+      conflictedFiles: string[];
+    };
+  };
+}
+
+export type SyncBranchMutationResult =
+  | { success: true; data: SyncBranchResult }
+  | { success: false; conflict: true; conflictedFiles: string[] };
+
+/**
+ * Sync a task's feature branch with the latest changes from the main branch.
+ * This merges the base branch (e.g., main) into the task's head branch.
+ */
+export function useSyncBranch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      taskId,
+    }: {
+      taskId: number;
+    }): Promise<SyncBranchMutationResult> => {
+      try {
+        const data = await api.post<SyncBranchResult>(`/sync-branch/${taskId}`);
+        return { success: true, data };
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && err.code === "MERGE_CONFLICT") {
+          // Fetch the full error response to get conflict details
+          const response = await fetch(`/api/v1/sync-branch/${taskId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          const body = await response.json() as SyncBranchConflictResponse;
+          return {
+            success: false,
+            conflict: true,
+            conflictedFiles: body.error.details.conflictedFiles,
+          };
+        }
+        throw err;
+      }
+    },
+    onSuccess: (_, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
+      queryClient.invalidateQueries({ queryKey: logKeys.all });
     },
   });
 }

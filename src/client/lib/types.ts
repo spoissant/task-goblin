@@ -131,6 +131,14 @@ export interface BulkDeployResult {
   };
 }
 
+// Sync branch types (merge main into feature branch)
+export interface SyncBranchResult {
+  status: "success";
+  taskBranch: string;
+  mainBranch: string;
+  commitSha: string;
+}
+
 export interface BlockedBy {
   id: number;
   blockedTaskId: number | null;
