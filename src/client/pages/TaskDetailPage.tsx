@@ -10,6 +10,7 @@ import { useSyncTask } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskNotes } from "@/client/components/tasks/TaskNotes";
 import { TaskInstructions } from "@/client/components/tasks/TaskInstructions";
+import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { BlockedByList } from "@/client/components/tasks/BlockedByList";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -164,6 +165,11 @@ export function TaskDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* Summary Bar */}
+      {(task.jiraKey || task.prNumber) && (
+        <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
+      )}
 
       {/* Jira and PR cards side by side */}
       {(task.jiraKey || task.prNumber) && (
