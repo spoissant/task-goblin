@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask, useCurrentTodo } from "@/client/lib/queries";
 import { cn } from "@/client/lib/utils";
@@ -16,6 +16,7 @@ import { BlockedByList } from "@/client/components/tasks/BlockedByList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
+import { Checkbox } from "@/client/components/ui/checkbox";
 import { Badge } from "@/client/components/ui/badge";
 import {
   Select,
@@ -54,6 +55,8 @@ export function TaskDetailPage() {
   const [deployTargetBranch, setDeployTargetBranch] = useState<string>("");
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showReadLogs, setShowReadLogs] = useState(false);
 
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
@@ -192,7 +195,12 @@ export function TaskDetailPage() {
 
       {/* Grid: Todos on left, BlockedBy on right */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TodoList todos={task.todos} taskId={taskId} />
+        <TodoList
+          todos={task.todos}
+          taskId={taskId}
+          showCompleted={showCompleted}
+          onShowCompletedChange={setShowCompleted}
+        />
         <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
       </div>
 
@@ -203,15 +211,22 @@ export function TaskDetailPage() {
 
       {/* Activity Logs Section - Full Width */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Activity</CardTitle>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={showReadLogs}
+              onCheckedChange={(checked) => setShowReadLogs(checked === true)}
+            />
+            Show read logs
+          </label>
         </CardHeader>
         <CardContent>
           {task.logs.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No activity logs</p>
           ) : (
             <div className="space-y-3">
-              {task.logs.map((log: Log) => (
+              {task.logs.filter((log: Log) => showReadLogs || !log.readAt).map((log: Log) => (
                 <div
                   key={log.id}
                   className={`flex items-start justify-between gap-2 p-2 rounded ${

@@ -28,6 +28,8 @@ import type { Todo } from "@/client/lib/types";
 interface TodoListProps {
   todos: Todo[];
   taskId: number;
+  showCompleted?: boolean;
+  onShowCompletedChange?: (value: boolean) => void;
 }
 
 interface SortableTodoProps {
@@ -88,7 +90,7 @@ function SortableTodo({ todo, onToggle, onDelete }: SortableTodoProps) {
   );
 }
 
-export function TodoList({ todos, taskId }: TodoListProps) {
+export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }: TodoListProps) {
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
@@ -106,14 +108,17 @@ export function TodoList({ todos, taskId }: TodoListProps) {
     })
   );
 
-  // Sort todos by position
+  // Filter and sort todos by position
   const sortedTodos = useMemo(() => {
-    return [...todos].sort((a, b) => {
+    const filtered = showCompleted !== undefined
+      ? todos.filter((t) => showCompleted || !t.done)
+      : todos;
+    return [...filtered].sort((a, b) => {
       const posA = a.position ?? 999999;
       const posB = b.position ?? 999999;
       return posA - posB;
     });
-  }, [todos]);
+  }, [todos, showCompleted]);
 
   // First undone todo from this task
   const firstUndoneTodo = useMemo(() => {
@@ -204,7 +209,16 @@ export function TodoList({ todos, taskId }: TodoListProps) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Todos</CardTitle>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          {onShowCompletedChange && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showCompleted}
+                onCheckedChange={(checked) => onShowCompletedChange(checked === true)}
+              />
+              Show completed
+            </label>
+          )}
           {showToTopButton && (
             <Button
               size="sm"

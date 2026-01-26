@@ -30,7 +30,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 export function TodosPage() {
-  const [hideCompleted, setHideCompleted] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [groupByTask, setGroupByTask] = useState(false);
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -68,7 +68,7 @@ export function TodosPage() {
 
     let todos = data.items;
 
-    if (hideCompleted) {
+    if (!showCompleted) {
       todos = todos.filter((todo) => !todo.done);
     }
 
@@ -84,7 +84,7 @@ export function TodosPage() {
     }
 
     return todos;
-  }, [data?.items, hideCompleted, groupByTask]);
+  }, [data?.items, showCompleted, groupByTask]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -187,12 +187,12 @@ export function TodosPage() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Checkbox
-              id="hide-completed"
-              checked={hideCompleted}
-              onCheckedChange={(checked) => setHideCompleted(checked === true)}
+              id="show-completed"
+              checked={showCompleted}
+              onCheckedChange={(checked) => setShowCompleted(checked === true)}
             />
-            <Label htmlFor="hide-completed" className="text-sm cursor-pointer">
-              Hide completed
+            <Label htmlFor="show-completed" className="text-sm cursor-pointer">
+              Show completed
             </Label>
           </div>
           <div className="flex items-center gap-2">
@@ -271,8 +271,8 @@ export function TodosPage() {
 
       {filteredTodos.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
-          {hideCompleted && data?.items.length
-            ? "All todos completed! Uncheck 'Hide completed' to see them."
+          {!showCompleted && data?.items.length
+            ? "All todos completed! Check 'Show completed' to see them."
             : "No todos yet. Create one to get started!"}
         </div>
       )}
