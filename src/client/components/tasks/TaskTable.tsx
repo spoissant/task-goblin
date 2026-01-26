@@ -1,17 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask, useCurrentTodo } from "@/client/lib/queries";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { StatusBadge } from "./StatusBadge";
-import { ChecksStatusCell } from "./ChecksStatusCell";
-import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "./StatusIcons";
-import { RepoBadge } from "./RepoBadge";
-import { DeploymentBadges } from "./DeploymentBadges";
 import {
   Table,
   TableBody,
@@ -20,23 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, ListTodo, MessageSquare, Bell } from "lucide-react";
+import { RefreshCw, ListTodo, Bell } from "lucide-react";
 import { TodosDialog } from "./TodosDialog";
 import { TaskLogsModal } from "./TaskLogsModal";
-import { toast } from "sonner";
+import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
 // Normalize status name for comparison (case-insensitive, handles underscore/space variants)
 function normalizeStatus(status: string): string {
   return status.toLowerCase().replace(/_/g, " ");
-}
-
-// Build Jira URL - requires jiraHost, returns null if not configured
-function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): string | null {
-  if (!jiraHost) return null;
-  // Strip protocol and trailing slashes from jiraHost if present
-  const cleanHost = jiraHost.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  return `https://${cleanHost}/browse/${jiraKey}`;
 }
 
 interface TaskTableProps {
@@ -147,26 +132,14 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
               </TableHead>
             )}
             <TableHead className="w-[40px]"></TableHead>
-            <TableHead className="w-[80px]">Type</TableHead>
-            <TableHead className="w-[140px]">Sprint</TableHead>
-            <TableHead className="w-[100px]">Epic</TableHead>
-            <TableHead className="w-[100px]">Key</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead className="w-[120px]">Repo</TableHead>
-            <TableHead className="w-[150px]">Branch</TableHead>
-            <TableHead className="w-[60px]">PR</TableHead>
-            <TableHead className="w-[100px]">Status</TableHead>
-            <TableHead className="w-[100px]">Merged in</TableHead>
-            <TableHead className="w-[50px]">Checks</TableHead>
-            <TableHead className="w-[60px]">Reviews</TableHead>
-            <TableHead className="w-[50px]">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <MessageSquare className="h-4 w-4" />
-                </TooltipTrigger>
-                <TooltipContent>Pull Request Comments</TooltipContent>
-              </Tooltip>
-            </TableHead>
+            {TABLE_COLUMNS.map((colKey) => {
+              const col = getColumn(colKey);
+              return (
+                <TableHead key={col.key} style={col.width ? { width: col.width } : undefined}>
+                  {col.header}
+                </TableHead>
+              );
+            })}
             <TableHead className="w-[80px]">Todos</TableHead>
           </TableRow>
         </TableHeader>
@@ -229,9 +202,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
-  const prUrl = repo && task.prNumber
-    ? `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`
-    : null;
+  const prUrl = getPrUrl(repo, task.prNumber);
 
   // Only show sync if task has Jira or PR
   const canSync = task.jiraKey || task.prNumber;
@@ -244,6 +215,14 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
   const handleOpenLogs = (e: React.MouseEvent) => {
     e.stopPropagation();
     onOpenLogs();
+  };
+
+  // Context for column renderers
+  const columnContext = {
+    repo,
+    jiraHost,
+    prUrl,
+    linkToTask: true,
   };
 
   return (
@@ -289,172 +268,15 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
         ) : null}
       </TableCell>
 
-      {/* Type */}
-      <TableCell>
-        {task.type ? (
-          <div className="flex items-center gap-1">
-            <Badge variant="outline" className="text-xs">{task.type}</Badge>
-            {task.type.toLowerCase() === "bug" && task.priority && task.priority !== "To be qualified" && (
-              <Badge
-                className={`text-xs ${
-                  task.priority === "P0" ? "bg-red-600 text-white hover:bg-red-600" :
-                  task.priority === "P1" ? "bg-red-500 text-white hover:bg-red-500" :
-                  task.priority === "P2" ? "bg-red-400 text-white hover:bg-red-400" :
-                  task.priority === "P3" ? "bg-yellow-600 text-white hover:bg-yellow-600" :
-                  task.priority === "P4" ? "bg-blue-500 text-white hover:bg-blue-500" :
-                  ""
-                }`}
-              >
-                {task.priority}
-              </Badge>
-            )}
-          </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Sprint */}
-      <TableCell className="max-w-[140px] truncate text-xs" title={task.sprint || undefined}>
-        {task.sprint || <span className="text-muted-foreground">—</span>}
-      </TableCell>
-
-      {/* Epic */}
-      <TableCell>
-        {task.epicKey ? (
-          (() => {
-            const epicUrl = getJiraUrl(task.epicKey, jiraHost);
-            return epicUrl ? (
-              <a
-                href={epicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline font-mono text-xs"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {task.epicKey}
-              </a>
-            ) : (
-              <span className="font-mono text-xs">{task.epicKey}</span>
-            );
-          })()
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Jira Key */}
-      <TableCell>
-        {task.jiraKey ? (
-          (() => {
-            const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
-            return jiraUrl ? (
-              <a
-                href={jiraUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline font-mono text-xs"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {task.jiraKey}
-              </a>
-            ) : (
-              <span className="font-mono text-xs">{task.jiraKey}</span>
-            );
-          })()
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Title */}
-      <TableCell className="max-w-[300px]">
-        <Link
-          to={`/tasks/${task.id}`}
-          className="hover:underline truncate block"
-          title={task.title}
-        >
-          {task.title}
-        </Link>
-      </TableCell>
-
-      {/* Repository */}
-      <TableCell>
-        {repo ? (
-          <RepoBadge repo={repo} />
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Branch */}
-      <TableCell className="font-mono text-xs max-w-[150px] truncate" title={task.headBranch || undefined}>
-        {task.headBranch ? (
-          <button
-            type="button"
-            className="hover:text-blue-600 cursor-pointer text-left"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(task.headBranch!);
-              toast.success("Branch copied to clipboard");
-            }}
-          >
-            {task.headBranch}
-          </button>
-        ) : (
-          "—"
-        )}
-      </TableCell>
-
-      {/* PR Number */}
-      <TableCell>
-        {task.prNumber ? (
-          prUrl ? (
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-              <span>#{task.prNumber}</span>
-            </a>
-          ) : (
-            <span className="inline-flex items-center gap-1 font-mono text-xs">
-              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-              <span>#{task.prNumber}</span>
-            </span>
-          )
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Status */}
-      <TableCell>
-        <StatusBadge status={task.status} />
-      </TableCell>
-
-      {/* Merged in */}
-      <TableCell>
-        <DeploymentBadges branches={task.onDeploymentBranches} />
-      </TableCell>
-
-      {/* Checks */}
-      <TableCell>
-        <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={prUrl} />
-      </TableCell>
-
-      {/* Review */}
-      <TableCell>
-        <ReviewStatusIcon approvedCount={task.approvedReviewCount} prUrl={prUrl} />
-      </TableCell>
-
-      {/* Comments */}
-      <TableCell>
-        <UnresolvedCommentsIcon count={task.unresolvedCommentCount} prUrl={prUrl} />
-      </TableCell>
+      {/* Shared columns */}
+      {TABLE_COLUMNS.map((colKey) => {
+        const col = getColumn(colKey);
+        return (
+          <TableCell key={col.key} className={col.cellClassName}>
+            {col.render(task, columnContext)}
+          </TableCell>
+        );
+      })}
 
       {/* Todos */}
       <TableCell>
