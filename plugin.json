@@ -5,5 +5,5 @@
   "author": {
     "name": "Simon Poissant"
   },
-  "skills": "../skills/"
+  "skills": "./skills/"
 }
