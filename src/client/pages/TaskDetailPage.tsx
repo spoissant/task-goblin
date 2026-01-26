@@ -171,9 +171,16 @@ export function TaskDetailPage() {
         <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
       )}
 
-      {/* Jira and PR cards side by side */}
-      {(task.jiraKey || task.prNumber) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Top Grid: Todos/BlockedBy on left, Jira/PR on right */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left column: Todos and BlockedBy */}
+        <div className="space-y-6">
+          <TodoList todos={task.todos} taskId={taskId} />
+          <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
+        </div>
+
+        {/* Right column: Jira and PR cards stacked */}
+        <div className="space-y-6">
           {/* Jira Info Section */}
           {task.jiraKey && (
             <Card>
@@ -324,20 +331,7 @@ export function TaskDetailPage() {
               </CardContent>
             </Card>
           )}
-        </div>
-      )}
 
-      <TaskHeader task={task} onStatusChange={handleStatusChange} />
-
-      <TaskNotes task={task} />
-      <TaskInstructions task={task} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-6">
-          <TodoList todos={task.todos} taskId={taskId} />
-          <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
-        </div>
-        <div className="space-y-6">
           {/* No integrations message */}
           {!task.jiraKey && !task.prNumber && (
             <Card>
@@ -346,54 +340,59 @@ export function TaskDetailPage() {
               </CardContent>
             </Card>
           )}
-
-          {/* Activity Logs Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {task.logs.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No activity logs</p>
-              ) : (
-                <div className="space-y-3">
-                  {task.logs.map((log: Log) => (
-                    <div
-                      key={log.id}
-                      className={`flex items-start justify-between gap-2 p-2 rounded ${
-                        log.readAt ? "opacity-60" : "bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline" className="text-xs">
-                            {log.source}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(log.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="text-sm">{log.content}</p>
-                      </div>
-                      {!log.readAt && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 shrink-0"
-                          onClick={() => markLogRead.mutate(log.id)}
-                          title="Mark as read"
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
+
+      <TaskHeader task={task} onStatusChange={handleStatusChange} />
+
+      <TaskNotes task={task} />
+      <TaskInstructions task={task} />
+
+      {/* Activity Logs Section - Full Width */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {task.logs.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No activity logs</p>
+          ) : (
+            <div className="space-y-3">
+              {task.logs.map((log: Log) => (
+                <div
+                  key={log.id}
+                  className={`flex items-start justify-between gap-2 p-2 rounded ${
+                    log.readAt ? "opacity-60" : "bg-muted/50"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" className="text-xs">
+                        {log.source}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm">{log.content}</p>
+                  </div>
+                  {!log.readAt && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => markLogRead.mutate(log.id)}
+                      title="Mark as read"
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Merge Conflict Dialog */}
       <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
