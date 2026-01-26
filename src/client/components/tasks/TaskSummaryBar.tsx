@@ -31,117 +31,136 @@ export function TaskSummaryBar({ task, repo, jiraHost }: TaskSummaryBarProps) {
   return (
     <TooltipProvider>
       <div className="rounded-lg border bg-card p-3 overflow-x-auto">
-        <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto_auto_auto_auto] gap-4 items-center text-sm min-w-max">
-          {/* Type */}
-          <div>
-            {task.type ? (
-              <Badge variant="outline" className="text-xs">{task.type}</Badge>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </div>
+        <table className="w-full">
+          <thead>
+            <tr className="text-xs font-medium text-muted-foreground">
+              <th className="text-left pr-4 pb-2">Type</th>
+              <th className="text-left pr-4 pb-2">Key</th>
+              <th className="text-left pr-4 pb-2">Title</th>
+              <th className="text-left pr-4 pb-2">Repo</th>
+              <th className="text-left pr-4 pb-2">Branch</th>
+              <th className="text-left pr-4 pb-2">PR</th>
+              <th className="text-left pr-4 pb-2">Status</th>
+              <th className="text-left pr-4 pb-2">Merged in</th>
+              <th className="text-left pb-2">Checks/Reviews</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="text-sm">
+              {/* Type */}
+              <td className="pr-4">
+                {task.type ? (
+                  <Badge variant="outline" className="text-xs">{task.type}</Badge>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
 
-          {/* Key */}
-          <div>
-            {task.jiraKey ? (
-              jiraUrl ? (
-                <a
-                  href={jiraUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-                >
-                  {task.jiraKey}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <span className="font-mono text-xs">{task.jiraKey}</span>
-              )
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </div>
+              {/* Key */}
+              <td className="pr-4">
+                {task.jiraKey ? (
+                  jiraUrl ? (
+                    <a
+                      href={jiraUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
+                    >
+                      {task.jiraKey}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="font-mono text-xs">{task.jiraKey}</span>
+                  )
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
 
-          {/* Title */}
-          <div className="truncate max-w-[200px]" title={task.title}>
-            {task.title}
-          </div>
+              {/* Title */}
+              <td className="pr-4 truncate max-w-[200px]" title={task.title}>
+                {task.title}
+              </td>
 
-          {/* Repo */}
-          <div>
-            {repo ? (
-              <RepoBadge repo={repo} />
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </div>
+              {/* Repo */}
+              <td className="pr-4">
+                {repo ? (
+                  <RepoBadge repo={repo} />
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
 
-          {/* Branch */}
-          <div>
-            {task.headBranch ? (
-              <button
-                type="button"
-                className="font-mono text-xs hover:text-blue-600 cursor-pointer max-w-[120px] truncate block"
-                title={task.headBranch}
-                onClick={() => {
-                  navigator.clipboard.writeText(task.headBranch!);
-                  toast.success("Branch copied to clipboard");
-                }}
-              >
-                {task.headBranch}
-              </button>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </div>
+              {/* Branch */}
+              <td className="pr-4">
+                {task.headBranch ? (
+                  <button
+                    type="button"
+                    className="font-mono text-xs hover:text-blue-600 cursor-pointer max-w-[120px] truncate block"
+                    title={task.headBranch}
+                    onClick={() => {
+                      navigator.clipboard.writeText(task.headBranch!);
+                      toast.success("Branch copied to clipboard");
+                    }}
+                  >
+                    {task.headBranch}
+                  </button>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
 
-          {/* PR */}
-          <div>
-            {task.prNumber ? (
-              prUrl ? (
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-                >
-                  <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-                  <span>#{task.prNumber}</span>
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-1 font-mono text-xs">
-                  <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-                  <span>#{task.prNumber}</span>
-                </span>
-              )
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </div>
+              {/* PR */}
+              <td className="pr-4">
+                {task.prNumber ? (
+                  prUrl ? (
+                    <a
+                      href={prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
+                    >
+                      <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+                      <span>#{task.prNumber}</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-mono text-xs">
+                      <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+                      <span>#{task.prNumber}</span>
+                    </span>
+                  )
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
 
-          {/* Status */}
-          <div>
-            <StatusBadge status={task.status} />
-          </div>
+              {/* Status */}
+              <td className="pr-4">
+                <StatusBadge status={task.status} />
+              </td>
 
-          {/* Merged in */}
-          <div>
-            <DeploymentBadges branches={task.onDeploymentBranches} />
-          </div>
+              {/* Merged in */}
+              <td className="pr-4">
+                <DeploymentBadges branches={task.onDeploymentBranches} />
+              </td>
 
-          {/* Checks */}
-          <div className="flex items-center gap-2">
-            <ChecksStatusCell
-              checksStatus={task.checksStatus}
-              checksDetails={task.checksDetails}
-              prUrl={prUrl}
-            />
-            <ReviewStatusIcon
-              approvedCount={task.approvedReviewCount}
-              prUrl={prUrl}
-            />
-          </div>
-        </div>
+              {/* Checks */}
+              <td>
+                <div className="flex items-center gap-2">
+                  <ChecksStatusCell
+                    checksStatus={task.checksStatus}
+                    checksDetails={task.checksDetails}
+                    prUrl={prUrl}
+                  />
+                  <ReviewStatusIcon
+                    approvedCount={task.approvedReviewCount}
+                    prUrl={prUrl}
+                  />
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </TooltipProvider>
   );
