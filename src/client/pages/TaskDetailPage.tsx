@@ -30,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/client/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Trash2, ExternalLink, GitPullRequest, Check, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, Check, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Log } from "@/client/lib/types";
 
@@ -57,13 +57,6 @@ export function TaskDetailPage() {
 
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
-
-  const getPrUrl = (): string | undefined => {
-    if (!task?.prNumber || !task?.repositoryId) return undefined;
-    const repo = task.repository || repoMap.get(task.repositoryId);
-    if (!repo) return undefined;
-    return `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`;
-  };
 
   if (isLoading) {
     return (
@@ -109,8 +102,6 @@ export function TaskDetailPage() {
     }
   };
 
-  const prUrl = getPrUrl();
-
   // Get deployment branches from repository
   const repo = task?.repository || (task?.repositoryId ? repoMap.get(task.repositoryId) : undefined);
   const deploymentBranches: string[] = repo?.deploymentBranches
@@ -150,6 +141,34 @@ export function TaskDetailPage() {
           Back
         </Button>
         <div className="flex gap-2">
+          {canDeploy && (
+            <>
+              <Select
+                value={deployTargetBranch}
+                onValueChange={setDeployTargetBranch}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Deploy to..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {deploymentBranches.map((branch) => (
+                    <SelectItem key={branch} value={branch}>
+                      {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDeploy}
+                disabled={!deployTargetBranch || deployBranch.isPending}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {deployBranch.isPending ? "Deploying..." : "Deploy"}
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -171,176 +190,10 @@ export function TaskDetailPage() {
         <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
       )}
 
-      {/* Top Grid: Todos/BlockedBy on left, Jira/PR on right */}
+      {/* Grid: Todos on left, BlockedBy on right */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left column: Todos and BlockedBy */}
-        <div className="space-y-6">
-          <TodoList todos={task.todos} taskId={taskId} />
-          <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
-        </div>
-
-        {/* Right column: Jira and PR cards stacked */}
-        <div className="space-y-6">
-          {/* Jira Info Section */}
-          {task.jiraKey && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Jira Issue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    {jiraHost ? (
-                      <a
-                        href={`${jiraHost.replace(/\/$/, '')}/browse/${task.jiraKey}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 hover:text-primary"
-                      >
-                        <Badge variant="outline">{task.jiraKey}</Badge>
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      <Badge variant="outline">{task.jiraKey}</Badge>
-                    )}
-                    {task.type && <Badge variant="secondary">{task.type}</Badge>}
-                    {task.priority && <Badge variant="outline">{task.priority}</Badge>}
-                  </div>
-                  {task.assignee && (
-                    <p className="text-sm text-muted-foreground">
-                      Assignee: {task.assignee}
-                    </p>
-                  )}
-                  {task.sprint && (
-                    <p className="text-sm text-muted-foreground">
-                      Sprint: {task.sprint}
-                    </p>
-                  )}
-                  {task.epicKey && (
-                    <p className="text-sm text-muted-foreground">
-                      Epic: {task.epicKey}
-                    </p>
-                  )}
-                  {task.jiraSyncedAt && (
-                    <p className="text-xs text-muted-foreground">
-                      Last synced: {new Date(task.jiraSyncedAt).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* PR Info Section */}
-          {task.prNumber && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Pull Request</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <GitPullRequest className="h-4 w-4" />
-                    {prUrl ? (
-                      <a
-                        href={prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 hover:text-primary"
-                      >
-                        <Badge variant="outline">#{task.prNumber}</Badge>
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      <Badge variant="outline">#{task.prNumber}</Badge>
-                    )}
-                    {task.prState && (
-                      <Badge
-                        variant={
-                          task.prState === "merged" ? "default" :
-                          task.prState === "closed" ? "destructive" :
-                          "secondary"
-                        }
-                      >
-                        {task.prState}
-                      </Badge>
-                    )}
-                    {task.isDraft === 1 && <Badge variant="secondary">Draft</Badge>}
-                  </div>
-                  {task.headBranch && (
-                    <p className="text-sm text-muted-foreground font-mono">
-                      <button
-                        type="button"
-                        className="hover:text-blue-600 cursor-pointer"
-                        onClick={() => {
-                          navigator.clipboard.writeText(task.headBranch!);
-                          toast.success("Branch copied to clipboard");
-                        }}
-                      >
-                        {task.headBranch}
-                      </button>
-                      {task.baseBranch && ` → ${task.baseBranch}`}
-                    </p>
-                  )}
-                  {task.prAuthor && (
-                    <p className="text-sm text-muted-foreground">
-                      Author: {task.prAuthor}
-                    </p>
-                  )}
-                  {task.checksStatus && (
-                    <p className="text-sm text-muted-foreground">
-                      Checks: {task.checksStatus}
-                    </p>
-                  )}
-                  {task.prSyncedAt && (
-                    <p className="text-xs text-muted-foreground">
-                      Last synced: {new Date(task.prSyncedAt).toLocaleString()}
-                    </p>
-                  )}
-                  {canDeploy && (
-                    <div className="pt-3 mt-3 border-t">
-                      <p className="text-sm font-medium mb-2">Deploy to Environment</p>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={deployTargetBranch}
-                          onValueChange={setDeployTargetBranch}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue placeholder="Select..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {deploymentBranches.map((branch) => (
-                              <SelectItem key={branch} value={branch}>
-                                {branch}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          size="sm"
-                          onClick={handleDeploy}
-                          disabled={!deployTargetBranch || deployBranch.isPending}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          {deployBranch.isPending ? "Deploying..." : "Deploy"}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* No integrations message */}
-          {!task.jiraKey && !task.prNumber && (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                <p>This is a manual task with no linked Jira issue or PR.</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        <TodoList todos={task.todos} taskId={taskId} />
+        <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
       </div>
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
