@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   useStatusCategoriesQuery,
   useUpdateStatusCategories,
@@ -8,14 +8,6 @@ import {
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
-import { Badge } from "@/client/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
 import {
   Table,
   TableBody,
@@ -25,95 +17,11 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { ArrowUp, ArrowDown, Save, Loader2, Trash2, X, Plus } from "lucide-react";
+import { ArrowUp, ArrowDown, Save, Loader2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { TagInput } from "./TagInput";
+import { ColorSelect } from "./ColorSelect";
 import type { StatusCategory } from "@/client/lib/types";
-
-// Simple tag input component for jiraMappings
-interface TagInputProps {
-  tags: string[];
-  onChange: (tags: string[]) => void;
-  placeholder?: string;
-}
-
-function TagInput({ tags, onChange, placeholder = "Add status..." }: TagInputProps) {
-  const [inputValue, setInputValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && inputValue.trim()) {
-      e.preventDefault();
-      const newTag = inputValue.trim();
-      if (!tags.some(t => t.toLowerCase() === newTag.toLowerCase())) {
-        onChange([...tags, newTag]);
-      }
-      setInputValue("");
-    } else if (e.key === "Backspace" && !inputValue && tags.length > 0) {
-      onChange(tags.slice(0, -1));
-    }
-  };
-
-  const removeTag = (index: number) => {
-    onChange(tags.filter((_, i) => i !== index));
-  };
-
-  return (
-    <div
-      className="flex flex-wrap gap-1 p-1 border rounded-md min-h-[2rem] cursor-text bg-background"
-      onClick={() => inputRef.current?.focus()}
-    >
-      {tags.map((tag, index) => (
-        <Badge key={index} variant="secondary" className="h-6 text-xs gap-1 pr-1">
-          {tag}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              removeTag(index);
-            }}
-            className="hover:bg-muted-foreground/20 rounded-full p-0.5"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </Badge>
-      ))}
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={tags.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[80px] h-6 text-xs bg-transparent outline-none"
-      />
-    </div>
-  );
-}
-
-const COLOR_OPTIONS = [
-  { value: "bg-slate-500", label: "Slate" },
-  { value: "bg-gray-500", label: "Gray" },
-  { value: "bg-red-500", label: "Red" },
-  { value: "bg-orange-500", label: "Orange" },
-  { value: "bg-amber-500", label: "Amber" },
-  { value: "bg-yellow-500", label: "Yellow" },
-  { value: "bg-yellow-600", label: "Yellow (Dark)" },
-  { value: "bg-lime-500", label: "Lime" },
-  { value: "bg-green-500", label: "Green" },
-  { value: "bg-green-700", label: "Green (Dark)" },
-  { value: "bg-emerald-500", label: "Emerald" },
-  { value: "bg-teal-500", label: "Teal" },
-  { value: "bg-cyan-500", label: "Cyan" },
-  { value: "bg-sky-500", label: "Sky" },
-  { value: "bg-blue-500", label: "Blue" },
-  { value: "bg-blue-600", label: "Blue (Dark)" },
-  { value: "bg-indigo-500", label: "Indigo" },
-  { value: "bg-violet-500", label: "Violet" },
-  { value: "bg-purple-500", label: "Purple" },
-  { value: "bg-fuchsia-500", label: "Fuchsia" },
-  { value: "bg-pink-500", label: "Pink" },
-  { value: "bg-rose-500", label: "Rose" },
-];
 
 // Local state type (without id since we're bulk replacing)
 type CategoryDraft = Omit<StatusCategory, "id">;
@@ -268,21 +176,11 @@ export function StatusCategoriesForm() {
           <p className="text-xs text-muted-foreground mb-2">
             Applied to unmapped statuses
           </p>
-          <Select value={defaultColor} onValueChange={handleDefaultColorChange}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {COLOR_OPTIONS.map((color) => (
-                <SelectItem key={color.value} value={color.value}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-4 h-4 rounded ${color.value}`} />
-                    {color.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ColorSelect
+            value={defaultColor}
+            onValueChange={handleDefaultColorChange}
+            triggerClassName="w-48"
+          />
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleAddCategory}>
@@ -345,24 +243,11 @@ export function StatusCategoriesForm() {
                   />
                 </TableCell>
                 <TableCell>
-                  <Select
+                  <ColorSelect
                     value={category.color}
                     onValueChange={(v) => handleCategoryChange(index, "color", v)}
-                  >
-                    <SelectTrigger className="w-full h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COLOR_OPTIONS.map((color) => (
-                        <SelectItem key={color.value} value={color.value}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-4 h-4 rounded ${color.value}`} />
-                            {color.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    triggerClassName="w-full h-8"
+                  />
                 </TableCell>
                 <TableCell>
                   <TagInput

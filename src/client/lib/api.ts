@@ -1,30 +1,8 @@
+import { ApiError, handleResponse } from "@/shared/api";
+
+export { ApiError };
+
 const API_BASE = "/api/v1";
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new ApiError(
-      response.status,
-      body.error?.code || "UNKNOWN_ERROR",
-      body.error?.message || response.statusText
-    );
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return response.json();
-}
 
 export const api = {
   async get<T>(path: string): Promise<T> {

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   useRepositoriesQuery,
-  useCreateRepository,
   useUpdateRepository,
   useDeleteRepository,
 } from "@/client/lib/queries";
@@ -18,61 +17,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
-import { Label } from "@/client/components/ui/label";
 import { Badge } from "@/client/components/ui/badge";
 import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { BADGE_COLORS, type BadgeColorName } from "@/client/components/tasks/RepoBadge";
+import { BadgeColorSelect } from "./BadgeColorSelect";
+import { AddRepositoryDialog } from "./AddRepositoryDialog";
 
 export function RepositoryList() {
   const { data, isLoading } = useRepositoriesQuery();
-  const createRepo = useCreateRepository();
   const updateRepo = useUpdateRepository();
   const deleteRepo = useDeleteRepository();
 
   const [isAddingRepo, setIsAddingRepo] = useState(false);
-  const [newOwner, setNewOwner] = useState("");
-  const [newRepo, setNewRepo] = useState("");
-  const [newBadgeColor, setNewBadgeColor] = useState<BadgeColorName | "">("gray");
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
   const [localPathInputs, setLocalPathInputs] = useState<Record<number, string>>({});
-
-  const handleCreate = () => {
-    if (!newOwner.trim() || !newRepo.trim()) {
-      toast.error("Owner and repo name are required");
-      return;
-    }
-
-    createRepo.mutate(
-      { owner: newOwner.trim(), repo: newRepo.trim(), badgeColor: newBadgeColor || null },
-      {
-        onSuccess: () => {
-          toast.success("Repository added");
-          setNewOwner("");
-          setNewRepo("");
-          setNewBadgeColor("gray");
-          setIsAddingRepo(false);
-        },
-        onError: () => {
-          toast.error("Failed to add repository");
-        },
-      }
-    );
-  };
 
   const handleBadgeColorChange = (id: number, color: string) => {
     updateRepo.mutate(
@@ -205,26 +163,11 @@ export function RepositoryList() {
                       {repo.owner}/{repo.repo}
                     </TableCell>
                     <TableCell>
-                      <Select
+                      <BadgeColorSelect
                         value={repo.badgeColor || "gray"}
                         onValueChange={(value) => handleBadgeColorChange(repo.id, value)}
-                      >
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.keys(BADGE_COLORS).map((color) => (
-                            <SelectItem key={color} value={color}>
-                              <span className="flex items-center gap-2">
-                                <span
-                                  className={`inline-block w-3 h-3 rounded-full ${BADGE_COLORS[color as BadgeColorName].split(" ")[0]}`}
-                                />
-                                {color}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="w-28"
+                      />
                     </TableCell>
                     <TableCell>
                       <Input
@@ -309,68 +252,10 @@ export function RepositoryList() {
         </CardContent>
       </Card>
 
-      <Dialog open={isAddingRepo} onOpenChange={setIsAddingRepo}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Repository</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="owner">Owner</Label>
-              <Input
-                id="owner"
-                value={newOwner}
-                onChange={(e) => setNewOwner(e.target.value)}
-                placeholder="organization or username"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="repo">Repository Name</Label>
-              <Input
-                id="repo"
-                value={newRepo}
-                onChange={(e) => setNewRepo(e.target.value)}
-                placeholder="repository-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Badge Color</Label>
-              <Select
-                value={newBadgeColor || "gray"}
-                onValueChange={(value) => setNewBadgeColor(value as BadgeColorName)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(BADGE_COLORS).map((color) => (
-                    <SelectItem key={color} value={color}>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`inline-block w-3 h-3 rounded-full ${BADGE_COLORS[color as BadgeColorName].split(" ")[0]}`}
-                        />
-                        {color}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddingRepo(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={!newOwner.trim() || !newRepo.trim() || createRepo.isPending}
-            >
-              {createRepo.isPending ? "Adding..." : "Add Repository"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddRepositoryDialog
+        open={isAddingRepo}
+        onOpenChange={setIsAddingRepo}
+      />
     </>
   );
 }
