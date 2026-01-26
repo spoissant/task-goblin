@@ -205,7 +205,7 @@ export function TaskDetailPage() {
               title={`Merge ${task.baseBranch} into ${task.headBranch}`}
             >
               <GitMerge className="h-4 w-4 mr-2" />
-              {syncBranch.isPending ? "Syncing..." : "Update Branch"}
+              {syncBranch.isPending ? "Merging..." : `Merge latest ${task.baseBranch}`}
             </Button>
           )}
           <Button
