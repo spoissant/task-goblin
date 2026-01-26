@@ -15,12 +15,12 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCreateTodo, useToggleTodo, useDeleteTodo, useReorderTodo } from "@/client/lib/queries";
+import { useCreateTodo, useToggleTodo, useDeleteTodo, useReorderTodo, usePromoteTodo, useCurrentTodo } from "@/client/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, ArrowUpToLine } from "lucide-react";
 import { toast } from "sonner";
 import { Linkify } from "@/client/components/ui/Linkify";
 import type { Todo } from "@/client/lib/types";
@@ -96,6 +96,8 @@ export function TodoList({ todos, taskId }: TodoListProps) {
   const toggleTodo = useToggleTodo();
   const deleteTodo = useDeleteTodo();
   const reorderTodo = useReorderTodo();
+  const promoteTodo = usePromoteTodo();
+  const { currentTodo } = useCurrentTodo();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -112,6 +114,25 @@ export function TodoList({ todos, taskId }: TodoListProps) {
       return posA - posB;
     });
   }, [todos]);
+
+  // First undone todo from this task
+  const firstUndoneTodo = useMemo(() => {
+    return sortedTodos.find((t) => !t.done);
+  }, [sortedTodos]);
+
+  // Show "To Top" button when:
+  // 1. This task has undone todos
+  // 2. Current global todo is NOT from this task
+  const showToTopButton = firstUndoneTodo && currentTodo?.taskId !== taskId;
+
+  const handlePromote = () => {
+    if (!firstUndoneTodo) return;
+    promoteTodo.mutate(firstUndoneTodo.id, {
+      onError: () => {
+        toast.error("Failed to promote todo");
+      },
+    });
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -183,12 +204,25 @@ export function TodoList({ todos, taskId }: TodoListProps) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Todos</CardTitle>
-        {!isAdding && (
-          <Button size="sm" variant="outline" onClick={() => setIsAdding(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Add
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {showToTopButton && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePromote}
+              disabled={promoteTodo.isPending}
+            >
+              <ArrowUpToLine className="h-4 w-4 mr-1" />
+              To Top
+            </Button>
+          )}
+          {!isAdding && (
+            <Button size="sm" variant="outline" onClick={() => setIsAdding(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <DndContext

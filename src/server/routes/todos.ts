@@ -248,6 +248,44 @@ export const todoRoutes: Routes = {
     },
   },
 
+  "/api/v1/todos/:id/promote": {
+    async POST(_req, params) {
+      const id = parseInt(params.id, 10);
+
+      const existing = await db.select().from(todos).where(eq(todos.id, id));
+      if (existing.length === 0) {
+        throw new NotFoundError("Todo", id);
+      }
+
+      const todo = existing[0];
+
+      // No-op if already position 1
+      if (todo.position === 1) {
+        return json(todo);
+      }
+
+      const timestamp = now();
+
+      // Shift ALL todos with non-null positions +1
+      await db
+        .update(todos)
+        .set({
+          position: sql`${todos.position} + 1`,
+          updatedAt: timestamp,
+        })
+        .where(isNotNull(todos.position));
+
+      // Set promoted todo position = 1
+      const result = await db
+        .update(todos)
+        .set({ position: 1, updatedAt: timestamp })
+        .where(eq(todos.id, id))
+        .returning();
+
+      return json(result[0]);
+    },
+  },
+
   "/api/v1/todos/:id/reorder": {
     async PUT(req, params) {
       const id = parseInt(params.id, 10);
