@@ -514,4 +514,75 @@ export const taskRoutes: Routes = {
       return json(result[0]);
     },
   },
+
+  // Get task by branch name
+  "/api/v1/tasks/by-branch/:branch": {
+    async GET(req, params) {
+      const { branch } = params;
+      const result = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.headBranch, branch));
+
+      if (result.length === 0) {
+        throw new NotFoundError("Task with branch", branch);
+      }
+
+      if (result.length > 1) {
+        throw new ValidationError(
+          `Multiple tasks found with branch "${branch}". Use task ID or Jira key instead.`
+        );
+      }
+
+      return json(result[0]);
+    },
+  },
+
+  // Get task by PR number (optionally filtered by repo)
+  "/api/v1/tasks/by-pr/:prNumber": {
+    async GET(req, params) {
+      const prNumber = parseId(params.prNumber);
+      const url = new URL(req.url);
+      const repo = url.searchParams.get("repo"); // format: owner/repo
+
+      let result;
+      if (repo) {
+        const [owner, repoName] = repo.split("/");
+        if (!owner || !repoName) {
+          throw new ValidationError("repo must be in format owner/repo");
+        }
+        // Join with repositories to filter by owner/repo
+        result = await db
+          .select({ task: tasks })
+          .from(tasks)
+          .innerJoin(repositories, eq(tasks.repositoryId, repositories.id))
+          .where(
+            and(
+              eq(tasks.prNumber, prNumber),
+              eq(repositories.owner, owner),
+              eq(repositories.repo, repoName)
+            )
+          );
+        result = result.map((r) => r.task);
+      } else {
+        result = await db
+          .select()
+          .from(tasks)
+          .where(eq(tasks.prNumber, prNumber));
+      }
+
+      if (result.length === 0) {
+        const identifier = repo ? `PR #${prNumber} in ${repo}` : `PR #${prNumber}`;
+        throw new NotFoundError("Task with", identifier);
+      }
+
+      if (result.length > 1) {
+        throw new ValidationError(
+          `Multiple tasks found with PR #${prNumber}. Add ?repo=owner/repo to filter.`
+        );
+      }
+
+      return json(result[0]);
+    },
+  },
 };

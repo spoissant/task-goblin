@@ -64,16 +64,29 @@ export async function del<T>(path: string): Promise<T> {
 export async function resolveTaskId(params: {
   id?: number;
   jiraKey?: string;
+  prNumber?: number;
+  repo?: string; // owner/repo format, used with prNumber
+  branch?: string;
 }): Promise<number> {
   if (params.id) {
     return params.id;
   }
 
   if (params.jiraKey) {
-    // Use the new endpoint that looks up task by jiraKey
     const task = await get<Task>(`/api/v1/tasks/by-jira-key/${encodeURIComponent(params.jiraKey)}`);
     return task.id;
   }
 
-  throw new Error("One of id or jiraKey is required");
+  if (params.prNumber !== undefined) {
+    const repoQuery = params.repo ? `?repo=${encodeURIComponent(params.repo)}` : "";
+    const task = await get<Task>(`/api/v1/tasks/by-pr/${params.prNumber}${repoQuery}`);
+    return task.id;
+  }
+
+  if (params.branch) {
+    const task = await get<Task>(`/api/v1/tasks/by-branch/${encodeURIComponent(params.branch)}`);
+    return task.id;
+  }
+
+  throw new Error("One of id, jiraKey, prNumber, or branch is required");
 }
