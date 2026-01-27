@@ -164,8 +164,8 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "status",
   "mergedIn",
   "checks",
-  "reviews",
   "comments",
+  "reviews",
 ];
 
 // Column order for TaskSummaryBar (task detail page)
@@ -181,6 +181,6 @@ export const SUMMARY_COLUMNS: (keyof typeof COLUMNS)[] = [
   "status",
   "mergedIn",
   "checks",
-  "reviews",
   "comments",
+  "reviews",
 ];
