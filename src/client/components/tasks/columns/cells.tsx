@@ -132,7 +132,7 @@ export function BranchCell({ task }: { task: Task }) {
   return (
     <button
       type="button"
-      className="font-mono text-xs hover:text-blue-600 cursor-pointer text-left truncate block"
+      className="font-mono text-xs hover:text-blue-600 cursor-pointer text-left truncate block w-full"
       title={task.headBranch}
       onClick={(e) => {
         e.stopPropagation();
