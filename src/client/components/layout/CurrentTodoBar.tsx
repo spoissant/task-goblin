@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from "@/client/components/ui/dialog";
 import { Linkify } from "@/client/components/ui/Linkify";
-import { Plus, SkipForward } from "lucide-react";
+import { ExternalLink, Plus, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 
 export function CurrentTodoBar() {
@@ -85,6 +85,18 @@ export function CurrentTodoBar() {
           )}
           <span className="text-sm block truncate"><Linkify>{currentTodo.content}</Linkify></span>
         </div>
+        {currentTodo.task && (
+          <Button
+            size="sm"
+            variant="ghost"
+            asChild
+            title="Open task"
+          >
+            <Link to={`/tasks/${currentTodo.taskId}`}>
+              <ExternalLink className="h-4 w-4" />
+            </Link>
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
