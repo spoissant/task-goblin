@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useUpdateTask } from "@/client/lib/queries";
 import { useSelectableStatusesQuery } from "@/client/lib/queries/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
@@ -113,7 +114,23 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
           />
         ) : task.description ? (
           <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
-            <ReactMarkdown>{task.description}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {task.description}
+            </ReactMarkdown>
           </div>
         ) : (
           <p className="text-muted-foreground">No description</p>

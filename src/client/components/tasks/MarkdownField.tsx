@@ -63,7 +63,23 @@ export function MarkdownField({
 
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline dark:text-blue-400"
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {value}
+      </ReactMarkdown>
     </div>
   );
 }
