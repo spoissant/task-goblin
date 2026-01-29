@@ -1,8 +1,7 @@
 import { eq, and, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories, logs } from "../../db/schema";
+import { tasks, repositories } from "../../db/schema";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
-import { now } from "../lib/timestamp";
 import { mapPrToTaskData } from "./github-mappers";
 import {
   fetchApprovedReviewCount,
@@ -231,20 +230,6 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
 
     throw new GitHubApiError("Failed to fetch PRs from GitHub", "GITHUB_API_ERROR");
   }
-
-  // Log sync completion
-  const parts: string[] = [];
-  if (unchangedCount > 0) parts.push(`${unchangedCount} unchanged`);
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (updatedCount > 0) parts.push(`${updatedCount} updated`);
-  const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-
-  await db.insert(logs).values({
-    taskId: null,
-    content: `GitHub sync completed: ${summary}`,
-    source: "github",
-    createdAt: now(),
-  });
 
   return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }

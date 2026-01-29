@@ -286,20 +286,6 @@ export async function syncJiraItems(): Promise<SyncResult> {
     throw new JiraApiError("Failed to fetch issues from Jira", "JIRA_API_ERROR");
   }
 
-  // Log sync completion
-  const parts: string[] = [];
-  if (unchangedCount > 0) parts.push(`${unchangedCount} unchanged`);
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (updatedCount > 0) parts.push(`${updatedCount} updated`);
-  const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-
-  await db.insert(logs).values({
-    taskId: null,
-    content: `Jira sync completed: ${summary}`,
-    source: "jira",
-    createdAt: now(),
-  });
-
   return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }
 
