@@ -1,4 +1,4 @@
-import { eq, sql, isNull, desc, asc, and } from "drizzle-orm";
+import { eq, sql, isNull, desc, and } from "drizzle-orm";
 import { db } from "../../db";
 import { logs, tasks, repositories } from "../../db/schema";
 import { json, created, noContent } from "../response";
@@ -41,7 +41,7 @@ export const logRoutes: Routes = {
         .leftJoin(tasks, eq(logs.taskId, tasks.id))
         .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
         .where(whereCondition)
-        .orderBy(asc(logs.createdAt))
+        .orderBy(desc(logs.createdAt))
         .limit(limit)
         .offset(offset);
 
@@ -175,7 +175,7 @@ export const logRoutes: Routes = {
         throw new NotFoundError("Task", taskId);
       }
 
-      // Get unread logs for this task, ordered oldest first
+      // Get unread logs for this task, ordered newest first
       const rawItems = await db
         .select({
           log: logs,
@@ -195,7 +195,7 @@ export const logRoutes: Routes = {
         .leftJoin(tasks, eq(logs.taskId, tasks.id))
         .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
         .where(and(eq(logs.taskId, taskId), isNull(logs.readAt)))
-        .orderBy(asc(logs.createdAt));
+        .orderBy(desc(logs.createdAt));
 
       const items = rawItems.map((row) => ({
         ...row.log,
