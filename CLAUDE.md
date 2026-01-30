@@ -10,23 +10,27 @@ Single-user, local only. No auth. Credentials stored in `.env`.
 
 ## Tech Stack
 
-- **Runtime:** Bun (`Bun.serve()` for backend, first-class SQLite support)
-- **Frontend:** React with React Router v7
-- **Styling:** shadcn/ui + Tailwind CSS
+- **Runtime:** Bun (`Bun.serve()` for backend, native SQLite)
+- **Frontend:** React 19 + React Router v7 + TanStack Query
+- **Styling:** shadcn/ui + Tailwind CSS + Radix UI
 - **Database:** SQLite with drizzle-orm
 - **APIs:** jira.js, @octokit/rest
-- **Testing:** Vitest
+- **MCP:** @modelcontextprotocol/sdk
+- **Testing:** Bun native test runner
 
 ## Commands
 
 ```bash
-bun install          # Install dependencies
-bun run dev          # Start all dev servers
-bun run dev:api      # Start API server only (port 3456)
-bun run dev:web      # Start frontend only
-bun run build        # Build for production
-bun test             # Run all tests
-bun test <file>      # Run single test file
+bun install           # Install dependencies
+bun run dev           # Start all dev servers
+bun run dev:api       # API server (port 3456)
+bun run dev:web       # Frontend (port 5173)
+bun run dev:kill      # Kill dev servers
+bun run build         # Build for production
+bun test              # Run tests
+bun run db:generate   # Generate drizzle schema
+bun run db:migrate    # Run migrations
+bun run mcp           # Launch MCP server
 ```
 
 ## Architecture
@@ -42,15 +46,19 @@ bun test <file>      # Run single test file
 ### Folder Structure
 ```
 /prompts              ← shared prompt templates
-/plans                ← task plan files (markdown, gitignored except .gitkeep)
+/plans                ← task plan files (gitignored)
+/drizzle              ← database migrations
 /src/server           ← Bun API backend
-  /routes             ← route handlers (tasks.ts, todos.ts, etc.)
-  /lib                ← errors.ts, timestamp.ts
-  router.ts           ← pattern-matching router (no framework)
+  /routes             ← route handlers
+  /services           ← sync, deploy, merge logic
+  /lib                ← clients, errors, validation, utilities
+  router.ts           ← pattern-matching router
   middleware.ts       ← CORS, error boundary
-  response.ts         ← json(), created(), error() helpers
+  response.ts         ← json(), created(), noContent(), error()
 /src/client           ← React frontend
 /src/db               ← SQLite schema, relations, db client
+/src/mcp              ← MCP server + tools
+/src/test             ← test utilities
 /src/shared           ← shared types/utilities
 ```
 
@@ -62,15 +70,21 @@ Response formats:
 - Error: `{ error: { code, message } }`
 
 ### Environment Variables
-- `PORT` - API server port (default: 3456)
-- `DATABASE_URL` - SQLite path (default: `task-goblin.db`, tests use `:memory:`)
+- `PORT` - API port (default: 3456)
+- `DATABASE_URL` - SQLite path (default: task-goblin.db)
+- `JIRA_API_TOKEN` - Jira API auth
+- `GITHUB_TOKEN` - GitHub API auth
+- `API_URL` - MCP client base URL (default: localhost:3456)
 
 ### Key Models
-- **Task** - workflow-level task with status, notes, planFile
-- **Branch** - git branch linked to Task; may have associated PullRequest
-- **BlockedBy** - polymorphic junction: tasks can be blocked by other tasks or todos
-- **Todo** - checklist items with optional parent Task
-- **Repository** - configured GitHub repos (credentials in `.env`)
+- **Task** - unified task (manual, Jira, PR) with status, notes, instructions
+- **Todo** - checklist items with ordering
+- **Repository** - GitHub repo config
+- **BlockedBy** - polymorphic junction (task blocked by task OR todo)
+- **Logs** - activity audit trail with read/unread
+- **StatusCategories** - configurable status workflow states
+- **TaskFilters** - filter bar configuration
+- **Settings** - key-value config store
 
 ### MCP Server
 Standalone process providing programmatic access for AI agents. Consumes REST API. Can: list/read tasks, append notes, manage todos, update plan files.
