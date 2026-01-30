@@ -19,7 +19,89 @@ const GITHUB_TRACKED_FIELDS = [
 
 const LARGE_FIELDS = ["checksDetails"] as const;
 
-export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
+/**
+ * Extract Jira keys from PR title in format [KEY-123]
+ */
+function extractJiraKeysFromTitle(title: string): string[] {
+  const regex = /\[([A-Z][A-Z0-9]*-\d+)\]/g;
+  const keys: string[] = [];
+  let match;
+  while ((match = regex.exec(title)) !== null) {
+    keys.push(match[1]);
+  }
+  return keys;
+}
+
+/**
+ * Update a task's PR fields by Jira key (keeps existing title)
+ */
+async function updateTaskByJiraKey(
+  jiraKey: string,
+  data: PrTaskData
+): Promise<"updated" | "unchanged" | "not_found"> {
+  const existing = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.jiraKey, jiraKey));
+
+  if (existing.length === 0) {
+    return "not_found";
+  }
+
+  const oldTask = existing[0];
+
+  // Skip if this task already has the same PR number (already handled by main upsert)
+  if (oldTask.prNumber === data.prNumber && oldTask.repositoryId === data.repositoryId) {
+    return "unchanged";
+  }
+
+  // Compare fields and generate diff
+  const diffs = generateTaskDiff(
+    oldTask as unknown as Record<string, unknown>,
+    data as unknown as Record<string, unknown>,
+    GITHUB_TRACKED_FIELDS
+  );
+
+  // Update PR fields only, preserve title and other Jira data
+  await db
+    .update(tasks)
+    .set({
+      prNumber: data.prNumber,
+      repositoryId: data.repositoryId,
+      prState: data.prState,
+      prAuthor: data.prAuthor,
+      headBranch: data.headBranch,
+      baseBranch: data.baseBranch,
+      isDraft: data.isDraft,
+      checksStatus: data.checksStatus,
+      checksDetails: data.checksDetails,
+      approvedReviewCount: data.approvedReviewCount,
+      unresolvedCommentCount: data.unresolvedCommentCount,
+      onDeploymentBranches: data.onDeploymentBranches,
+      prSyncedAt: data.prSyncedAt,
+      updatedAt: data.updatedAt,
+    })
+    .where(eq(tasks.id, oldTask.id));
+
+  // Only log if there were actual changes
+  if (diffs.length > 0) {
+    const timestamp = now();
+    await db.insert(logs).values({
+      taskId: oldTask.id,
+      content: formatDiffLog(diffs, LARGE_FIELDS),
+      source: "github",
+      createdAt: timestamp,
+    });
+    return "updated";
+  }
+
+  return "unchanged";
+}
+
+/**
+ * Upsert by pr_number or headBranch (original matching logic)
+ */
+async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
   // First, try to find by repositoryId + prNumber (if we already synced this PR)
   const existingByNumber = await db
     .select()
@@ -167,4 +249,28 @@ export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated" 
   });
 
   return "new";
+}
+
+/**
+ * Main upsert function: handles pr_number/branch matching + Jira key matching
+ */
+export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
+  // 1. Standard upsert by pr_number or branch
+  const primaryResult = await upsertPrTaskByNumber(data);
+
+  // 2. Extract Jira keys from title and update matching tasks
+  const jiraKeys = extractJiraKeysFromTitle(data.title);
+  let jiraUpdated = false;
+
+  for (const key of jiraKeys) {
+    const result = await updateTaskByJiraKey(key, data);
+    if (result === "updated") {
+      jiraUpdated = true;
+    }
+  }
+
+  // Return most significant result
+  if (primaryResult === "new") return "new";
+  if (primaryResult === "updated" || jiraUpdated) return "updated";
+  return "unchanged";
 }
