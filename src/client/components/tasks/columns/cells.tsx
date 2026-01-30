@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
-import { StatusBadge } from "../StatusBadge";
+import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
@@ -176,7 +176,13 @@ export function PrCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
 }
 
 export function StatusCell({ task }: { task: Task }) {
-  return <StatusBadge status={task.status} />;
+  return (
+    <InteractiveStatusBadge
+      taskId={task.id}
+      status={task.status}
+      jiraKey={task.jiraKey}
+    />
+  );
 }
 
 export function MergedInCell({ task }: { task: Task }) {

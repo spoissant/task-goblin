@@ -8,6 +8,7 @@ export const todoKeys = {
   list: () => [...todoKeys.all, "list"] as const,
   listFiltered: (params: { taskId?: number; done?: boolean }) =>
     [...todoKeys.list(), params] as const,
+  detail: (id: number) => [...todoKeys.all, "detail", id] as const,
 };
 
 export function useTodosQuery(params: { taskId?: number; done?: boolean } = {}) {
@@ -24,6 +25,14 @@ export function useTodosQuery(params: { taskId?: number; done?: boolean } = {}) 
   return useQuery({
     queryKey: todoKeys.listFiltered(params),
     queryFn: () => api.get<ListResponse<TodoWithTask>>(url),
+  });
+}
+
+export function useTodoQuery(id: number) {
+  return useQuery({
+    queryKey: todoKeys.detail(id),
+    queryFn: () => api.get<Todo>(`/todos/${id}`),
+    enabled: id > 0,
   });
 }
 

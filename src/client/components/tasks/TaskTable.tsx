@@ -15,8 +15,10 @@ import {
 } from "@/client/components/ui/table";
 import { RefreshCw, ListTodo, Bell } from "lucide-react";
 import { TodosDialog } from "./TodosDialog";
+import { BlockersDialog } from "./BlockersDialog";
 import { TaskLogsModal } from "./TaskLogsModal";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
+import { BlockerStatusIcon } from "./StatusIcons";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 
 // Normalize status name for comparison (case-insensitive, handles underscore/space variants)
@@ -38,6 +40,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
   const { data: statusSettings } = useStatusSettingsQuery();
   const { currentTodo } = useCurrentTodo();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
+  const [blockersDialogTask, setBlockersDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
   // Get task ID from current todo for highlighting
@@ -141,6 +144,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
               );
             })}
             <TableHead className="w-[80px]">Todos</TableHead>
+            <TableHead className="w-[80px]">Blocked</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -151,6 +155,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
               jiraHost={jiraHost}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
+              onOpenBlockers={() => setBlockersDialogTask({ id: task.id, title: task.title })}
               onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               isCurrentTodoTask={task.id === currentTodoTaskId}
@@ -175,6 +180,14 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
           taskTitle={todoDialogTask.title}
         />
       )}
+      {blockersDialogTask && (
+        <BlockersDialog
+          open={!!blockersDialogTask}
+          onOpenChange={(open) => !open && setBlockersDialogTask(null)}
+          taskId={blockersDialogTask.id}
+          taskTitle={blockersDialogTask.title}
+        />
+      )}
       {logsModalTask && (
         <TaskLogsModal
           open={!!logsModalTask}
@@ -192,13 +205,14 @@ interface TaskRowProps {
   repo?: Repository;
   jiraHost: string | null;
   onOpenTodos: () => void;
+  onOpenBlockers: () => void;
   onOpenLogs: () => void;
   isSelected: boolean;
   isCurrentTodoTask: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, isCurrentTodoTask, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs, isSelected, isCurrentTodoTask, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -295,6 +309,18 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
           <ListTodo className="h-3.5 w-3.5" />
           {task.pendingTodos.length}
         </button>
+      </TableCell>
+
+      {/* Blocked */}
+      <TableCell>
+        <BlockerStatusIcon
+          blockerCount={task.blockerCount}
+          completedBlockerCount={task.completedBlockerCount}
+          onClick={(e) => {
+            e?.stopPropagation();
+            onOpenBlockers();
+          }}
+        />
       </TableCell>
     </TableRow>
   );

@@ -39,7 +39,7 @@ export function BlockedByList({ blockedBy, taskId }: BlockedByListProps) {
   const availableTasks = tasks?.items.filter((t) => t.id !== taskId) || [];
 
   const handleDelete = (id: number) => {
-    deleteBlocker.mutate(id, {
+    deleteBlocker.mutate({ id, blockedTaskId: taskId }, {
       onSuccess: () => toast.success("Blocker removed"),
       onError: () => toast.error("Failed to remove blocker"),
     });

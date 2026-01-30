@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare } from "lucide-react";
+import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, Ban } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -163,6 +163,91 @@ export function UnresolvedCommentsIcon({ count, prUrl }: UnresolvedCommentsIconP
       </TooltipTrigger>
       <TooltipContent>
         {count} unresolved comment{count !== 1 ? "s" : ""}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface BlockerStatusIconProps {
+  blockerCount: number;
+  completedBlockerCount: number;
+  onClick?: (e?: React.MouseEvent) => void;
+}
+
+export function BlockerStatusIcon({ blockerCount, completedBlockerCount, onClick }: BlockerStatusIconProps) {
+  const cursorClass = onClick ? "cursor-pointer hover:opacity-80" : "cursor-default";
+
+  // No blockers - show green checkmark alone
+  if (blockerCount === 0) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground ${cursorClass}`}
+            onClick={onClick}
+          >
+            <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>No blockers</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  const countText = `${completedBlockerCount}/${blockerCount}`;
+
+  // All blockers complete - green
+  if (completedBlockerCount === blockerCount) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 ${cursorClass}`}
+            onClick={onClick}
+          >
+            <CheckCircle className="h-3.5 w-3.5" />
+            {countText}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>All blockers resolved</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // No blockers complete - red
+  if (completedBlockerCount === 0) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 ${cursorClass}`}
+            onClick={onClick}
+          >
+            <Ban className="h-3.5 w-3.5" />
+            {countText}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {blockerCount} unresolved blocker{blockerCount !== 1 ? "s" : ""}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // Partial - yellow
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 ${cursorClass}`}
+          onClick={onClick}
+        >
+          <CheckCircle className="h-3.5 w-3.5" />
+          {countText}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {completedBlockerCount} of {blockerCount} blockers resolved
       </TooltipContent>
     </Tooltip>
   );

@@ -63,6 +63,8 @@ export interface TaskWithRepository extends Task {
 export interface TaskWithTodos extends Task {
   pendingTodos: NextTodo[];
   unreadLogCount: number;
+  blockerCount: number;
+  completedBlockerCount: number;
 }
 
 export interface Todo {

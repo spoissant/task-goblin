@@ -229,22 +229,6 @@ export function TaskDetailPage() {
         <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
       )}
 
-      {/* Grid: Todos on left, BlockedBy on right */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TodoList
-          todos={task.todos}
-          taskId={taskId}
-          showCompleted={showCompleted}
-          onShowCompletedChange={setShowCompleted}
-        />
-        <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
-      </div>
-
-      <TaskHeader task={task} onStatusChange={handleStatusChange} />
-
-      <TaskNotes task={task} />
-      <TaskInstructions task={task} />
-
       {/* Activity Logs Section - Full Width */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -297,6 +281,22 @@ export function TaskDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Grid: Todos on left, BlockedBy on right */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TodoList
+          todos={task.todos}
+          taskId={taskId}
+          showCompleted={showCompleted}
+          onShowCompletedChange={setShowCompleted}
+        />
+        <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
+      </div>
+
+      <TaskHeader task={task} onStatusChange={handleStatusChange} />
+
+      <TaskNotes task={task} />
+      <TaskInstructions task={task} />
 
       {/* Merge Conflict Dialog */}
       <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>

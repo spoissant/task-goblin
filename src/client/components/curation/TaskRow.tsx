@@ -1,6 +1,6 @@
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
-import { StatusBadge } from "@/client/components/tasks/StatusBadge";
+import { InteractiveStatusBadge } from "@/client/components/tasks/InteractiveStatusBadge";
 import { ExternalLink, Scissors, MessageSquare } from "lucide-react";
 import { PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import { useSplitTask } from "@/client/lib/queries";
@@ -73,7 +73,12 @@ export function TaskRow({ task, jiraHost, getPrUrl }: Props) {
         </div>
         <p className="font-medium truncate mt-1">{task.title}</p>
         <div className="flex items-center gap-2 mt-1">
-          <StatusBadge status={task.status} className="text-xs" />
+          <InteractiveStatusBadge
+            taskId={task.id}
+            status={task.status}
+            jiraKey={task.jiraKey}
+            className="text-xs"
+          />
           {task.type && (
             <Badge variant="outline" className="text-xs">{task.type}</Badge>
           )}

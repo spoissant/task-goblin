@@ -13,6 +13,7 @@ import {
   statusOrderExpr,
   isStatusSelectable,
   getSelectableStatuses,
+  getCompletedStatusNames,
 } from "../lib/task-status";
 import type { Routes } from "../router";
 
@@ -145,10 +146,66 @@ export const taskRoutes: Routes = {
         }
       }
 
+      // Get blocker counts for each task
+      const blockerCountsMap = new Map<number, number>();
+      if (taskIds.length > 0) {
+        const blockerCounts = await db
+          .select({
+            blockedTaskId: blockedBy.blockedTaskId,
+            count: sql<number>`count(*)`,
+          })
+          .from(blockedBy)
+          .where(
+            sql`${blockedBy.blockedTaskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`
+          )
+          .groupBy(blockedBy.blockedTaskId);
+
+        for (const row of blockerCounts) {
+          if (row.blockedTaskId) {
+            blockerCountsMap.set(row.blockedTaskId, row.count);
+          }
+        }
+      }
+
+      // Get completed blocker counts for each task
+      const completedBlockerCountsMap = new Map<number, number>();
+      if (taskIds.length > 0) {
+        const completedStatuses = await getCompletedStatusNames();
+
+        // Build SQL condition for completed task statuses
+        const completedStatusCondition = completedStatuses.length > 0
+          ? sql`LOWER(blocker_task.status) IN (${sql.join(completedStatuses.map(s => sql`${s}`), sql`, `)})`
+          : sql`1 = 0`;
+
+        // Count completed blockers:
+        // - Task blockers: status is in completed category
+        // - Todo blockers: done IS NOT NULL
+        const completedBlockerCounts = await db.all<{ blockedTaskId: number; count: number }>(sql`
+          SELECT blocked_task_id as blockedTaskId, COUNT(*) as count
+          FROM blocked_by
+          LEFT JOIN tasks AS blocker_task ON blocked_by.blocker_task_id = blocker_task.id
+          LEFT JOIN todos AS blocker_todo ON blocked_by.blocker_todo_id = blocker_todo.id
+          WHERE blocked_by.blocked_task_id IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})
+            AND (
+              (blocked_by.blocker_task_id IS NOT NULL AND ${completedStatusCondition})
+              OR (blocked_by.blocker_todo_id IS NOT NULL AND blocker_todo.done IS NOT NULL)
+            )
+          GROUP BY blocked_by.blocked_task_id
+        `);
+
+        for (const row of completedBlockerCounts) {
+          if (row.blockedTaskId) {
+            completedBlockerCountsMap.set(row.blockedTaskId, row.count);
+          }
+        }
+      }
+
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
         unreadLogCount: unreadLogCountsMap.get(task.id) || 0,
+        blockerCount: blockerCountsMap.get(task.id) || 0,
+        completedBlockerCount: completedBlockerCountsMap.get(task.id) || 0,
       }));
 
       // Get total count for pagination
@@ -288,8 +345,18 @@ export const taskRoutes: Routes = {
       const id = parseId(params.id);
       const body = await getBody(req);
 
+      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
+      if (existing.length === 0) {
+        throw new NotFoundError("Task", id);
+      }
+
       // Validate status against selectable statuses
       if (body.status) {
+        // Reject status changes for Jira-linked tasks
+        if (existing[0].jiraKey) {
+          throw new ValidationError("Cannot change status of Jira-linked task");
+        }
+
         const isValid = await isStatusSelectable(body.status);
         if (!isValid) {
           const selectableStatuses = await getSelectableStatuses();
@@ -297,11 +364,6 @@ export const taskRoutes: Routes = {
             `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
           );
         }
-      }
-
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Task", id);
       }
 
       const updates: Record<string, unknown> = { updatedAt: now() };

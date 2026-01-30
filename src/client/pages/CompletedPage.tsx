@@ -5,7 +5,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
-import { StatusBadge } from "@/client/components/tasks/StatusBadge";
+import { InteractiveStatusBadge } from "@/client/components/tasks/InteractiveStatusBadge";
 import { ChecksStatusCell } from "@/client/components/tasks/ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
@@ -157,7 +157,11 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
 
       {/* Status */}
       <TableCell>
-        <StatusBadge status={task.status} />
+        <InteractiveStatusBadge
+          taskId={task.id}
+          status={task.status}
+          jiraKey={task.jiraKey}
+        />
       </TableCell>
 
       {/* Type */}
