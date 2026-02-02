@@ -40,10 +40,12 @@ export interface Task {
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
   unresolvedCommentCount: number | null;
+}
 
-  // User-editable markdown fields
-  notes: string | null;
-  instructions: string | null;
+// Linked note summary (id + title only)
+export interface LinkedNote {
+  id: number;
+  title: string;
 }
 
 // Task detail with relations
@@ -52,6 +54,7 @@ export interface TaskDetail extends Task {
   blockedBy: BlockedBy[];
   repository: Repository | null;
   logs: Log[];
+  notes: LinkedNote[];
 }
 
 // Task with repository for curation view

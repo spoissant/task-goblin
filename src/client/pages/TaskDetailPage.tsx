@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router";
+import { useState } from "react";
+import { useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask, useCurrentTodo } from "@/client/lib/queries";
 import { cn } from "@/client/lib/utils";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
@@ -7,10 +7,8 @@ import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
 import { useDeployBranch } from "@/client/lib/queries/deploy";
 import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
-import { useNotesForTaskQuery, useCreateNote } from "@/client/lib/queries/notes";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
-import { TaskNotes } from "@/client/components/tasks/TaskNotes";
-import { TaskInstructions } from "@/client/components/tasks/TaskInstructions";
+import { LinkedNotesViewer } from "@/client/components/tasks/LinkedNotesViewer";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { BlockedByList } from "@/client/components/tasks/BlockedByList";
@@ -32,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/client/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Trash2, Check, Upload, GitMerge, StickyNote, Plus, ExternalLink } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, Check, Upload, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import type { Log } from "@/client/lib/types";
 
@@ -51,8 +49,6 @@ export function TaskDetailPage() {
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
   const { currentTodo } = useCurrentTodo();
-  const { data: notesData } = useNotesForTaskQuery(taskId);
-  const createNote = useCreateNote();
 
   const isActiveTodoTask = currentTodo?.taskId === taskId;
 
@@ -298,53 +294,12 @@ export function TaskDetailPage() {
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
 
-      {/* Linked Notes */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <StickyNote className="h-4 w-4" />
-            Linked Notes
-          </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              createNote.mutate(
-                { title: `Note for ${task.jiraKey || task.title}`, taskIds: [taskId] },
-                {
-                  onSuccess: (note) => navigate(`/notes/${note.id}`),
-                  onError: () => toast.error("Failed to create note"),
-                }
-              );
-            }}
-            disabled={createNote.isPending}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            New Note
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {!notesData?.items.length ? (
-            <p className="text-muted-foreground text-sm text-center py-4">No linked notes</p>
-          ) : (
-            <div className="space-y-2">
-              {notesData.items.map((note) => (
-                <Link
-                  key={note.id}
-                  to={`/notes/${note.id}`}
-                  className="flex items-center justify-between p-2 rounded hover:bg-muted"
-                >
-                  <span className="font-medium">{note.title}</span>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <TaskNotes task={task} />
-      <TaskInstructions task={task} />
+      <LinkedNotesViewer
+        taskId={taskId}
+        taskTitle={task.title}
+        jiraKey={task.jiraKey}
+        notes={task.notes}
+      />
 
       {/* Merge Conflict Dialog */}
       <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>

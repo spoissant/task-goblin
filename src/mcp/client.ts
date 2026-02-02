@@ -10,6 +10,7 @@ import type {
   SplitResult,
   Note,
   NoteWithTasks,
+  LinkedNote,
 } from "@/shared/types";
 
 export { ApiError };
@@ -28,6 +29,7 @@ export interface BlockedByRecord {
 export interface TaskWithRelations extends TaskWithRepository {
   todos: Todo[];
   blockedBy: BlockedByRecord[];
+  notes: LinkedNote[];
 }
 
 const BASE_URL = process.env.API_URL || "http://localhost:3456";

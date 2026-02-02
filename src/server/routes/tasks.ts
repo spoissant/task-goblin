@@ -1,6 +1,6 @@
 import { eq, and, sql, ne, isNull, isNotNull, or, desc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, blockedBy, repositories, logs } from "../../db/schema";
+import { tasks, todos, blockedBy, repositories, logs, noteTasks, notes } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -244,8 +244,6 @@ export const taskRoutes: Routes = {
           title: body.title,
           description: body.description || null,
           status: body.status || "To Do",
-          notes: body.notes || null,
-          instructions: body.instructions || null,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -294,12 +292,23 @@ export const taskRoutes: Routes = {
         .where(eq(logs.taskId, id))
         .orderBy(desc(logs.createdAt));
 
+      // Get linked notes for this task
+      const linkedNotes = await db
+        .select({
+          id: notes.id,
+          title: notes.title,
+        })
+        .from(noteTasks)
+        .innerJoin(notes, eq(noteTasks.noteId, notes.id))
+        .where(eq(noteTasks.taskId, id));
+
       return json({
         ...task,
         todos: taskTodos,
         blockedBy: taskBlockedBy,
         repository,
         logs: taskLogs,
+        notes: linkedNotes,
       });
     },
 
@@ -371,8 +380,6 @@ export const taskRoutes: Routes = {
       if ("title" in body) updates.title = body.title;
       if ("description" in body) updates.description = body.description;
       if ("status" in body) updates.status = body.status;
-      if ("notes" in body) updates.notes = body.notes;
-      if ("instructions" in body) updates.instructions = body.instructions;
 
       const result = await db
         .update(tasks)
