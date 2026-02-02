@@ -6,10 +6,11 @@ import { BulkDeployBar } from "@/client/components/tasks/BulkDeployBar";
 import { BulkDeployResultsDialog } from "@/client/components/tasks/BulkDeployResultsDialog";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { useTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
+import { useMarkAllLogsRead, useUnreadCountQuery } from "@/client/lib/queries/logs";
 import { useBulkDeploy } from "@/client/lib/queries/deploy";
 import { Button } from "@/client/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
-import { Plus } from "lucide-react";
+import { Plus, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
 
@@ -25,6 +26,8 @@ export function TasksPage() {
   const { data: tasksData } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const bulkDeploy = useBulkDeploy();
+  const markAllRead = useMarkAllLogsRead();
+  const { data: unreadCount } = useUnreadCountQuery();
 
   // Build task map for results dialog
   const taskMap = useMemo(() => {
@@ -117,6 +120,14 @@ export function TasksPage() {
         <h1 className="text-2xl font-bold">Tasks</h1>
         <div className="flex items-center gap-2">
           <RefreshButton />
+          <Button
+            variant="outline"
+            onClick={() => markAllRead.mutate()}
+            disabled={!unreadCount?.count || markAllRead.isPending}
+          >
+            <CheckCheck className="h-4 w-4 mr-2" />
+            Mark all as read
+          </Button>
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Task
