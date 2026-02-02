@@ -235,6 +235,27 @@ export interface SplitResult {
   prTask: Task;
 }
 
+// Note - standalone markdown document for investigation notes, failed attempts, decisions
+export interface Note {
+  id: number;
+  title: string;
+  content: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Note with linked tasks
+export interface NoteWithTasks extends Note {
+  tasks: { id: number; title: string; jiraKey: string | null }[];
+}
+
+// Note-Task junction record
+export interface NoteTask {
+  id: number;
+  noteId: number;
+  taskId: number;
+}
+
 // Helper type guard - only this one is used
 export function isMergedTask(task: Task): boolean {
   return task.jiraKey !== null && task.prNumber !== null;

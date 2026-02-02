@@ -6,6 +6,8 @@ import { TodosPage } from "./pages/TodosPage";
 import { CurationPage } from "./pages/CurationPage";
 import { CompletedPage } from "./pages/CompletedPage";
 import { LogsPage } from "./pages/LogsPage";
+import { NotesPage } from "./pages/NotesPage";
+import { NoteDetailPage } from "./pages/NoteDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -36,6 +38,14 @@ export const router = createBrowserRouter([
       {
         path: "logs",
         element: <LogsPage />,
+      },
+      {
+        path: "notes",
+        element: <NotesPage />,
+      },
+      {
+        path: "notes/:id",
+        element: <NoteDetailPage />,
       },
       {
         path: "settings",

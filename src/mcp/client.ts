@@ -8,12 +8,14 @@ import type {
   ListResponse,
   SyncResult,
   SplitResult,
+  Note,
+  NoteWithTasks,
 } from "@/shared/types";
 
 export { ApiError };
 
 // Re-export types for MCP tools
-export type { Task, TaskWithRepository, Todo, BlockedBy, Repository, ListResponse, SyncResult, SplitResult };
+export type { Task, TaskWithRepository, Todo, BlockedBy, Repository, ListResponse, SyncResult, SplitResult, Note, NoteWithTasks };
 
 // MCP-specific types
 export interface BlockedByRecord {
@@ -56,6 +58,15 @@ export async function patch<T>(path: string, body: unknown): Promise<T> {
 export async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "DELETE",
+  });
+  return handleResponse<T>(res);
+}
+
+export async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   return handleResponse<T>(res);
 }

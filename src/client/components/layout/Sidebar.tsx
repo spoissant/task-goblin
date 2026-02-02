@@ -7,6 +7,7 @@ import {
   FolderSearch,
   CheckCircle,
   ScrollText,
+  StickyNote,
   Settings,
   ListChecks,
   ChevronLeft,
@@ -25,6 +26,7 @@ const navItems = [
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
+  { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

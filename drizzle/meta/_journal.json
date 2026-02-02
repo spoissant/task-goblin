@@ -57,6 +57,13 @@
       "when": 1769052178928,
       "tag": "0007_stormy_reptil",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1770046546442,
+      "tag": "0008_peaceful_zodiak",
+      "breakpoints": true
     }
   ]
 }

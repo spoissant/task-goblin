@@ -103,3 +103,23 @@ export const taskFilters = sqliteTable("task_filters", {
   position: integer("position").notNull(),
   jiraMappings: text("jira_mappings"), // JSON array
 });
+
+// 9. Notes - standalone markdown documents for investigation notes, failed attempts, decisions
+export const notes = sqliteTable("notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  content: text("content"), // markdown content
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// 10. NoteTasks - many-to-many junction between notes and tasks
+export const noteTasks = sqliteTable("note_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  noteId: integer("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+});
