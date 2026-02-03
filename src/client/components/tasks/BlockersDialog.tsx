@@ -8,12 +8,7 @@ import {
   useTodoQuery,
 } from "@/client/lib/queries";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Badge } from "@/client/components/ui/badge"; // Used for Todo badge
 import {
@@ -90,65 +85,63 @@ export function BlockersDialog({
     );
   };
 
+  const footer = (
+    <div className="flex items-center gap-2 w-full">
+      <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+        <SelectTrigger className="flex-1">
+          <SelectValue placeholder="Select a task to block..." />
+        </SelectTrigger>
+        <SelectContent>
+          {availableTasks.map((task) => (
+            <SelectItem key={task.id} value={String(task.id)}>
+              {task.jiraKey ? `[${task.jiraKey}] ` : ""}
+              {task.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        onClick={handleAdd}
+        disabled={!selectedTaskId || createBlocker.isPending}
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add
+      </Button>
+    </div>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Blockers</DialogTitle>
-          <p className="text-sm text-muted-foreground truncate" title={taskTitle}>
-            {taskTitle}
-          </p>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {blockersLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : !blockersData?.items.length ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No blockers
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {blockersData.items.map((blocker) => (
-                <BlockerRow
-                  key={blocker.id}
-                  blocker={blocker}
-                  onRemove={() => handleRemove(blocker.id)}
-                />
-              ))}
-            </ul>
-          )}
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Blockers"
+      description={taskTitle}
+      size="md"
+      footer={footer}
+    >
+      {blockersLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
         </div>
-
-        <div className="flex items-center gap-2 pt-2 border-t">
-          <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Select a task to block..." />
-            </SelectTrigger>
-            <SelectContent>
-              {availableTasks.map((task) => (
-                <SelectItem key={task.id} value={String(task.id)}>
-                  {task.jiraKey ? `[${task.jiraKey}] ` : ""}
-                  {task.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            onClick={handleAdd}
-            disabled={!selectedTaskId || createBlocker.isPending}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Add
-          </Button>
+      ) : !blockersData?.items.length ? (
+        <div className="text-center py-8 text-muted-foreground">
+          No blockers
         </div>
-      </DialogContent>
-    </Dialog>
+      ) : (
+        <ul className="space-y-2">
+          {blockersData.items.map((blocker) => (
+            <BlockerRow
+              key={blocker.id}
+              blocker={blocker}
+              onRemove={() => handleRemove(blocker.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </ModalDialog>
   );
 }
 

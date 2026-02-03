@@ -3,12 +3,7 @@ import { useNavigate } from "react-router";
 import { useNoteDetailQuery, useCreateNote } from "@/client/lib/queries/notes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { StickyNote, Plus, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
@@ -92,28 +87,30 @@ export function LinkedNotesViewer({ taskId, taskTitle, jiraKey, notes }: LinkedN
         </CardContent>
       </Card>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-6xl w-full max-h-[80vh] overflow-y-auto overflow-x-hidden">
-          <DialogHeader className="flex flex-row items-center justify-between pr-8">
-            <DialogTitle>{selectedNote?.title}</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/notes/${selectedNoteId}`)}
-            >
-              <ExternalLink className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-          </DialogHeader>
-          {noteDetail?.content ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <Markdown remarkPlugins={[remarkGfm]}>{noteDetail.content}</Markdown>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm italic">No content</p>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ModalDialog
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        title={selectedNote?.title ?? "Note"}
+        size="2xl"
+        header={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(`/notes/${selectedNoteId}`)}
+          >
+            <ExternalLink className="h-4 w-4 mr-1" />
+            Edit
+          </Button>
+        }
+      >
+        {noteDetail?.content ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown remarkPlugins={[remarkGfm]}>{noteDetail.content}</Markdown>
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm italic">No content</p>
+        )}
+      </ModalDialog>
     </>
   );
 }

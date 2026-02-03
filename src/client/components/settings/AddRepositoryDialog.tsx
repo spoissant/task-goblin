@@ -2,13 +2,7 @@ import { useState } from "react";
 import { useCreateRepository } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Label } from "@/client/components/ui/label";
 import { toast } from "sonner";
 import { BadgeColorSelect } from "./BadgeColorSelect";
@@ -48,52 +42,55 @@ export function AddRepositoryDialog({ open, onOpenChange }: AddRepositoryDialogP
     );
   };
 
+  const footer = (
+    <>
+      <Button variant="outline" onClick={() => onOpenChange(false)}>
+        Cancel
+      </Button>
+      <Button
+        onClick={handleCreate}
+        disabled={!newOwner.trim() || !newRepo.trim() || createRepo.isPending}
+      >
+        {createRepo.isPending ? "Adding..." : "Add Repository"}
+      </Button>
+    </>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Repository</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="owner">Owner</Label>
-            <Input
-              id="owner"
-              value={newOwner}
-              onChange={(e) => setNewOwner(e.target.value)}
-              placeholder="organization or username"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="repo">Repository Name</Label>
-            <Input
-              id="repo"
-              value={newRepo}
-              onChange={(e) => setNewRepo(e.target.value)}
-              placeholder="repository-name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Badge Color</Label>
-            <BadgeColorSelect
-              value={newBadgeColor || "gray"}
-              onValueChange={(value) => setNewBadgeColor(value as BadgeColorName)}
-            />
-          </div>
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add Repository"
+      footer={footer}
+    >
+      <div className="space-y-4 py-4">
+        <div className="space-y-2">
+          <Label htmlFor="owner">Owner</Label>
+          <Input
+            id="owner"
+            value={newOwner}
+            onChange={(e) => setNewOwner(e.target.value)}
+            placeholder="organization or username"
+            autoFocus
+          />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={!newOwner.trim() || !newRepo.trim() || createRepo.isPending}
-          >
-            {createRepo.isPending ? "Adding..." : "Add Repository"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-2">
+          <Label htmlFor="repo">Repository Name</Label>
+          <Input
+            id="repo"
+            value={newRepo}
+            onChange={(e) => setNewRepo(e.target.value)}
+            placeholder="repository-name"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Badge Color</Label>
+          <BadgeColorSelect
+            value={newBadgeColor || "gray"}
+            onValueChange={(value) => setNewBadgeColor(value as BadgeColorName)}
+          />
+        </div>
+      </div>
+    </ModalDialog>
   );
 }

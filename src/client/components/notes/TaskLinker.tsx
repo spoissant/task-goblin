@@ -3,13 +3,7 @@ import { useTasksQuery } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Input } from "@/client/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Search } from "lucide-react";
 
 interface TaskLinkerProps {
@@ -67,62 +61,64 @@ export function TaskLinker({
     onSave(Array.from(selectedIds));
   };
 
+  const footer = (
+    <>
+      <Button variant="outline" onClick={() => handleOpenChange(false)}>
+        Cancel
+      </Button>
+      <Button onClick={handleSave} disabled={isSaving}>
+        {isSaving ? "Saving..." : `Save (${selectedIds.size} linked)`}
+      </Button>
+    </>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Link Tasks</DialogTitle>
-        </DialogHeader>
+    <ModalDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Link Tasks"
+      size="md"
+      footer={footer}
+    >
+      <div className="relative mb-2">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search tasks..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
 
-        <div className="relative mb-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tasks..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-1 min-h-0 max-h-96">
-          {isLoading && (
-            <p className="text-muted-foreground text-center py-4">Loading...</p>
-          )}
-          {!isLoading && filteredTasks.length === 0 && (
-            <p className="text-muted-foreground text-center py-4">No tasks found</p>
-          )}
-          {filteredTasks.map((task) => (
-            <label
-              key={task.id}
-              className="flex items-center gap-3 px-2 py-2 hover:bg-muted rounded cursor-pointer"
-            >
-              <Checkbox
-                checked={selectedIds.has(task.id)}
-                onCheckedChange={() => toggleTask(task.id)}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  {task.jiraKey && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {task.jiraKey}
-                    </span>
-                  )}
-                  <span className="truncate text-sm">{task.title}</span>
-                </div>
+      <div className="space-y-1 max-h-96">
+        {isLoading && (
+          <p className="text-muted-foreground text-center py-4">Loading...</p>
+        )}
+        {!isLoading && filteredTasks.length === 0 && (
+          <p className="text-muted-foreground text-center py-4">No tasks found</p>
+        )}
+        {filteredTasks.map((task) => (
+          <label
+            key={task.id}
+            className="flex items-center gap-3 px-2 py-2 hover:bg-muted rounded cursor-pointer"
+          >
+            <Checkbox
+              checked={selectedIds.has(task.id)}
+              onCheckedChange={() => toggleTask(task.id)}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                {task.jiraKey && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {task.jiraKey}
+                  </span>
+                )}
+                <span className="truncate text-sm">{task.title}</span>
               </div>
-            </label>
-          ))}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? "Saving..." : `Save (${selectedIds.size} linked)`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            </div>
+          </label>
+        ))}
+      </div>
+    </ModalDialog>
   );
 }

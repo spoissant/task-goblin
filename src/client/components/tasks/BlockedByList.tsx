@@ -4,13 +4,7 @@ import { useDeleteBlocker, useCreateBlocker, useTasksQuery } from "@/client/lib/
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
 import { Badge } from "@/client/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import {
   Select,
   SelectContent,
@@ -130,36 +124,38 @@ export function BlockedByList({ blockedBy, taskId }: BlockedByListProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={isAddingBlocker} onOpenChange={setIsAddingBlocker}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Blocker</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Label>Select a blocking task</Label>
-            <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Select a task..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableTasks.map((task) => (
-                  <SelectItem key={task.id} value={String(task.id)}>
-                    {task.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
+      <ModalDialog
+        open={isAddingBlocker}
+        onOpenChange={setIsAddingBlocker}
+        title="Add Blocker"
+        size="sm"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setIsAddingBlocker(false)}>
               Cancel
             </Button>
             <Button onClick={handleAddBlocker} disabled={!selectedTaskId || createBlocker.isPending}>
               Add Blocker
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="py-4">
+          <Label>Select a blocking task</Label>
+          <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+            <SelectTrigger className="mt-2">
+              <SelectValue placeholder="Select a task..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTasks.map((task) => (
+                <SelectItem key={task.id} value={String(task.id)}>
+                  {task.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </ModalDialog>
     </>
   );
 }

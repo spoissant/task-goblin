@@ -1,11 +1,5 @@
 import { useTaskLogsQuery, useMarkTaskLogsRead, useJiraConfigQuery } from "@/client/lib/queries";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Badge } from "@/client/components/ui/badge";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -56,47 +50,40 @@ export function TaskLogsModal({
     });
   };
 
+  const footer = logCount > 0 ? (
+    <Button onClick={handleMarkAllRead} disabled={markRead.isPending}>
+      <CheckCircle className="h-4 w-4 mr-2" />
+      Mark {logCount} as Read
+    </Button>
+  ) : undefined;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Task Logs</DialogTitle>
-          <p className="text-sm text-muted-foreground truncate" title={taskTitle}>
-            {taskTitle}
-          </p>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-3">
-          {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-20 w-full" />
-              ))}
-            </div>
-          ) : !data?.items?.length ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No logs for this task
-            </div>
-          ) : (
-            data.items.map((log) => (
-              <LogCard key={log.id} log={log} jiraHost={jiraHost} />
-            ))
-          )}
-        </div>
-
-        {logCount > 0 && (
-          <DialogFooter className="border-t pt-4">
-            <Button
-              onClick={handleMarkAllRead}
-              disabled={markRead.isPending}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Mark {logCount} as Read
-            </Button>
-          </DialogFooter>
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Task Logs"
+      description={taskTitle}
+      size="lg"
+      footer={footer}
+    >
+      <div className="space-y-3">
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        ) : !data?.items?.length ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No logs for this task
+          </div>
+        ) : (
+          data.items.map((log) => (
+            <LogCard key={log.id} log={log} jiraHost={jiraHost} />
+          ))
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </ModalDialog>
   );
 }
 

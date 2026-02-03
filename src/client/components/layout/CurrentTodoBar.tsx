@@ -5,13 +5,7 @@ import { useCreateTodo } from "@/client/lib/queries/todos";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Linkify } from "@/client/components/ui/Linkify";
 import { ExternalLink, Plus, SkipForward } from "lucide-react";
 import { toast } from "sonner";
@@ -116,35 +110,41 @@ export function CurrentTodoBar() {
         </Button>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Add Todo</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddTodo} className="space-y-4">
-            <Input
-              ref={inputRef}
-              placeholder="Todo content..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+      <ModalDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title="Add Todo"
+        size="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
               disabled={createTodo.isPending}
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-                disabled={createTodo.isPending}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!content.trim() || createTodo.isPending}>
-                Add
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="add-todo-form"
+              disabled={!content.trim() || createTodo.isPending}
+            >
+              Add
+            </Button>
+          </>
+        }
+      >
+        <form id="add-todo-form" onSubmit={handleAddTodo}>
+          <Input
+            ref={inputRef}
+            placeholder="Todo content..."
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            disabled={createTodo.isPending}
+          />
+        </form>
+      </ModalDialog>
     </div>
   );
 }

@@ -20,12 +20,7 @@ import {
   useReorderTodo,
   useCreateTodo,
 } from "@/client/lib/queries";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -139,81 +134,79 @@ export function TodosDialog({
     ? [...pendingTodos, ...completedTodos]
     : pendingTodos;
 
+  const footer = (
+    <div className="flex items-center gap-2 w-full">
+      <Input
+        value={newTodo}
+        onChange={(e) => setNewTodo(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add a todo..."
+        className="flex-1"
+      />
+      <Button
+        size="sm"
+        onClick={handleAdd}
+        disabled={!newTodo.trim() || createTodo.isPending}
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add
+      </Button>
+    </div>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Todos</DialogTitle>
-          <p className="text-sm text-muted-foreground truncate" title={taskTitle}>
-            {taskTitle}
-          </p>
-        </DialogHeader>
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Todos"
+      description={taskTitle}
+      size="lg"
+      footer={footer}
+    >
+      <div className="flex items-center gap-2 py-2">
+        <Checkbox
+          id="show-completed"
+          checked={showCompleted}
+          onCheckedChange={(checked) => setShowCompleted(checked === true)}
+        />
+        <Label htmlFor="show-completed" className="text-sm cursor-pointer">
+          Show completed ({completedTodos.length})
+        </Label>
+      </div>
 
-        <div className="flex items-center gap-2 py-2">
-          <Checkbox
-            id="show-completed"
-            checked={showCompleted}
-            onCheckedChange={(checked) => setShowCompleted(checked === true)}
-          />
-          <Label htmlFor="show-completed" className="text-sm cursor-pointer">
-            Show completed ({completedTodos.length})
-          </Label>
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
         </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : displayedTodos.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No todos yet
-            </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={displayedTodos.map((t) => t.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <ul className="space-y-1">
-                  {displayedTodos.map((todo) => (
-                    <SortableTodoRow
-                      key={todo.id}
-                      todo={todo}
-                      onToggle={handleToggle}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-            </DndContext>
-          )}
+      ) : displayedTodos.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">
+          No todos yet
         </div>
-
-        <div className="flex items-center gap-2 pt-2 border-t">
-          <Input
-            value={newTodo}
-            onChange={(e) => setNewTodo(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Add a todo..."
-            className="flex-1"
-          />
-          <Button
-            size="sm"
-            onClick={handleAdd}
-            disabled={!newTodo.trim() || createTodo.isPending}
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={displayedTodos.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
           >
-            <Plus className="h-4 w-4 mr-1" />
-            Add
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+            <ul className="space-y-1">
+              {displayedTodos.map((todo) => (
+                <SortableTodoRow
+                  key={todo.id}
+                  todo={todo}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      )}
+    </ModalDialog>
   );
 }

@@ -24,12 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/client/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { ArrowLeft, RefreshCw, Trash2, Check, Upload, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import type { Log } from "@/client/lib/types";
@@ -302,30 +297,29 @@ export function TaskDetailPage() {
       />
 
       {/* Merge Conflict Dialog */}
-      <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Merge Conflict</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {conflictSource === "deploy"
-                ? "Could not deploy due to merge conflicts in the following files:"
-                : `Could not sync from ${task.baseBranch} due to merge conflicts in the following files:`}
-            </p>
-            <ul className="space-y-1">
-              {conflictedFiles.map((file) => (
-                <li key={file} className="text-sm font-mono bg-muted px-2 py-1 rounded">
-                  {file}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm text-muted-foreground">
-              Please resolve the conflicts locally and try again.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ModalDialog
+        open={conflictDialogOpen}
+        onOpenChange={setConflictDialogOpen}
+        title="Merge Conflict"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {conflictSource === "deploy"
+              ? "Could not deploy due to merge conflicts in the following files:"
+              : `Could not sync from ${task.baseBranch} due to merge conflicts in the following files:`}
+          </p>
+          <ul className="space-y-1">
+            {conflictedFiles.map((file) => (
+              <li key={file} className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                {file}
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Please resolve the conflicts locally and try again.
+          </p>
+        </div>
+      </ModalDialog>
     </div>
   );
 }

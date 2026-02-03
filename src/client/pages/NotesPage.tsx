@@ -5,13 +5,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Pagination } from "@/client/components/ui/pagination";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { NoteTable } from "@/client/components/notes/NoteTable";
 import { NoteForm } from "@/client/components/notes/NoteForm";
 import { Plus, Search } from "lucide-react";
@@ -69,25 +63,23 @@ export function NotesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Notes</h1>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Note
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create Note</DialogTitle>
-            </DialogHeader>
-            <NoteForm
-              onSubmit={handleCreate}
-              onCancel={() => setCreateDialogOpen(false)}
-              isSubmitting={createNote.isPending}
-              submitLabel="Create"
-            />
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Note
+        </Button>
+        <ModalDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          title="Create Note"
+          size="lg"
+        >
+          <NoteForm
+            onSubmit={handleCreate}
+            onCancel={() => setCreateDialogOpen(false)}
+            isSubmitting={createNote.isPending}
+            submitLabel="Create"
+          />
+        </ModalDialog>
       </div>
 
       <div className="relative mb-4">
