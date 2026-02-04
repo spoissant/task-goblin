@@ -1,6 +1,6 @@
 import { json } from "../response";
 import { AppError } from "../lib/errors";
-import { GitHubConfigError } from "../lib/github-client";
+import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
 import { JiraConfigError } from "../lib/jira-client";
 import {
   syncGitHubPullRequests,
@@ -11,6 +11,7 @@ import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira
 import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
+import type { ReviewRequest } from "@/shared/types";
 
 export const githubRoutes: Routes = {
   "/api/v1/sync/jira": {
@@ -108,6 +109,69 @@ export const githubRoutes: Routes = {
     async POST() {
       const result = await backfillDescriptions();
       return json(result);
+    },
+  },
+
+  "/api/v1/github/review-requests": {
+    async GET() {
+      try {
+        const config = await getGitHubConfig();
+        const client = getGitHubClient();
+
+        // Search for PRs where user is requested as reviewer
+        const searchResult = await client.search.issuesAndPullRequests({
+          q: `is:pr is:open review-requested:${config.username}`,
+          per_page: 100,
+        });
+
+        const items: ReviewRequest[] = [];
+
+        for (const item of searchResult.data.items) {
+          // Extract owner/repo from repository_url
+          const repoUrlParts = item.repository_url.split("/");
+          const owner = repoUrlParts[repoUrlParts.length - 2];
+          const repo = repoUrlParts[repoUrlParts.length - 1];
+          const prNumber = item.number;
+
+          // Fetch reviews to count approvals
+          const reviewsResult = await client.pulls.listReviews({
+            owner,
+            repo,
+            pull_number: prNumber,
+          });
+
+          // Count unique approving reviewers (latest state per user)
+          const reviewerStates = new Map<string, string>();
+          for (const review of reviewsResult.data) {
+            if (review.user?.login && review.state) {
+              reviewerStates.set(review.user.login, review.state);
+            }
+          }
+          const approvedCount = Array.from(reviewerStates.values())
+            .filter((state) => state === "APPROVED").length;
+
+          const isDraft = item.draft ?? false;
+
+          items.push({
+            prNumber,
+            title: item.title,
+            url: item.html_url,
+            repo: { owner, repo },
+            author: item.user?.login ?? "unknown",
+            state: isDraft ? "draft" : "open",
+            isDraft,
+            approvedCount,
+            createdAt: item.created_at,
+          });
+        }
+
+        return json({ items, total: items.length });
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        throw err;
+      }
     },
   },
 };

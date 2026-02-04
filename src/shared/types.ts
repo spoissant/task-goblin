@@ -259,6 +259,19 @@ export interface NoteTask {
   taskId: number;
 }
 
+// Review request - PR where user is requested as reviewer
+export interface ReviewRequest {
+  prNumber: number;
+  title: string;
+  url: string;
+  repo: { owner: string; repo: string };
+  author: string;
+  state: "open" | "draft";
+  isDraft: boolean;
+  approvedCount: number;
+  createdAt: string;
+}
+
 // Helper type guard - only this one is used
 export function isMergedTask(task: Task): boolean {
   return task.jiraKey !== null && task.prNumber !== null;

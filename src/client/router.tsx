@@ -8,6 +8,7 @@ import { CompletedPage } from "./pages/CompletedPage";
 import { LogsPage } from "./pages/LogsPage";
 import { NotesPage } from "./pages/NotesPage";
 import { NoteDetailPage } from "./pages/NoteDetailPage";
+import { ReviewsPage } from "./pages/ReviewsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
       {
         path: "notes/:id",
         element: <NoteDetailPage />,
+      },
+      {
+        path: "reviews",
+        element: <ReviewsPage />,
       },
       {
         path: "settings",

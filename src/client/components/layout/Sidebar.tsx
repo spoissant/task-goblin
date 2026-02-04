@@ -12,6 +12,7 @@ import {
   ListChecks,
   ChevronLeft,
   ChevronRight,
+  GitPullRequestArrow,
 } from "lucide-react";
 import {
   Tooltip,
@@ -24,6 +25,7 @@ const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
   { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
+  { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
   { to: "/curate", icon: FolderSearch, label: "Curate" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/notes", icon: StickyNote, label: "Notes" },
