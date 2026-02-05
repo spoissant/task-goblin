@@ -5,6 +5,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -134,6 +135,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
                 />
               </TableHead>
             )}
+            <TableHead className="w-[50px]">ID</TableHead>
             <TableHead className="w-[40px]"></TableHead>
             {TABLE_COLUMNS.map((colKey) => {
               const col = getColumn(colKey);
@@ -251,6 +253,20 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
           />
         </TableCell>
       )}
+      {/* Task ID */}
+      <TableCell>
+        <button
+          type="button"
+          className="font-mono text-xs hover:text-blue-600 cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(String(task.id));
+            toast.success("Task ID copied");
+          }}
+        >
+          {task.id}
+        </button>
+      </TableCell>
       {/* Sync / Unread Logs */}
       <TableCell>
         {task.unreadLogCount > 0 ? (
