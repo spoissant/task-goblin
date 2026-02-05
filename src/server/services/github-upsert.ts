@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
 import { now } from "../lib/timestamp";
@@ -212,6 +212,21 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
     }
 
     return "unchanged";
+  }
+
+  // Check if PR title contains Jira keys matching existing tasks
+  // If so, skip creation - updateTaskByJiraKey will handle it
+  const jiraKeys = extractJiraKeysFromTitle(data.title);
+  if (jiraKeys.length > 0) {
+    const existingJiraTask = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(inArray(tasks.jiraKey, jiraKeys))
+      .limit(1);
+
+    if (existingJiraTask.length > 0) {
+      return "unchanged";
+    }
   }
 
   // No existing entry, create new PR-only task (orphaned)
