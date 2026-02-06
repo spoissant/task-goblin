@@ -135,15 +135,32 @@ export function TasksPage() {
         </div>
       </div>
 
-      <Tabs value={activeFilter} onValueChange={setActiveFilter} className="mb-6">
-        <TabsList>
-          {filterTabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {selectedIds.size > 0 ? (
+        <div className="mb-6">
+          <BulkDeployBar
+            selectedCount={selectedIds.size}
+            deploymentBranches={deploymentBranches}
+            targetBranch={deployTargetBranch}
+            onTargetBranchChange={setDeployTargetBranch}
+            onDeploy={handleBulkDeploy}
+            onClearSelection={() => {
+              setSelectedIds(new Set());
+              setDeployTargetBranch("");
+            }}
+            isDeploying={bulkDeploy.isPending}
+          />
+        </div>
+      ) : (
+        <Tabs value={activeFilter} onValueChange={setActiveFilter} className="mb-6">
+          <TabsList>
+            {filterTabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
 
       <TaskTable
         activeFilter={activeFilter || undefined}
@@ -152,19 +169,6 @@ export function TasksPage() {
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
-
-      <BulkDeployBar
-        selectedCount={selectedIds.size}
-        deploymentBranches={deploymentBranches}
-        targetBranch={deployTargetBranch}
-        onTargetBranchChange={setDeployTargetBranch}
-        onDeploy={handleBulkDeploy}
-        onClearSelection={() => {
-          setSelectedIds(new Set());
-          setDeployTargetBranch("");
-        }}
-        isDeploying={bulkDeploy.isPending}
-      />
 
       <BulkDeployResultsDialog
         open={resultsDialogOpen}
