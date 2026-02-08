@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { taskKeys } from "./tasks";
 import type { Log, PaginatedResponse } from "../types";
 
 export const logKeys = {
@@ -47,7 +48,7 @@ export function useMarkLogRead() {
     mutationFn: (id: number) => api.post<Log>(`/logs/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
@@ -59,7 +60,7 @@ export function useMarkAllLogsRead() {
     mutationFn: () => api.post<{ success: boolean }>("/logs/mark-all-read"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
@@ -71,7 +72,7 @@ export function useDeleteLog() {
     mutationFn: (id: number) => api.delete(`/logs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
@@ -91,7 +92,7 @@ export function useMarkTaskLogsRead() {
     mutationFn: (taskId: number) => api.post<{ success: boolean }>(`/tasks/${taskId}/logs/mark-read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: logKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }

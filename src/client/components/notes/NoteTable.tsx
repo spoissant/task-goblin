@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { Button } from "@/client/components/ui/button";
+import { EmptyState } from "@/client/components/ui/empty-state";
 import { Trash2 } from "lucide-react";
 import type { Note } from "@/client/lib/types";
 
@@ -28,11 +29,7 @@ interface NoteTableProps {
 
 export function NoteTable({ notes, onDelete, isDeleting }: NoteTableProps) {
   if (notes.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        No notes found
-      </div>
-    );
+    return <EmptyState message="No notes found" />;
   }
 
   return (

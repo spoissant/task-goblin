@@ -1,15 +1,10 @@
 import { Badge } from "@/client/components/ui/badge";
-import { cn } from "@/client/lib/utils";
+import { cn, normalizeStatus } from "@/client/lib/utils";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import type { StatusCategory } from "@/client/lib/types";
 
 // Fallback config for when query is loading or unknown status
 const FALLBACK_COLOR = "bg-slate-500";
-
-// Normalize status name for comparison (case-insensitive, handles underscore/space variants)
-function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
 
 interface StatusBadgeProps {
   status: string;

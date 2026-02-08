@@ -8,6 +8,7 @@ import { Pagination } from "@/client/components/ui/pagination";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { NoteTable } from "@/client/components/notes/NoteTable";
 import { NoteForm } from "@/client/components/notes/NoteForm";
+import { EmptyState } from "@/client/components/ui/empty-state";
 import { Plus, Search } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -100,11 +101,7 @@ export function NotesPage() {
         </div>
       )}
 
-      {error && (
-        <div className="text-center py-12 text-muted-foreground">
-          Failed to load notes
-        </div>
-      )}
+      {error && <EmptyState message="Failed to load notes" />}
 
       {data && (
         <>

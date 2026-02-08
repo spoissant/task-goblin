@@ -21,11 +21,8 @@ import { TaskLogsModal } from "./TaskLogsModal";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import { BlockerStatusIcon } from "./StatusIcons";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
-
-// Normalize status name for comparison (case-insensitive, handles underscore/space variants)
-function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
+import { normalizeStatus } from "@/client/lib/utils";
+import { EmptyState } from "@/client/components/ui/empty-state";
 
 interface TaskTableProps {
   activeFilter?: string;
@@ -101,19 +98,11 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
   }
 
   if (error) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        Failed to load tasks
-      </div>
-    );
+    return <EmptyState message="Failed to load tasks" />;
   }
 
   if (!filteredTasks.length) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        No tasks found
-      </div>
-    );
+    return <EmptyState message="No tasks found" />;
   }
 
   return (

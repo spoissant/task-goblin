@@ -26,6 +26,7 @@ import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { Skeleton } from "@/client/components/ui/skeleton";
+import { EmptyState } from "@/client/components/ui/empty-state";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -173,9 +174,7 @@ export function TodosPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Todos</h1>
         </div>
-        <div className="text-center py-12 text-muted-foreground">
-          Failed to load todos
-        </div>
+        <EmptyState message="Failed to load todos" />
       </div>
     );
   }
@@ -270,11 +269,13 @@ export function TodosPage() {
       </DndContext>
 
       {filteredTodos.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          {!showCompleted && data?.items.length
-            ? "All todos completed! Check 'Show completed' to see them."
-            : "No todos yet. Create one to get started!"}
-        </div>
+        <EmptyState
+          message={
+            !showCompleted && data?.items.length
+              ? "All todos completed! Check 'Show completed' to see them."
+              : "No todos yet. Create one to get started!"
+          }
+        />
       )}
     </div>
   );

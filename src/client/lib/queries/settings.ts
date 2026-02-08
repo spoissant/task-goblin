@@ -7,20 +7,15 @@ import type {
   StatusCategory,
   TaskFilter,
   ListResponse,
-  // Legacy types
-  StatusConfigResponse,
   StatusConfig,
 } from "../types";
 
 export const settingsKeys = {
   all: ["settings"] as const,
   jiraConfig: () => [...settingsKeys.all, "jira-config"] as const,
-  // New keys
   statusSettings: () => [...settingsKeys.all, "status-settings"] as const,
   statusCategories: () => [...settingsKeys.all, "status-categories"] as const,
   taskFilters: () => [...settingsKeys.all, "task-filters"] as const,
-  // Legacy keys
-  statusConfig: () => [...settingsKeys.all, "status-config"] as const,
   selectableStatuses: () => [...settingsKeys.all, "selectable-statuses"] as const,
 };
 
@@ -63,10 +58,6 @@ export function useUpdateSetting() {
   });
 }
 
-// ============================================
-// NEW Status Settings Queries
-// ============================================
-
 // Combined status settings (categories + filters + defaultColor)
 export function useStatusSettingsQuery() {
   return useQuery({
@@ -92,8 +83,6 @@ export function useUpdateStatusCategories() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusCategories() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
-      // Also invalidate legacy queries
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusConfig() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.selectableStatuses() });
     },
   });
@@ -129,42 +118,14 @@ export function useUpdateDefaultColor() {
       api.put<{ defaultColor: string }>("/settings/status-default-color", { defaultColor }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
-      // Also invalidate legacy queries
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusConfig() });
     },
   });
 }
 
-// ============================================
-// Legacy Status Configuration Queries (for backwards compatibility)
-// ============================================
-
-export function useStatusConfigQuery() {
-  return useQuery({
-    queryKey: settingsKeys.statusConfig(),
-    queryFn: () => api.get<StatusConfigResponse>("/settings/statuses"),
-  });
-}
-
+// Selectable statuses for dropdowns
 export function useSelectableStatusesQuery() {
   return useQuery({
     queryKey: settingsKeys.selectableStatuses(),
     queryFn: () => api.get<ListResponse<StatusConfig>>("/settings/statuses/selectable"),
-  });
-}
-
-export function useUpdateStatusConfig() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: { statuses: StatusConfig[]; defaultColor?: string }) =>
-      api.put<StatusConfigResponse>("/settings/statuses", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusConfig() });
-      queryClient.invalidateQueries({ queryKey: settingsKeys.selectableStatuses() });
-      // Also invalidate new queries
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusCategories() });
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
-    },
   });
 }

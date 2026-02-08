@@ -19,6 +19,8 @@ import {
   CardAction,
 } from "@/client/components/ui/card";
 import type { Log } from "@/client/lib/types";
+import { EmptyState } from "@/client/components/ui/empty-state";
+import { getJiraUrl, getPrUrl } from "@/client/components/tasks/columns/cells";
 import { CheckCircle, ExternalLink } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -107,16 +109,10 @@ export function LogsPage() {
         </div>
       )}
 
-      {error && (
-        <div className="text-center py-12 text-muted-foreground">
-          Failed to load logs
-        </div>
-      )}
+      {error && <EmptyState message="Failed to load logs" />}
 
       {data && !data.items.length && (
-        <div className="text-center py-12 text-muted-foreground">
-          {showRead ? "No logs found" : "No unread logs"}
-        </div>
+        <EmptyState message={showRead ? "No logs found" : "No unread logs"} />
       )}
 
       {data && data.items.length > 0 && (
@@ -156,15 +152,8 @@ function LogCard({ log, jiraHost, onMarkRead, isMarkingRead }: LogCardProps) {
   const isRead = log.readAt !== null;
   const task = log.task;
 
-  const jiraUrl =
-    task?.jiraKey && jiraHost
-      ? `https://${jiraHost}/browse/${task.jiraKey}`
-      : null;
-
-  const prUrl =
-    task?.prNumber && task.repository
-      ? `https://github.com/${task.repository.owner}/${task.repository.repo}/pull/${task.prNumber}`
-      : null;
+  const jiraUrl = task?.jiraKey ? getJiraUrl(task.jiraKey, jiraHost) : null;
+  const prUrl = task?.prNumber ? getPrUrl(task.repository, task.prNumber) : null;
 
   return (
     <Card className={isRead ? "opacity-60" : ""}>

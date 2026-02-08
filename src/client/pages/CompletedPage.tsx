@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useCompletedTasksQuery, useSyncTask } from "@/client/lib/queries";
+import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
@@ -20,14 +21,11 @@ import {
 } from "@/client/components/ui/table";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { EmptyState } from "@/client/components/ui/empty-state";
+import { getJiraUrl, getPrUrl } from "@/client/components/tasks/columns/cells";
 import type { TaskWithRepository } from "@/client/lib/types";
 
 const PAGE_SIZE = 25;
-
-// Build Jira URL
-function getJiraUrl(jiraKey: string): string {
-  return `https://hivebrite.atlassian.net/browse/${jiraKey}`;
-}
 
 export function CompletedPage() {
   const [page, setPage] = useState(0);
@@ -36,7 +34,9 @@ export function CompletedPage() {
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
+  const { data: settingsData } = useSettingsQuery();
 
+  const jiraHost = settingsData?.jira_host || null;
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
@@ -65,17 +65,9 @@ export function CompletedPage() {
         </div>
       )}
 
-      {error && (
-        <div className="text-center py-12 text-muted-foreground">
-          Failed to load completed tasks
-        </div>
-      )}
+      {error && <EmptyState message="Failed to load completed tasks" />}
 
-      {data && !data.items.length && (
-        <div className="text-center py-12 text-muted-foreground">
-          No completed tasks found
-        </div>
-      )}
+      {data && !data.items.length && <EmptyState message="No completed tasks found" />}
 
       {data && data.items.length > 0 && (
         <>
@@ -98,7 +90,7 @@ export function CompletedPage() {
               </TableHeader>
               <TableBody>
                 {data.items.map((task) => (
-                  <CompletedTaskRow key={task.id} task={task} />
+                  <CompletedTaskRow key={task.id} task={task} jiraHost={jiraHost} />
                 ))}
               </TableBody>
             </Table>
@@ -118,17 +110,14 @@ export function CompletedPage() {
 
 interface CompletedTaskRowProps {
   task: TaskWithRepository;
+  jiraHost: string | null;
 }
 
-function CompletedTaskRow({ task }: CompletedTaskRowProps) {
+function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
   const repo = task.repository;
   const syncTask = useSyncTask();
 
-  // Build GitHub PR URL if we have repo info
-  const prUrl =
-    repo && task.prNumber
-      ? `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`
-      : null;
+  const prUrl = getPrUrl(repo, task.prNumber);
 
   // Only show sync if task has Jira or PR
   const canSync = task.jiraKey || task.prNumber;
@@ -177,34 +166,44 @@ function CompletedTaskRow({ task }: CompletedTaskRowProps) {
 
       {/* Epic */}
       <TableCell>
-        {task.epicKey ? (
-          <a
-            href={getJiraUrl(task.epicKey)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline font-mono text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {task.epicKey}
-          </a>
-        ) : (
+        {task.epicKey ? (() => {
+          const epicUrl = getJiraUrl(task.epicKey, jiraHost);
+          return epicUrl ? (
+            <a
+              href={epicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline font-mono text-xs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {task.epicKey}
+            </a>
+          ) : (
+            <span className="font-mono text-xs">{task.epicKey}</span>
+          );
+        })() : (
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
 
       {/* Jira Key */}
       <TableCell>
-        {task.jiraKey ? (
-          <a
-            href={getJiraUrl(task.jiraKey)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline font-mono text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {task.jiraKey}
-          </a>
-        ) : (
+        {task.jiraKey ? (() => {
+          const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
+          return jiraUrl ? (
+            <a
+              href={jiraUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline font-mono text-xs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {task.jiraKey}
+            </a>
+          ) : (
+            <span className="font-mono text-xs">{task.jiraKey}</span>
+          );
+        })() : (
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>

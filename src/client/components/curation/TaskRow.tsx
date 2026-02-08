@@ -1,6 +1,7 @@
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
 import { InteractiveStatusBadge } from "@/client/components/tasks/InteractiveStatusBadge";
+import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { ExternalLink, Scissors, MessageSquare } from "lucide-react";
 import { PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import { useSplitTask } from "@/client/lib/queries";
@@ -32,20 +33,22 @@ export function TaskRow({ task, jiraHost, getPrUrl }: Props) {
       {/* Task Info */}
       <div className="flex flex-col justify-center min-w-0">
         <div className="flex items-center gap-2">
-          {task.jiraKey && jiraHost && (
-            <a
-              href={`${jiraHost.replace(/\/$/, '')}/browse/${task.jiraKey}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 hover:text-primary"
-            >
+          {task.jiraKey && (() => {
+            const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
+            return jiraUrl ? (
+              <a
+                href={jiraUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-primary"
+              >
+                <Badge variant="outline">{task.jiraKey}</Badge>
+                <ExternalLink className="h-3 w-3 opacity-50" />
+              </a>
+            ) : (
               <Badge variant="outline">{task.jiraKey}</Badge>
-              <ExternalLink className="h-3 w-3 opacity-50" />
-            </a>
-          )}
-          {task.jiraKey && !jiraHost && (
-            <Badge variant="outline">{task.jiraKey}</Badge>
-          )}
+            );
+          })()}
           {task.prNumber && prUrl && (
             <a
               href={prUrl}

@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
+import { EmptyState } from "@/client/components/ui/empty-state";
 import { RefreshCw, GitPullRequestArrow } from "lucide-react";
 import type { ReviewRequest } from "@/client/lib/types";
 
@@ -50,16 +51,11 @@ export function ReviewsPage() {
       )}
 
       {error && (
-        <div className="text-center py-12 text-muted-foreground">
-          Failed to load review requests
-        </div>
+        <EmptyState message="Failed to load review requests" />
       )}
 
       {data && !data.items.length && (
-        <div className="text-center py-12">
-          <GitPullRequestArrow className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">No PRs awaiting your review</p>
-        </div>
+        <EmptyState icon={GitPullRequestArrow} message="No PRs awaiting your review" />
       )}
 
       {data && data.items.length > 0 && (

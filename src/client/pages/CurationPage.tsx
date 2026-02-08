@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -25,6 +25,7 @@ import { OrphansPool } from "@/client/components/curation/OrphansPool";
 import { TaskRow } from "@/client/components/curation/TaskRow";
 import { DraggableJiraCard } from "@/client/components/curation/DraggableJiraCard";
 import { DraggablePRCard } from "@/client/components/curation/DraggablePRCard";
+import { getPrUrl as buildPrUrl } from "@/client/components/tasks/columns/cells";
 import type { Task, TaskWithRepository } from "@/client/lib/types";
 
 export function CurationPage() {
@@ -51,15 +52,10 @@ export function CurationPage() {
   // Build repo lookup for PR URLs
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
 
-  const getPrUrl = useCallback(
-    (task: TaskWithRepository): string | undefined => {
-      if (!task.prNumber || !task.repositoryId) return undefined;
-      const repo = task.repository || repoMap.get(task.repositoryId);
-      if (!repo) return undefined;
-      return `https://github.com/${repo.owner}/${repo.repo}/pull/${task.prNumber}`;
-    },
-    [repoMap]
-  );
+  const getPrUrl = (task: TaskWithRepository): string | undefined => {
+    const repo = task.repository || repoMap.get(task.repositoryId!);
+    return buildPrUrl(repo, task.prNumber) ?? undefined;
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;

@@ -22,6 +22,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Plus, X, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "./StatusBadge";
+import { normalizeStatus } from "@/client/lib/utils";
 
 interface BlockersDialogProps {
   open: boolean;
@@ -152,11 +153,6 @@ interface BlockerRowProps {
     blockerTodoId: number | null;
   };
   onRemove: () => void;
-}
-
-// Helper to normalize status name (case-insensitive, handles underscore/space variants)
-function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
 }
 
 function BlockerRow({ blocker, onRemove }: BlockerRowProps) {

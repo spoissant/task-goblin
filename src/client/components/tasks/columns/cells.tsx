@@ -8,6 +8,14 @@ import { DeploymentBadges } from "../DeploymentBadges";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 
+const PRIORITY_COLORS: Record<string, string> = {
+  P0: "bg-red-600 text-white hover:bg-red-600",
+  P1: "bg-red-500 text-white hover:bg-red-500",
+  P2: "bg-red-400 text-white hover:bg-red-400",
+  P3: "bg-yellow-600 text-white hover:bg-yellow-600",
+  P4: "bg-blue-500 text-white hover:bg-blue-500",
+};
+
 // Build Jira URL - requires jiraHost, returns null if not configured
 export function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): string | null {
   if (!jiraHost) return null;
@@ -29,16 +37,7 @@ export function TypeCell({ task }: { task: Task }) {
     <div className="flex items-center gap-1">
       <Badge variant="outline" className="text-xs">{task.type}</Badge>
       {task.type.toLowerCase() === "bug" && task.priority && task.priority !== "To be qualified" && (
-        <Badge
-          className={`text-xs ${
-            task.priority === "P0" ? "bg-red-600 text-white hover:bg-red-600" :
-            task.priority === "P1" ? "bg-red-500 text-white hover:bg-red-500" :
-            task.priority === "P2" ? "bg-red-400 text-white hover:bg-red-400" :
-            task.priority === "P3" ? "bg-yellow-600 text-white hover:bg-yellow-600" :
-            task.priority === "P4" ? "bg-blue-500 text-white hover:bg-blue-500" :
-            ""
-          }`}
-        >
+        <Badge className={`text-xs ${PRIORITY_COLORS[task.priority] ?? ""}`}>
           {task.priority}
         </Badge>
       )}

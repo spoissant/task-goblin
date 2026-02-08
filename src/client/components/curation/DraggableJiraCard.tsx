@@ -1,6 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Badge } from "@/client/components/ui/badge";
 import { StatusBadge } from "@/client/components/tasks/StatusBadge";
+import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { GripVertical, ExternalLink } from "lucide-react";
 import type { Task } from "@/client/lib/types";
 
@@ -48,9 +49,9 @@ export function DraggableJiraCard({ task, isOrphan = false, jiraHost }: Props) {
     >
       <GripVertical className="h-3 w-3 text-muted-foreground flex-shrink-0 cursor-grab" />
       <StatusBadge status={task.status} className="flex-shrink-0 text-xs" />
-      {jiraHost ? (
+      {jiraHost && getJiraUrl(task.jiraKey!, jiraHost) ? (
         <a
-          href={`${jiraHost.replace(/\/$/, '')}/browse/${task.jiraKey}`}
+          href={getJiraUrl(task.jiraKey!, jiraHost)!}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 min-w-0 flex-1 hover:text-primary"
