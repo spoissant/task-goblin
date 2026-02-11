@@ -4,10 +4,13 @@ import { Sidebar } from "./Sidebar";
 import { CurrentTodoBar } from "./CurrentTodoBar";
 import { Toaster } from "@/client/components/ui/sonner";
 import { cn } from "@/client/lib/utils";
+import { useRealtimeUpdates } from "@/client/lib/useRealtimeUpdates";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
 
 export function RootLayout() {
+  useRealtimeUpdates();
+
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     return stored === "true";

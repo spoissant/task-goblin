@@ -50,11 +50,6 @@ async function updateTaskByJiraKey(
 
   const oldTask = existing[0];
 
-  // Skip if this task already has the same PR number (already handled by main upsert)
-  if (oldTask.prNumber === data.prNumber && oldTask.repositoryId === data.repositoryId) {
-    return "unchanged";
-  }
-
   // Compare fields and generate diff
   const diffs = generateTaskDiff(
     oldTask as unknown as Record<string, unknown>,
