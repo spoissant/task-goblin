@@ -71,6 +71,13 @@
       "when": 1770995633845,
       "tag": "0009_unique_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1771545600000,
+      "tag": "0010_drop_task_filters",
+      "breakpoints": true
     }
   ]
 }

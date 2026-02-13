@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask, useCurrentTodo } from "@/client/lib/queries";
-import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -21,21 +21,17 @@ import { TaskLogsModal } from "./TaskLogsModal";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import { BlockerStatusIcon } from "./StatusIcons";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
-import { normalizeStatus } from "@/client/lib/utils";
 import { EmptyState } from "@/client/components/ui/empty-state";
 
 interface TaskTableProps {
-  activeFilter?: string;
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
 }
 
-export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: TaskTableProps) {
-  // Fetch all tasks (no server-side status filter for filter-based filtering)
+export function TaskTable({ selectedIds, onSelectionChange }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
-  const { data: statusSettings } = useStatusSettingsQuery();
   const { currentTodo } = useCurrentTodo();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
   const [blockersDialogTask, setBlockersDialogTask] = useState<{ id: number; title: string } | null>(null);
@@ -58,34 +54,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
     return map;
   }, [reposData?.items]);
 
-  // Build a map of normalized status name -> filter name
-  // Used to determine which filter a task belongs to
-  const statusToFilterMap = useMemo(() => {
-    const map = new Map<string, string>();
-
-    if (statusSettings?.filters) {
-      for (const filter of statusSettings.filters) {
-        for (const jiraStatus of filter.jiraMappings) {
-          map.set(normalizeStatus(jiraStatus), filter.name);
-        }
-      }
-    }
-
-    return map;
-  }, [statusSettings?.filters]);
-
-  // Client-side filtering by active filter
-  const filteredTasks = useMemo(() => {
-    if (!data?.items) return [];
-    if (!activeFilter) return data.items; // "All" tab shows everything
-
-    return data.items.filter((task) => {
-      const normalizedStatus = normalizeStatus(task.status);
-      // Get filter for this status
-      const taskFilter = statusToFilterMap.get(normalizedStatus);
-      return taskFilter === activeFilter;
-    });
-  }, [data?.items, activeFilter, statusToFilterMap]);
+  const tasks = data?.items ?? [];
 
   if (isLoading) {
     return (
@@ -101,7 +70,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
     return <EmptyState message="Failed to load tasks" />;
   }
 
-  if (!filteredTasks.length) {
+  if (!tasks.length) {
     return <EmptyState message="No tasks found" />;
   }
 
@@ -113,10 +82,10 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
             {onSelectionChange && (
               <TableHead className="w-[40px]">
                 <Checkbox
-                  checked={filteredTasks.length > 0 && filteredTasks.every((t) => selectedIds?.has(t.id))}
+                  checked={tasks.length > 0 && tasks.every((t) => selectedIds?.has(t.id))}
                   onCheckedChange={(checked) => {
                     if (checked) {
-                      onSelectionChange(new Set(filteredTasks.map((t) => t.id)));
+                      onSelectionChange(new Set(tasks.map((t) => t.id)));
                     } else {
                       onSelectionChange(new Set());
                     }
@@ -139,7 +108,7 @@ export function TaskTable({ activeFilter, selectedIds, onSelectionChange }: Task
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filteredTasks.map((task) => (
+          {tasks.map((task) => (
             <TaskRow
               key={task.id}
               task={task}

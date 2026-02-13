@@ -4,25 +4,21 @@ import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkDeployBar } from "@/client/components/tasks/BulkDeployBar";
 import { BulkDeployResultsDialog } from "@/client/components/tasks/BulkDeployResultsDialog";
-import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { useTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
 import { useMarkAllLogsRead, useUnreadCountQuery } from "@/client/lib/queries/logs";
 import { useBulkDeploy } from "@/client/lib/queries/deploy";
 import { Button } from "@/client/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
 import { Plus, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
 
 export function TasksPage() {
-  const [activeFilter, setActiveFilter] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deployTargetBranch, setDeployTargetBranch] = useState("");
   const [resultsDialogOpen, setResultsDialogOpen] = useState(false);
   const [deployResults, setDeployResults] = useState<BulkDeployResult | null>(null);
 
-  const { data: statusSettings } = useStatusSettingsQuery();
   const { data: tasksData } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const bulkDeploy = useBulkDeploy();
@@ -98,22 +94,6 @@ export function TasksPage() {
     );
   };
 
-  // Build filter tabs from configured filters, ordered by position
-  const filterTabs = useMemo(() => {
-    const tabs: { value: string; label: string }[] = [
-      { value: "", label: "All" },
-    ];
-
-    if (statusSettings?.filters) {
-      // Filters are already sorted by position from the API
-      for (const filter of statusSettings.filters) {
-        tabs.push({ value: filter.name, label: filter.name });
-      }
-    }
-
-    return tabs;
-  }, [statusSettings?.filters]);
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -135,7 +115,7 @@ export function TasksPage() {
         </div>
       </div>
 
-      {selectedIds.size > 0 ? (
+      {selectedIds.size > 0 && (
         <div className="mb-6">
           <BulkDeployBar
             selectedCount={selectedIds.size}
@@ -150,20 +130,9 @@ export function TasksPage() {
             isDeploying={bulkDeploy.isPending}
           />
         </div>
-      ) : (
-        <Tabs value={activeFilter} onValueChange={setActiveFilter} className="mb-6">
-          <TabsList>
-            {filterTabs.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
       )}
 
       <TaskTable
-        activeFilter={activeFilter || undefined}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
       />

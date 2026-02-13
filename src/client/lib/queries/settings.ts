@@ -5,7 +5,6 @@ import type {
   JiraConfig,
   StatusSettings,
   StatusCategory,
-  TaskFilter,
   ListResponse,
   StatusConfig,
 } from "../types";
@@ -15,7 +14,7 @@ export const settingsKeys = {
   jiraConfig: () => [...settingsKeys.all, "jira-config"] as const,
   statusSettings: () => [...settingsKeys.all, "status-settings"] as const,
   statusCategories: () => [...settingsKeys.all, "status-categories"] as const,
-  taskFilters: () => [...settingsKeys.all, "task-filters"] as const,
+
   selectableStatuses: () => [...settingsKeys.all, "selectable-statuses"] as const,
 };
 
@@ -84,27 +83,6 @@ export function useUpdateStatusCategories() {
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusCategories() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.selectableStatuses() });
-    },
-  });
-}
-
-// Task Filters
-export function useTaskFiltersQuery() {
-  return useQuery({
-    queryKey: settingsKeys.taskFilters(),
-    queryFn: () => api.get<ListResponse<TaskFilter>>("/settings/task-filters"),
-  });
-}
-
-export function useUpdateTaskFilters() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (filters: Omit<TaskFilter, "id">[]) =>
-      api.put<ListResponse<TaskFilter>>("/settings/task-filters", { filters }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsKeys.taskFilters() });
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
     },
   });
 }

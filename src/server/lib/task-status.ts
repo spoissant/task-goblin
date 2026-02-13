@@ -1,6 +1,6 @@
 import { sql, or, and, isNotNull, isNull, eq, asc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, settings, statusCategories, taskFilters } from "../../db/schema";
+import { tasks, settings, statusCategories } from "../../db/schema";
 
 /**
  * Status Category - color + completion state + display order
@@ -15,21 +15,10 @@ export interface StatusCategory {
 }
 
 /**
- * Task Filter - filter bar entries with position
- */
-export interface TaskFilter {
-  id: number;
-  name: string;
-  position: number;
-  jiraMappings: string[];
-}
-
-/**
  * Combined status settings response
  */
 export interface StatusSettings {
   categories: StatusCategory[];
-  filters: TaskFilter[];
   defaultColor: string;
 }
 
@@ -48,16 +37,8 @@ const DEFAULT_CATEGORIES: Omit<StatusCategory, "id">[] = [
   { name: "Blocked", color: "bg-red-500", done: false, displayOrder: 7, jiraMappings: ["Blocked"] },
 ];
 
-// Default filters when no data exists
-const DEFAULT_FILTERS: Omit<TaskFilter, "id">[] = [
-  { name: "Active", position: 0, jiraMappings: ["In Progress", "Code Review", "Ready for Test", "QA", "Design QA", "Review"] },
-  { name: "Review", position: 1, jiraMappings: ["Ready to Merge"] },
-  { name: "Backlog", position: 2, jiraMappings: ["To Do", "Open", "Backlog", "On Hold", "Blocked"] },
-];
-
 // Cache for status data
 let categoriesCache: StatusCategory[] | null = null;
-let filtersCache: TaskFilter[] | null = null;
 let defaultColorCache: string | null = null;
 
 /**
@@ -65,7 +46,6 @@ let defaultColorCache: string | null = null;
  */
 export function invalidateStatusConfigCache(): void {
   categoriesCache = null;
-  filtersCache = null;
   defaultColorCache = null;
 }
 
@@ -111,35 +91,6 @@ export async function getStatusCategories(): Promise<StatusCategory[]> {
 }
 
 /**
- * Get all task filters from database
- */
-export async function getTaskFilters(): Promise<TaskFilter[]> {
-  if (filtersCache !== null) {
-    return filtersCache;
-  }
-
-  const rows = await db
-    .select()
-    .from(taskFilters)
-    .orderBy(asc(taskFilters.position));
-
-  if (rows.length === 0) {
-    // Seed with defaults
-    await seedDefaultFilters();
-    return getTaskFilters();
-  }
-
-  filtersCache = rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    position: row.position,
-    jiraMappings: parseJiraMappings(row.jiraMappings),
-  }));
-
-  return filtersCache;
-}
-
-/**
  * Get default color for unmapped statuses
  */
 export async function getDefaultStatusColor(): Promise<string> {
@@ -160,13 +111,12 @@ export async function getDefaultStatusColor(): Promise<string> {
  * Get combined status settings
  */
 export async function getStatusSettings(): Promise<StatusSettings> {
-  const [categories, filters, defaultColor] = await Promise.all([
+  const [categories, defaultColor] = await Promise.all([
     getStatusCategories(),
-    getTaskFilters(),
     getDefaultStatusColor(),
   ]);
 
-  return { categories, filters, defaultColor };
+  return { categories, defaultColor };
 }
 
 /**
@@ -183,25 +133,6 @@ export async function saveStatusCategories(categories: Omit<StatusCategory, "id"
         done: cat.done ? 1 : 0,
         displayOrder: cat.displayOrder,
         jiraMappings: JSON.stringify(cat.jiraMappings),
-      }))
-    );
-  }
-
-  invalidateStatusConfigCache();
-}
-
-/**
- * Save task filters (bulk replace)
- */
-export async function saveTaskFilters(filters: Omit<TaskFilter, "id">[]): Promise<void> {
-  await db.delete(taskFilters);
-
-  if (filters.length > 0) {
-    await db.insert(taskFilters).values(
-      filters.map((filter) => ({
-        name: filter.name,
-        position: filter.position,
-        jiraMappings: JSON.stringify(filter.jiraMappings),
       }))
     );
   }
@@ -243,19 +174,6 @@ async function seedDefaultCategories(): Promise<void> {
       done: cat.done ? 1 : 0,
       displayOrder: cat.displayOrder,
       jiraMappings: JSON.stringify(cat.jiraMappings),
-    }))
-  );
-}
-
-/**
- * Seed default filters
- */
-async function seedDefaultFilters(): Promise<void> {
-  await db.insert(taskFilters).values(
-    DEFAULT_FILTERS.map((filter) => ({
-      name: filter.name,
-      position: filter.position,
-      jiraMappings: JSON.stringify(filter.jiraMappings),
     }))
   );
 }

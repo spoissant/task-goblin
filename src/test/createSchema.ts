@@ -69,7 +69,6 @@ export function generateTestSchema(): string {
     schema.blockedBy,
     schema.logs,
     schema.statusCategories,
-    schema.taskFilters,
     schema.notes,
     schema.noteTasks,
   ];

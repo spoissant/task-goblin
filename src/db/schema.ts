@@ -93,15 +93,7 @@ export const statusCategories = sqliteTable("status_categories", {
   jiraMappings: text("jira_mappings"), // JSON array
 });
 
-// 8. Task Filters - filter bar entries with position
-export const taskFilters = sqliteTable("task_filters", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull().unique(),
-  position: integer("position").notNull(),
-  jiraMappings: text("jira_mappings"), // JSON array
-});
-
-// 9. Notes - standalone markdown documents for investigation notes, failed attempts, decisions
+// 8. Notes - standalone markdown documents for investigation notes, failed attempts, decisions
 export const notes = sqliteTable("notes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),

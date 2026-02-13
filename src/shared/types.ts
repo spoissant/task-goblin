@@ -184,16 +184,8 @@ export interface StatusCategory {
   jiraMappings: string[];
 }
 
-export interface TaskFilter {
-  id: number;
-  name: string;
-  position: number;
-  jiraMappings: string[];
-}
-
 export interface StatusSettings {
   categories: StatusCategory[];
-  filters: TaskFilter[];
   defaultColor: string;
 }
 

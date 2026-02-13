@@ -6,14 +6,11 @@ import { NotFoundError, ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import {
   getStatusCategories,
-  getTaskFilters,
   getDefaultStatusColor,
   getStatusSettings,
   saveStatusCategories,
-  saveTaskFilters,
   saveDefaultColor,
   type StatusCategory,
-  type TaskFilter,
 } from "../lib/task-status";
 import type { Routes } from "../router";
 
@@ -238,57 +235,6 @@ export const settingsRoutes: Routes = {
       await saveStatusCategories(categories);
 
       const updated = await getStatusCategories();
-      return json({ items: updated });
-    },
-  },
-
-  // Task Filters
-  "/api/v1/settings/task-filters": {
-    async GET() {
-      const filters = await getTaskFilters();
-      return json({ items: filters });
-    },
-
-    async PUT(req) {
-      const body = await getBody(req);
-
-      if (!body.filters || !Array.isArray(body.filters)) {
-        throw new ValidationError("filters array is required");
-      }
-
-      // Validate each filter
-      const names = new Set<string>();
-      for (let i = 0; i < body.filters.length; i++) {
-        const filter = body.filters[i];
-        if (typeof filter.name !== "string" || !filter.name.trim()) {
-          throw new ValidationError(`Filter ${i}: name is required`);
-        }
-        if (names.has(filter.name.toLowerCase())) {
-          throw new ValidationError(`Filter ${i}: duplicate name "${filter.name}"`);
-        }
-        names.add(filter.name.toLowerCase());
-        if (typeof filter.position !== "number") {
-          throw new ValidationError(`Filter ${i}: position must be a number`);
-        }
-        if (!Array.isArray(filter.jiraMappings)) {
-          throw new ValidationError(`Filter ${i}: jiraMappings must be an array`);
-        }
-        for (const mapping of filter.jiraMappings) {
-          if (typeof mapping !== "string") {
-            throw new ValidationError(`Filter ${i}: jiraMappings must contain only strings`);
-          }
-        }
-      }
-
-      const filters: Omit<TaskFilter, "id">[] = body.filters.map((f: TaskFilter) => ({
-        name: f.name.trim(),
-        position: f.position,
-        jiraMappings: f.jiraMappings,
-      }));
-
-      await saveTaskFilters(filters);
-
-      const updated = await getTaskFilters();
       return json({ items: updated });
     },
   },

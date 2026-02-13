@@ -23,7 +23,6 @@ beforeEach(() => {
   sqlite.exec("DELETE FROM repositories");
   sqlite.exec("DELETE FROM settings");
   sqlite.exec("DELETE FROM status_categories");
-  sqlite.exec("DELETE FROM task_filters");
 });
 
 // Helper to make requests
