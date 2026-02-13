@@ -68,24 +68,22 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
   const details = parseChecksDetails(checksDetails);
   const { passed, total } = countChecks(details);
   const countText = total > 0 ? `${passed}/${total}` : null;
-  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
-  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
-
   if (details.length === 0) {
-    return (
-      <span className={`inline-flex ${cursorClass}`} onClick={handleClick}>
-        {icon}
-      </span>
-    );
+    const content = <span className="inline-flex">{icon}</span>;
+    return prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{content}</a> : content;
   }
+
+  const trigger = (
+    <span className="inline-flex items-center gap-1">
+      {icon}
+      {countText && <span className="text-xs">{countText}</span>}
+    </span>
+  );
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
-          {icon}
-          {countText && <span className="text-xs">{countText}</span>}
-        </span>
+        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
       </TooltipTrigger>
       <TooltipContent side="left" className="max-w-xs">
         <div className="space-y-1">

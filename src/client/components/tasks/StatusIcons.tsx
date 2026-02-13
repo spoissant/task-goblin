@@ -17,52 +17,34 @@ export function ReviewStatusIcon({ approvedCount, prUrl }: ReviewStatusIconProps
 
   const required = 2;
   const countText = `${approvedCount}/${required}`;
-  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
-  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
+
+  let icon: React.ReactNode;
+  let tooltip: string;
 
   if (approvedCount >= required) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span className="text-xs">{countText}</span>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {approvedCount} approving reviews
-        </TooltipContent>
-      </Tooltip>
-    );
+    icon = <CheckCircle className="h-4 w-4 text-green-500" />;
+    tooltip = `${approvedCount} approving reviews`;
+  } else if (approvedCount === 1) {
+    icon = <CheckCircle className="h-4 w-4 text-yellow-500" />;
+    tooltip = "1 approving review (needs 2)";
+  } else {
+    icon = <XCircle className="h-4 w-4 text-red-500" />;
+    tooltip = "No approving reviews";
   }
 
-  if (approvedCount === 1) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
-            <CheckCircle className="h-4 w-4 text-yellow-500" />
-            <span className="text-xs">{countText}</span>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          1 approving review (needs 2)
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
+  const trigger = (
+    <span className="inline-flex items-center gap-1">
+      {icon}
+      <span className="text-xs">{countText}</span>
+    </span>
+  );
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
-          <XCircle className="h-4 w-4 text-red-500" />
-          <span className="text-xs">{countText}</span>
-        </span>
+        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
       </TooltipTrigger>
-      <TooltipContent>
-        No approving reviews
-      </TooltipContent>
+      <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
   );
 }
@@ -137,33 +119,30 @@ export function UnresolvedCommentsIcon({ count, prUrl }: UnresolvedCommentsIconP
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const cursorClass = prUrl ? "cursor-pointer" : "cursor-default";
-  const handleClick = prUrl ? () => window.open(prUrl, "_blank") : undefined;
+  let icon: React.ReactNode;
+  let tooltip: string;
 
   if (count === 0) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center ${cursorClass}`} onClick={handleClick}>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>All comments resolved</TooltipContent>
-      </Tooltip>
-    );
+    icon = <CheckCircle className="h-4 w-4 text-green-500" />;
+    tooltip = "All comments resolved";
+  } else {
+    icon = <MessageSquare className="h-4 w-4 text-yellow-500" />;
+    tooltip = `${count} unresolved comment${count !== 1 ? "s" : ""}`;
   }
+
+  const trigger = (
+    <span className={`inline-flex items-center${count > 0 ? " gap-1" : ""}`}>
+      {icon}
+      {count > 0 && <span className="text-xs">{count}</span>}
+    </span>
+  );
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={`inline-flex items-center gap-1 ${cursorClass}`} onClick={handleClick}>
-          <MessageSquare className="h-4 w-4 text-yellow-500" />
-          <span className="text-xs">{count}</span>
-        </span>
+        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
       </TooltipTrigger>
-      <TooltipContent>
-        {count} unresolved comment{count !== 1 ? "s" : ""}
-      </TooltipContent>
+      <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
   );
 }
