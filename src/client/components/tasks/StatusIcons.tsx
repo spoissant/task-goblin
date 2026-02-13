@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, Ban } from "lucide-react";
+import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, Ban, AlertTriangle } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -105,6 +105,19 @@ export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
       <TooltipContent>
         Open PR
       </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function MergeConflictIcon() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-default">
+          <AlertTriangle className="h-4 w-4 text-orange-500" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Has merge conflicts</TooltipContent>
     </Tooltip>
   );
 }

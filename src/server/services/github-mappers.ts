@@ -18,6 +18,7 @@ export interface PrTaskData {
   checksDetails: string | null;
   approvedReviewCount: number;
   unresolvedCommentCount: number;
+  hasConflicts: number;
   prSyncedAt: string;
   updatedAt: string;
   onDeploymentBranches: string | null;
@@ -35,6 +36,7 @@ export function mapPrToTaskData(
     state: string;
     draft?: boolean;
     merged?: boolean;
+    mergeable?: boolean | null;
     user?: { login?: string } | null;
     head?: { ref?: string; sha?: string };
     base?: { ref?: string };
@@ -62,6 +64,7 @@ export function mapPrToTaskData(
     checksDetails: checksResult.checksDetails,
     approvedReviewCount,
     unresolvedCommentCount,
+    hasConflicts: pr.mergeable === false ? 1 : 0,
     prSyncedAt: timestamp,
     updatedAt: timestamp,
     onDeploymentBranches: onDeploymentBranches.length > 0 ? JSON.stringify(onDeploymentBranches) : null,

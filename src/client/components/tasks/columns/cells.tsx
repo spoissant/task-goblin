@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
-import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon } from "../StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ export function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null)
 }
 
 // Build GitHub PR URL
-export function getPrUrl(repo: Repository | undefined | null, prNumber: number | null): string | null {
+export function getPrUrl(repo: Pick<Repository, "owner" | "repo"> | undefined | null, prNumber: number | null): string | null {
   if (!repo || !prNumber) return null;
   return `https://github.com/${repo.owner}/${repo.repo}/pull/${prNumber}`;
 }
@@ -151,6 +151,7 @@ export function PrCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
   const content = (
     <>
       <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
+      {task.hasConflicts === 1 && <MergeConflictIcon />}
       <span>#{task.prNumber}</span>
     </>
   );

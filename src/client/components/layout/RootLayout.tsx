@@ -30,7 +30,7 @@ export function RootLayout() {
         <main
           className={cn(
             "flex-1 p-6 min-w-0 overflow-x-hidden transition-all duration-200",
-            isCollapsed ? "ml-16" : "ml-64"
+            isCollapsed ? "ml-16" : "ml-64",
           )}
         >
           <Outlet />

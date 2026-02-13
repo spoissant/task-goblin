@@ -47,7 +47,10 @@ function stringifyDescription(description: unknown): string | null {
   if (typeof description === "string") return description;
   // ADF (Atlassian Document Format) - convert to markdown
   try {
+    const _log = console.log;
+    console.log = () => {};
     const { result } = adfToMd(description);
+    console.log = _log;
     return result || null;
   } catch {
     // Fallback to JSON if conversion fails

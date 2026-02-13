@@ -15,6 +15,7 @@ const GITHUB_TRACKED_FIELDS = [
   "checksStatus",
   "approvedReviewCount",
   "unresolvedCommentCount",
+  "hasConflicts",
 ] as const;
 
 const LARGE_FIELDS = ["checksDetails"] as const;
@@ -72,6 +73,7 @@ async function updateTaskByJiraKey(
       checksDetails: data.checksDetails,
       approvedReviewCount: data.approvedReviewCount,
       unresolvedCommentCount: data.unresolvedCommentCount,
+      hasConflicts: data.hasConflicts,
       onDeploymentBranches: data.onDeploymentBranches,
       prSyncedAt: data.prSyncedAt,
       updatedAt: data.updatedAt,
@@ -132,6 +134,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
         checksDetails: data.checksDetails,
         approvedReviewCount: data.approvedReviewCount,
         unresolvedCommentCount: data.unresolvedCommentCount,
+        hasConflicts: data.hasConflicts,
         onDeploymentBranches: data.onDeploymentBranches,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
@@ -188,6 +191,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
         checksDetails: data.checksDetails,
         approvedReviewCount: data.approvedReviewCount,
         unresolvedCommentCount: data.unresolvedCommentCount,
+        hasConflicts: data.hasConflicts,
         onDeploymentBranches: data.onDeploymentBranches,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
@@ -243,6 +247,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       checksDetails: data.checksDetails,
       approvedReviewCount: data.approvedReviewCount,
       unresolvedCommentCount: data.unresolvedCommentCount,
+      hasConflicts: data.hasConflicts,
       onDeploymentBranches: data.onDeploymentBranches,
       prSyncedAt: data.prSyncedAt,
       createdAt: timestamp,

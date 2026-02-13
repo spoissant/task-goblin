@@ -25,7 +25,10 @@ export async function backfillDescriptions(): Promise<BackfillResult> {
 
     try {
       const adf = JSON.parse(task.description);
+      const _log = console.log;
+      console.log = () => {};
       const { result } = adfToMd(adf);
+      console.log = _log;
 
       if (result) {
         await db

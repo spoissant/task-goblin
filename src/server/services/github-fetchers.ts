@@ -34,7 +34,7 @@ export async function fetchApprovedReviewCount(
   // Count unique users who approved (latest review per user)
   const latestByUser = new Map<string, string>();
   for (const r of reviews) {
-    if (r.user?.login) latestByUser.set(r.user.login, r.state || "");
+    if (r.user?.login && r.state !== "COMMENTED") latestByUser.set(r.user.login, r.state || "");
   }
   return [...latestByUser.values()].filter((s) => s === "APPROVED").length;
 }

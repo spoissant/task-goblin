@@ -40,6 +40,7 @@ export interface Task {
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
   unresolvedCommentCount: number | null;
+  hasConflicts: number | null;
 }
 
 // Linked note summary (id + title only)
@@ -272,7 +273,7 @@ export interface ReviewRequest {
   createdAt: string;
 }
 
-// Helper type guard - only this one is used
+// Helper type guard
 export function isMergedTask(task: Task): boolean {
   return task.jiraKey !== null && task.prNumber !== null;
 }

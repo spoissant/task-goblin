@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `has_conflicts` integer DEFAULT 0;
