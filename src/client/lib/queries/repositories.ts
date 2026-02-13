@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Repository, ListResponse } from "../types";
+import type { Repository, Worktree, ListResponse } from "../types";
 
 export const repositoryKeys = {
   all: ["repositories"] as const,
@@ -30,7 +30,7 @@ export function useUpdateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[]; localPath?: string | null }) =>
+    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[] }) =>
       api.patch<Repository>(`/repositories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
@@ -43,6 +43,41 @@ export function useDeleteRepository() {
 
   return useMutation({
     mutationFn: (id: number) => api.delete(`/repositories/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+    },
+  });
+}
+
+export function useCreateWorktree() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ repositoryId, path }: { repositoryId: number; path: string }) =>
+      api.post<Worktree>(`/repositories/${repositoryId}/worktrees`, { path }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+    },
+  });
+}
+
+export function useUpdateWorktree() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, path }: { id: number; path: string }) =>
+      api.patch<Worktree>(`/worktrees/${id}`, { path }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+    },
+  });
+}
+
+export function useDeleteWorktree() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/worktrees/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
     },

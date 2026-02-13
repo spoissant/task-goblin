@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories, tasks } from "../../db/schema";
+import { repositories, tasks, worktrees } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
@@ -10,7 +10,21 @@ import type { Routes } from "../router";
 export const repositoryRoutes: Routes = {
   "/api/v1/repositories": {
     async GET() {
-      const items = await db.select().from(repositories);
+      const repos = await db.select().from(repositories);
+      const allWorktrees = await db.select().from(worktrees);
+
+      const worktreesByRepo = new Map<number, typeof allWorktrees>();
+      for (const wt of allWorktrees) {
+        const list = worktreesByRepo.get(wt.repositoryId) || [];
+        list.push(wt);
+        worktreesByRepo.set(wt.repositoryId, list);
+      }
+
+      const items = repos.map((repo) => ({
+        ...repo,
+        worktrees: worktreesByRepo.get(repo.id) || [],
+      }));
+
       return json({ items, total: items.length });
     },
 
@@ -38,7 +52,6 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
           badgeColor: body.badgeColor ?? null,
           deploymentBranches,
-          localPath: body.localPath ?? null,
         })
         .returning();
 
@@ -96,7 +109,6 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
           badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
           deploymentBranches,
-          localPath: body.localPath !== undefined ? body.localPath : existing[0].localPath,
         })
         .where(eq(repositories.id, id))
         .returning();
@@ -126,8 +138,6 @@ export const repositoryRoutes: Routes = {
           ? JSON.stringify(body.deploymentBranches)
           : null;
       }
-      if (body.localPath !== undefined) updates.localPath = body.localPath || null;
-
       if (Object.keys(updates).length === 0) {
         return json(existing[0]);
       }

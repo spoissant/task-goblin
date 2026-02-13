@@ -9,7 +9,7 @@ export function SettingsPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
-      <div className="space-y-8 max-w-4xl">
+      <div className="space-y-8">
         <section>
           <h2 className="text-lg font-semibold mb-4">Jira Configuration</h2>
           <JiraConfigForm />

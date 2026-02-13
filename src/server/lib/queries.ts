@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks, repositories, worktrees } from "../../db/schema";
 
 export type TaskWithRepository = {
   task: typeof tasks.$inferSelect;
@@ -28,4 +28,20 @@ export async function getTaskWithRepository(
   }
 
   return result[0];
+}
+
+/**
+ * Get the first worktree path for a repository.
+ * Returns null if no worktrees configured.
+ */
+export async function getWorktreePath(
+  repositoryId: number
+): Promise<string | null> {
+  const result = await db
+    .select({ path: worktrees.path })
+    .from(worktrees)
+    .where(eq(worktrees.repositoryId, repositoryId))
+    .limit(1);
+
+  return result[0]?.path ?? null;
 }

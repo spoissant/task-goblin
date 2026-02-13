@@ -53,7 +53,7 @@ export function TasksPage() {
 
     const repoId = Array.from(repoIds)[0];
     const repo = reposData?.items.find((r) => r.id === repoId);
-    if (!repo?.localPath || !repo.deploymentBranches) return [];
+    if (!(repo?.worktrees?.length) || !repo.deploymentBranches) return [];
 
     try {
       return JSON.parse(repo.deploymentBranches) as string[];

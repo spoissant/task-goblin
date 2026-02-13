@@ -3,6 +3,7 @@ import {
   tasks,
   todos,
   repositories,
+  worktrees,
   blockedBy,
   logs,
   notes,
@@ -29,6 +30,14 @@ export const todosRelations = relations(todos, ({ one }) => ({
 
 export const repositoriesRelations = relations(repositories, ({ many }) => ({
   tasks: many(tasks),
+  worktrees: many(worktrees),
+}));
+
+export const worktreesRelations = relations(worktrees, ({ one }) => ({
+  repository: one(repositories, {
+    fields: [worktrees.repositoryId],
+    references: [repositories.id],
+  }),
 }));
 
 export const blockedByRelations = relations(blockedBy, ({ one }) => ({

@@ -3,7 +3,7 @@ import { NotFoundError, AppError } from "../lib/errors";
 import { parseId } from "../lib/validation";
 import { expandPath } from "../lib/path";
 import { logActivity } from "../lib/logging";
-import { getTaskWithRepository } from "../lib/queries";
+import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import {
   syncBranch,
   SyncBranchError,
@@ -40,8 +40,9 @@ export const syncBranchRoutes: Routes = {
         throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
       }
 
-      // Validate localPath is configured
-      if (!repository.localPath) {
+      // Validate worktree path is configured
+      const worktreePath = await getWorktreePath(repository.id);
+      if (!worktreePath) {
         throw new AppError(
           "Repository local path not configured",
           400,
@@ -49,11 +50,11 @@ export const syncBranchRoutes: Routes = {
         );
       }
 
-      // Validate localPath exists on filesystem (expand ~ to home dir)
-      const expandedPath = expandPath(repository.localPath);
+      // Validate path exists on filesystem (expand ~ to home dir)
+      const expandedPath = expandPath(worktreePath);
       if (!existsSync(expandedPath)) {
         throw new AppError(
-          `Repository path does not exist: ${repository.localPath}`,
+          `Repository path does not exist: ${worktreePath}`,
           400,
           "REPO_PATH_NOT_FOUND"
         );
@@ -61,7 +62,7 @@ export const syncBranchRoutes: Routes = {
 
       try {
         const result = await syncBranch(
-          repository.localPath,
+          worktreePath,
           task.headBranch,
           task.baseBranch
         );

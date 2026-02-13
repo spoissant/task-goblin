@@ -3,6 +3,8 @@ import {
   useRepositoriesQuery,
   useUpdateRepository,
   useDeleteRepository,
+  useCreateWorktree,
+  useDeleteWorktree,
 } from "@/client/lib/queries";
 import { Card, CardContent } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
@@ -27,10 +29,12 @@ export function RepositoryList() {
   const { data, isLoading } = useRepositoriesQuery();
   const updateRepo = useUpdateRepository();
   const deleteRepo = useDeleteRepository();
+  const createWorktree = useCreateWorktree();
+  const deleteWorktree = useDeleteWorktree();
 
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
-  const [localPathInputs, setLocalPathInputs] = useState<Record<number, string>>({});
+  const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
 
   const handleBadgeColorChange = (id: number, color: string) => {
     updateRepo.mutate(
@@ -94,22 +98,28 @@ export function RepositoryList() {
     );
   };
 
-  const handleLocalPathChange = (id: number, path: string) => {
-    updateRepo.mutate(
-      { id, localPath: path.trim() || null },
+  const handleAddWorktree = (repositoryId: number) => {
+    const path = worktreeInputs[repositoryId]?.trim();
+    if (!path) return;
+    createWorktree.mutate(
+      { repositoryId, path },
       {
         onSuccess: () => {
-          setLocalPathInputs((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-          });
+          setWorktreeInputs((prev) => ({ ...prev, [repositoryId]: "" }));
         },
         onError: () => {
-          toast.error("Failed to update local path");
+          toast.error("Failed to add worktree path");
         },
       }
     );
+  };
+
+  const handleRemoveWorktree = (worktreeId: number) => {
+    deleteWorktree.mutate(worktreeId, {
+      onError: () => {
+        toast.error("Failed to remove worktree path");
+      },
+    });
   };
 
   const handleDelete = (id: number) => {
@@ -150,7 +160,7 @@ export function RepositoryList() {
                 <TableRow>
                   <TableHead>Repository</TableHead>
                   <TableHead>Badge Color</TableHead>
-                  <TableHead>Local Path</TableHead>
+                  <TableHead>Worktrees</TableHead>
                   <TableHead>Deployment Branches</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead></TableHead>
@@ -170,27 +180,36 @@ export function RepositoryList() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
-                        className="h-8 w-56 text-xs font-mono"
-                        placeholder="/path/to/repo"
-                        value={localPathInputs[repo.id] ?? repo.localPath ?? ""}
-                        onChange={(e) => setLocalPathInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
-                        onBlur={() => {
-                          const value = localPathInputs[repo.id];
-                          if (value !== undefined && value !== (repo.localPath ?? "")) {
-                            handleLocalPathChange(repo.id, value);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const value = localPathInputs[repo.id];
-                            if (value !== undefined && value !== (repo.localPath ?? "")) {
-                              handleLocalPathChange(repo.id, value);
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(repo.worktrees || []).map((wt) => (
+                          <Badge
+                            key={wt.id}
+                            variant="secondary"
+                            className="gap-1 pr-1 font-mono text-xs"
+                          >
+                            {wt.path}
+                            <button
+                              type="button"
+                              className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                              onClick={() => handleRemoveWorktree(wt.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                        <Input
+                          className="h-6 w-40 text-xs font-mono"
+                          placeholder="/path/to/repo"
+                          value={worktreeInputs[repo.id] || ""}
+                          onChange={(e) => setWorktreeInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddWorktree(repo.id);
                             }
-                          }
-                        }}
-                      />
+                          }}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell>
                       {(() => {

@@ -101,7 +101,15 @@ export interface Repository {
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names
-  localPath: string | null; // Local filesystem path for git operations
+  worktrees?: Worktree[];
+}
+
+export interface Worktree {
+  id: number;
+  repositoryId: number;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Deploy types

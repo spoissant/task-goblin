@@ -7,7 +7,7 @@ import { getBody } from "../lib/request";
 import { parseId, parseDeploymentBranches } from "../lib/validation";
 import { expandPath } from "../lib/path";
 import { logActivity } from "../lib/logging";
-import { getTaskWithRepository } from "../lib/queries";
+import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import {
   deployBranch,
   deployBulk,
@@ -46,8 +46,9 @@ export const deployRoutes: Routes = {
         throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
       }
 
-      // Validate localPath is configured
-      if (!repository.localPath) {
+      // Validate worktree path is configured
+      const worktreePath = await getWorktreePath(repository.id);
+      if (!worktreePath) {
         throw new AppError(
           "Repository local path not configured",
           400,
@@ -55,11 +56,11 @@ export const deployRoutes: Routes = {
         );
       }
 
-      // Validate localPath exists on filesystem (expand ~ to home dir)
-      const expandedPath = expandPath(repository.localPath);
+      // Validate path exists on filesystem (expand ~ to home dir)
+      const expandedPath = expandPath(worktreePath);
       if (!existsSync(expandedPath)) {
         throw new AppError(
-          `Repository path does not exist: ${repository.localPath}`,
+          `Repository path does not exist: ${worktreePath}`,
           400,
           "REPO_PATH_NOT_FOUND"
         );
@@ -75,7 +76,7 @@ export const deployRoutes: Routes = {
 
       try {
         const result = await deployBranch(
-          repository.localPath,
+          worktreePath,
           task.headBranch,
           body.targetBranch
         );
@@ -176,8 +177,9 @@ export const deployRoutes: Routes = {
         throw new AppError("Repository not found", 400, "NO_REPOSITORY");
       }
 
-      // Validate localPath is configured
-      if (!repository.localPath) {
+      // Validate worktree path is configured
+      const worktreePath = await getWorktreePath(repository.id);
+      if (!worktreePath) {
         throw new AppError(
           "Repository local path not configured",
           400,
@@ -185,11 +187,11 @@ export const deployRoutes: Routes = {
         );
       }
 
-      // Validate localPath exists on filesystem (expand ~ to home dir)
-      const expandedPath = expandPath(repository.localPath);
+      // Validate path exists on filesystem (expand ~ to home dir)
+      const expandedPath = expandPath(worktreePath);
       if (!existsSync(expandedPath)) {
         throw new AppError(
-          `Repository path does not exist: ${repository.localPath}`,
+          `Repository path does not exist: ${worktreePath}`,
           400,
           "REPO_PATH_NOT_FOUND"
         );
@@ -211,7 +213,7 @@ export const deployRoutes: Routes = {
 
       try {
         const result = await deployBulk(
-          repository.localPath,
+          worktreePath,
           taskBranchInfos,
           body.targetBranch
         );

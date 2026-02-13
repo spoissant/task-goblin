@@ -106,8 +106,8 @@ export function TaskDetailPage() {
   const deploymentBranches: string[] = repo?.deploymentBranches
     ? JSON.parse(repo.deploymentBranches)
     : [];
-  const canDeploy = task?.headBranch && repo?.localPath && deploymentBranches.length > 0;
-  const canSyncBranch = task?.headBranch && task?.baseBranch && repo?.localPath;
+  const canDeploy = task?.headBranch && (repo?.worktrees?.length ?? 0) > 0 && deploymentBranches.length > 0;
+  const canSyncBranch = task?.headBranch && task?.baseBranch && (repo?.worktrees?.length ?? 0) > 0;
 
   const handleDeploy = () => {
     if (!deployTargetBranch) {
