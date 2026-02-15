@@ -29,7 +29,7 @@ bun run dev:kill      # Kill dev servers
 bun run build         # Build for production
 bun test              # Run tests
 bun run db:generate   # Generate drizzle schema
-bun run db:migrate    # Run migrations
+bun run db:migrate    # Run migrations (unreliable — see DB Migrations below)
 bun run mcp           # Launch MCP server
 ```
 
@@ -85,6 +85,11 @@ Response formats:
 - **StatusCategories** - configurable status workflow states
 - **TaskFilters** - filter bar configuration
 - **Settings** - key-value config store
+
+### DB Migrations
+`drizzle-kit migrate` can silently fail to apply migrations to the actual DB file. After generating and running a migration:
+1. **Always verify** the column/table exists: `sqlite3 task-goblin.db "PRAGMA table_info(<table>);"`
+2. If missing, **apply the SQL manually**: `sqlite3 task-goblin.db < drizzle/<migration>.sql`
 
 ### MCP Server
 Standalone process providing programmatic access for AI agents. Consumes REST API. Can: list/read tasks, append notes, manage todos, update plan files.

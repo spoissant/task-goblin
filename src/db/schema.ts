@@ -61,6 +61,7 @@ export const worktrees = sqliteTable("worktrees", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   repositoryId: integer("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
   path: text("path").notNull(),
+  color: text("color"), // Tailwind color name for visual identification
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -119,4 +120,48 @@ export const noteTasks = sqliteTable("note_tasks", {
   taskId: integer("task_id")
     .notNull()
     .references(() => tasks.id, { onDelete: "cascade" }),
+});
+
+// 11. Agents - one per worktree, picks prompts from repository queue
+export const agents = sqliteTable("agents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  worktreeId: integer("worktree_id")
+    .notNull()
+    .unique()
+    .references(() => worktrees.id),
+  status: text("status").notNull().default("idle"), // idle | running
+  systemPrompt: text("system_prompt"),
+  allowedTools: text("allowed_tools"), // JSON string[]
+  model: text("model"), // opus | sonnet | haiku
+  maxTurns: integer("max_turns"),
+  defaultBranch: text("default_branch"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// 12. Prompts - queued work items for agents, belong to a repository
+export const prompts = sqliteTable("prompts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repositoryId: integer("repository_id")
+    .notNull()
+    .references(() => repositories.id),
+  agentId: integer("agent_id").references(() => agents.id),
+  taskId: integer("task_id").references(() => tasks.id),
+  content: text("content").notNull(),
+  status: text("status").notNull().default("pending"), // pending | running | done | need_input | failed | cancelled | timeout
+  permissionMode: text("permission_mode").notNull().default("default"), // default | plan | acceptEdits | bypassPermissions
+  position: integer("position"),
+  output: text("output"),
+  errorMessage: text("error_message"),
+  sessionId: text("session_id"),
+  costUsd: text("cost_usd"),
+  durationMs: integer("duration_ms"),
+  inputRequest: text("input_request"), // JSON: { toolName, input }
+  inputResponse: text("input_response"), // JSON: user's response
+  messages: text("messages"), // JSON: persisted output buffer (tool calls, assistant messages, etc.)
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  startedAt: text("started_at"),
+  completedAt: text("completed_at"),
 });

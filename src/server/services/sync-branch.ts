@@ -1,5 +1,6 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
+import { runGit } from "../lib/git";
 
 function expandPath(path: string): string {
   if (path.startsWith("~/")) {
@@ -29,23 +30,6 @@ export class SyncBranchError extends Error {
     super(message);
     this.name = "SyncBranchError";
   }
-}
-
-async function runGit(
-  repoPath: string,
-  args: string[]
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd: repoPath,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
-
-  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
 }
 
 async function getCurrentBranch(repoPath: string): Promise<string> {

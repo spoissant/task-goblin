@@ -50,6 +50,7 @@ export const worktreeRoutes: Routes = {
         .values({
           repositoryId,
           path: body.path,
+          color: body.color ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -72,16 +73,19 @@ export const worktreeRoutes: Routes = {
         throw new NotFoundError("Worktree", id);
       }
 
-      if (!body.path || typeof body.path !== "string") {
-        throw new ValidationError("path is required");
+      const updates: Record<string, unknown> = {
+        updatedAt: new Date().toISOString(),
+      };
+      if (body.path !== undefined) updates.path = body.path;
+      if (body.color !== undefined) updates.color = body.color;
+
+      if (!updates.path && !updates.color) {
+        throw new ValidationError("path or color is required");
       }
 
       const result = await db
         .update(worktrees)
-        .set({
-          path: body.path,
-          updatedAt: new Date().toISOString(),
-        })
+        .set(updates)
         .where(eq(worktrees.id, id))
         .returning();
 

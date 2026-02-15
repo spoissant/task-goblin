@@ -1,6 +1,6 @@
 import { eq, sql, isNull, desc, and } from "drizzle-orm";
 import { db } from "../../db";
-import { logs, tasks, repositories } from "../../db/schema";
+import { logs, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -21,42 +21,32 @@ export const logRoutes: Routes = {
       // Build where condition
       const whereCondition = includeRead ? undefined : isNull(logs.readAt);
 
-      // Query logs with left join on tasks and repositories
-      const rawItems = await db
-        .select({
-          log: logs,
+      // Query logs with task and repository relations
+      const rawItems = await db.query.logs.findMany({
+        with: {
           task: {
-            id: tasks.id,
-            jiraKey: tasks.jiraKey,
-            prNumber: tasks.prNumber,
-            title: tasks.title,
-            repositoryId: tasks.repositoryId,
+            columns: { id: true, jiraKey: true, prNumber: true, title: true, repositoryId: true },
+            with: { repository: { columns: { owner: true, repo: true } } },
           },
-          repository: {
-            owner: repositories.owner,
-            repo: repositories.repo,
-          },
-        })
-        .from(logs)
-        .leftJoin(tasks, eq(logs.taskId, tasks.id))
-        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-        .where(whereCondition)
-        .orderBy(desc(logs.createdAt))
-        .limit(limit)
-        .offset(offset);
+        },
+        where: whereCondition,
+        orderBy: desc(logs.createdAt),
+        limit,
+        offset,
+      });
 
-      // Transform to include nested task object
-      const items = rawItems.map((row) => ({
-        ...row.log,
-        task: row.task?.id
+      // Reshape task.repository for API compatibility
+      const items = rawItems.map(({ task, ...log }) => ({
+        ...log,
+        task: task
           ? {
-              id: row.task.id,
-              jiraKey: row.task.jiraKey,
-              prNumber: row.task.prNumber,
-              title: row.task.title,
+              id: task.id,
+              jiraKey: task.jiraKey,
+              prNumber: task.prNumber,
+              title: task.title,
               repository:
-                row.task.repositoryId && row.repository?.owner
-                  ? { owner: row.repository.owner, repo: row.repository.repo }
+                task.repositoryId && task.repository
+                  ? { owner: task.repository.owner, repo: task.repository.repo }
                   : null,
             }
           : null,
@@ -176,38 +166,28 @@ export const logRoutes: Routes = {
       }
 
       // Get unread logs for this task, ordered newest first
-      const rawItems = await db
-        .select({
-          log: logs,
+      const rawItems = await db.query.logs.findMany({
+        with: {
           task: {
-            id: tasks.id,
-            jiraKey: tasks.jiraKey,
-            prNumber: tasks.prNumber,
-            title: tasks.title,
-            repositoryId: tasks.repositoryId,
+            columns: { id: true, jiraKey: true, prNumber: true, title: true, repositoryId: true },
+            with: { repository: { columns: { owner: true, repo: true } } },
           },
-          repository: {
-            owner: repositories.owner,
-            repo: repositories.repo,
-          },
-        })
-        .from(logs)
-        .leftJoin(tasks, eq(logs.taskId, tasks.id))
-        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-        .where(and(eq(logs.taskId, taskId), isNull(logs.readAt)))
-        .orderBy(desc(logs.createdAt));
+        },
+        where: and(eq(logs.taskId, taskId), isNull(logs.readAt)),
+        orderBy: desc(logs.createdAt),
+      });
 
-      const items = rawItems.map((row) => ({
-        ...row.log,
-        task: row.task?.id
+      const items = rawItems.map(({ task, ...log }) => ({
+        ...log,
+        task: task
           ? {
-              id: row.task.id,
-              jiraKey: row.task.jiraKey,
-              prNumber: row.task.prNumber,
-              title: row.task.title,
+              id: task.id,
+              jiraKey: task.jiraKey,
+              prNumber: task.prNumber,
+              title: task.title,
               repository:
-                row.task.repositoryId && row.repository?.owner
-                  ? { owner: row.repository.owner, repo: row.repository.repo }
+                task.repositoryId && task.repository
+                  ? { owner: task.repository.owner, repo: task.repository.repo }
                   : null,
             }
           : null,

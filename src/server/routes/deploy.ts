@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks } from "../../db/schema";
 import { json } from "../response";
 import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
@@ -34,7 +34,7 @@ export const deployRoutes: Routes = {
         throw new NotFoundError("Task", taskId);
       }
 
-      const { task, repository } = taskResult;
+      const { repository, ...task } = taskResult;
 
       // Validate task has a branch
       if (!task.headBranch) {
@@ -134,14 +134,10 @@ export const deployRoutes: Routes = {
       });
 
       // Fetch all tasks with repositories
-      const taskResults = await db
-        .select({
-          task: tasks,
-          repository: repositories,
-        })
-        .from(tasks)
-        .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-        .where(inArray(tasks.id, taskIds));
+      const taskResults = await db.query.tasks.findMany({
+        where: inArray(tasks.id, taskIds),
+        with: { repository: true },
+      });
 
       if (taskResults.length === 0) {
         throw new NotFoundError("Tasks", taskIds.join(", "));
@@ -149,9 +145,9 @@ export const deployRoutes: Routes = {
 
       // Validate all tasks are from the same repository
       const repoIds = new Set<number>();
-      for (const { task, repository } of taskResults) {
-        if (repository?.id) {
-          repoIds.add(repository.id);
+      for (const task of taskResults) {
+        if (task.repository?.id) {
+          repoIds.add(task.repository.id);
         }
       }
 
@@ -172,7 +168,7 @@ export const deployRoutes: Routes = {
       }
 
       // Get the repository (we know there's exactly one)
-      const repository = taskResults.find((r) => r.repository)?.repository;
+      const repository = taskResults.find((t) => t.repository)?.repository;
       if (!repository) {
         throw new AppError("Repository not found", 400, "NO_REPOSITORY");
       }
@@ -206,7 +202,7 @@ export const deployRoutes: Routes = {
       }
 
       // Prepare task branch info
-      const taskBranchInfos: TaskBranchInfo[] = taskResults.map(({ task }) => ({
+      const taskBranchInfos: TaskBranchInfo[] = taskResults.map((task) => ({
         taskId: task.id,
         headBranch: task.headBranch,
       }));

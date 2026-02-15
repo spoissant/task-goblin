@@ -1,6 +1,6 @@
 import { eq, and, isNull, isNotNull, sql, gt, lt, gte, lte } from "drizzle-orm";
 import { db } from "../../db";
-import { todos, tasks } from "../../db/schema";
+import { todos } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -25,32 +25,11 @@ export const todoRoutes: Routes = {
         conditions.push(isNull(todos.done));
       }
 
-      // Join with tasks to get task info
-      let query = db
-        .select({
-          id: todos.id,
-          content: todos.content,
-          done: todos.done,
-          taskId: todos.taskId,
-          position: todos.position,
-          createdAt: todos.createdAt,
-          updatedAt: todos.updatedAt,
-          task: {
-            jiraKey: tasks.jiraKey,
-            title: tasks.title,
-          },
-        })
-        .from(todos)
-        .leftJoin(tasks, eq(todos.taskId, tasks.id));
-
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as typeof query;
-      }
-
-      // Order by position (nulls last for legacy data)
-      query = query.orderBy(sql`COALESCE(${todos.position}, 999999)`) as typeof query;
-
-      const items = await query;
+      const items = await db.query.todos.findMany({
+        with: { task: { columns: { jiraKey: true, title: true } } },
+        where: conditions.length > 0 ? and(...conditions) : undefined,
+        orderBy: sql`COALESCE(${todos.position}, 999999)`,
+      });
 
       return json({ items, total: items.length });
     },

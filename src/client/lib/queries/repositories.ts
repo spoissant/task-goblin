@@ -65,8 +65,8 @@ export function useUpdateWorktree() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, path }: { id: number; path: string }) =>
-      api.patch<Worktree>(`/worktrees/${id}`, { path }),
+    mutationFn: ({ id, ...data }: { id: number; path?: string; color?: string | null }) =>
+      api.patch<Worktree>(`/worktrees/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
     },

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import { useTaskQuery, useUpdateTask, useDeleteTask, useCurrentTodo } from "@/client/lib/queries";
-import { cn } from "@/client/lib/utils";
+import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useMarkLogRead } from "@/client/lib/queries/logs";
@@ -43,10 +42,6 @@ export function TaskDetailPage() {
   const syncTask = useSyncTask();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
-  const { currentTodo } = useCurrentTodo();
-
-  const isActiveTodoTask = currentTodo?.taskId === taskId;
-
   const [deployTargetBranch, setDeployTargetBranch] = useState<string>("");
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
@@ -155,7 +150,7 @@ export function TaskDetailPage() {
   };
 
   return (
-    <div className={cn("space-y-8", isActiveTodoTask && "bg-lime-50 dark:bg-lime-700/40 -m-6 p-6")}>
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => navigate("/")}>
           <ArrowLeft className="h-4 w-4 mr-2" />

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8b03ba57-a54a-40e7-accc-3b8672bd03ca",
-  "prevId": "cf552b16-502e-4528-975b-576885e951ca",
+  "id": "1df043ba-b73f-43de-ad48-7275d4e0f3a9",
+  "prevId": "6966c357-5cc5-49c7-9856-eca57f76e444",
   "tables": {
     "agents": {
       "name": "agents",
@@ -64,13 +64,12 @@
           "notNull": false,
           "autoincrement": false
         },
-        "permission_mode": {
-          "name": "permission_mode",
+        "default_branch": {
+          "name": "default_branch",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'default'"
+          "notNull": false,
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -408,6 +407,14 @@
           "autoincrement": false,
           "default": "'pending'"
         },
+        "permission_mode": {
+          "name": "permission_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
         "position": {
           "name": "position",
           "type": "integer",
@@ -459,6 +466,13 @@
         },
         "input_response": {
           "name": "input_response",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "messages": {
+          "name": "messages",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -989,6 +1003,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "created_at": {

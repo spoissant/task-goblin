@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router";
 import { Sidebar } from "./Sidebar";
-import { CurrentTodoBar } from "./CurrentTodoBar";
 import { Toaster } from "@/client/components/ui/sonner";
 import { cn } from "@/client/lib/utils";
 import { useRealtimeUpdates } from "@/client/lib/useRealtimeUpdates";
@@ -24,7 +23,6 @@ export function RootLayout() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <CurrentTodoBar />
       <div className="flex">
         <Sidebar isCollapsed={isCollapsed} onToggle={toggleCollapsed} />
         <main

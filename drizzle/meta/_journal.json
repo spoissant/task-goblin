@@ -85,6 +85,41 @@
       "when": 1771004722591,
       "tag": "0011_add_worktrees",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1771008369748,
+      "tag": "0012_aromatic_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1771010486537,
+      "tag": "0013_curved_whistler",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1771012800000,
+      "tag": "0014_move_permission_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1771012550635,
+      "tag": "0015_overconfident_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1771113600000,
+      "tag": "0016_add_prompt_messages",
+      "breakpoints": true
     }
   ]
 }

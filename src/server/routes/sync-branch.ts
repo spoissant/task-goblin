@@ -23,7 +23,7 @@ export const syncBranchRoutes: Routes = {
         throw new NotFoundError("Task", taskId);
       }
 
-      const { task, repository } = taskResult;
+      const { repository, ...task } = taskResult;
 
       // Validate task has a head branch
       if (!task.headBranch) {

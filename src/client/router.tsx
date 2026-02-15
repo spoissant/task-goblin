@@ -3,12 +3,13 @@ import { RootLayout } from "./components/layout/RootLayout";
 import { TasksPage } from "./pages/TasksPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { TodosPage } from "./pages/TodosPage";
-import { CurationPage } from "./pages/CurationPage";
 import { CompletedPage } from "./pages/CompletedPage";
 import { LogsPage } from "./pages/LogsPage";
 import { NotesPage } from "./pages/NotesPage";
 import { NoteDetailPage } from "./pages/NoteDetailPage";
 import { ReviewsPage } from "./pages/ReviewsPage";
+import { AgentsPage } from "./pages/AgentsPage";
+import { PromptsPage } from "./pages/PromptsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -28,11 +29,7 @@ export const router = createBrowserRouter([
         path: "todos",
         element: <TodosPage />,
       },
-      {
-        path: "curate",
-        element: <CurationPage />,
-      },
-      {
+{
         path: "completed",
         element: <CompletedPage />,
       },
@@ -51,6 +48,14 @@ export const router = createBrowserRouter([
       {
         path: "reviews",
         element: <ReviewsPage />,
+      },
+      {
+        path: "agents",
+        element: <AgentsPage />,
+      },
+      {
+        path: "prompts",
+        element: <PromptsPage />,
       },
       {
         path: "settings",

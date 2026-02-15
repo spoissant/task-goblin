@@ -4,7 +4,6 @@ import { useUnreadCountQuery } from "@/client/lib/queries";
 import { usePendingTodoCountQuery } from "@/client/lib/queries/todos";
 import {
   SquareCheck,
-  FolderSearch,
   CheckCircle,
   ScrollText,
   StickyNote,
@@ -13,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GitPullRequestArrow,
+  Bot,
+  MessageSquare,
 } from "lucide-react";
 import {
   Tooltip,
@@ -23,10 +24,11 @@ import {
 
 const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
+  { to: "/agents", icon: Bot, label: "Agents" },
+  { to: "/prompts", icon: MessageSquare, label: "Prompts" },
   { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
-  { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
-  { to: "/curate", icon: FolderSearch, label: "Curate" },
+  { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/settings", icon: Settings, label: "Settings" },

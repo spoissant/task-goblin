@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8b03ba57-a54a-40e7-accc-3b8672bd03ca",
-  "prevId": "cf552b16-502e-4528-975b-576885e951ca",
+  "id": "278323cb-05d1-449c-bc50-198003413df2",
+  "prevId": "afedad8e-8512-4f9c-959f-c56d1527f6ba",
   "tables": {
     "agents": {
       "name": "agents",
@@ -63,14 +63,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "permission_mode": {
-          "name": "permission_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'default'"
         },
         "created_at": {
           "name": "created_at",
@@ -407,6 +399,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'pending'"
+        },
+        "permission_mode": {
+          "name": "permission_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
         },
         "position": {
           "name": "position",
@@ -989,6 +989,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "created_at": {

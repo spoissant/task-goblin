@@ -7,6 +7,12 @@ const clients = new Set<SSEClient>();
 
 export function addClient(controller: ReadableStreamDefaultController): SSEClient {
   const client: SSEClient = { controller, closed: false };
+  // Flush a comment immediately so proxies (e.g. Vite) fully establish the connection
+  try {
+    controller.enqueue(new TextEncoder().encode(": ok\n\n"));
+  } catch {
+    // ignore — client may have disconnected already
+  }
   clients.add(client);
   return client;
 }
@@ -16,8 +22,8 @@ export function removeClient(client: SSEClient) {
   clients.delete(client);
 }
 
-export function broadcast(entity: string) {
-  const data = JSON.stringify({ entity });
+export function broadcast(entity: string, payload?: Record<string, unknown>) {
+  const data = JSON.stringify({ entity, ...payload });
   const message = `data: ${data}\n\n`;
   const encoded = new TextEncoder().encode(message);
 
@@ -38,6 +44,8 @@ export function autoBroadcast(pathname: string) {
   else if (pathname.includes("/notes")) entity = "note";
   else if (pathname.includes("/blocked-by")) entity = "blocker";
   else if (pathname.includes("/settings")) entity = "setting";
+  else if (pathname.includes("/agents")) entity = "agent";
+  else if (pathname.includes("/prompts")) entity = "prompt";
   else if (
     pathname.includes("/tasks") ||
     pathname.includes("/sync") ||

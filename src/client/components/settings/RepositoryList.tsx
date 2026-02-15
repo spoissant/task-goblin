@@ -4,6 +4,7 @@ import {
   useUpdateRepository,
   useDeleteRepository,
   useCreateWorktree,
+  useUpdateWorktree,
   useDeleteWorktree,
 } from "@/client/lib/queries";
 import { Card, CardContent } from "@/client/components/ui/card";
@@ -30,6 +31,7 @@ export function RepositoryList() {
   const updateRepo = useUpdateRepository();
   const deleteRepo = useDeleteRepository();
   const createWorktree = useCreateWorktree();
+  const updateWorktree = useUpdateWorktree();
   const deleteWorktree = useDeleteWorktree();
 
   const [isAddingRepo, setIsAddingRepo] = useState(false);
@@ -114,6 +116,17 @@ export function RepositoryList() {
     );
   };
 
+  const handleWorktreeColorChange = (worktreeId: number, color: string) => {
+    updateWorktree.mutate(
+      { id: worktreeId, color: color || null },
+      {
+        onError: () => {
+          toast.error("Failed to update worktree color");
+        },
+      }
+    );
+  };
+
   const handleRemoveWorktree = (worktreeId: number) => {
     deleteWorktree.mutate(worktreeId, {
       onError: () => {
@@ -180,22 +193,29 @@ export function RepositoryList() {
                       />
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="space-y-1.5">
                         {(repo.worktrees || []).map((wt) => (
-                          <Badge
-                            key={wt.id}
-                            variant="secondary"
-                            className="gap-1 pr-1 font-mono text-xs"
-                          >
-                            {wt.path}
-                            <button
-                              type="button"
-                              className="rounded-full hover:bg-muted-foreground/20 p-0.5"
-                              onClick={() => handleRemoveWorktree(wt.id)}
+                          <div key={wt.id} className="flex items-center gap-1.5">
+                            <Badge
+                              variant="secondary"
+                              className="gap-1 pr-1 font-mono text-xs"
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
+                              {wt.path}
+                              <button
+                                type="button"
+                                className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                                onClick={() => handleRemoveWorktree(wt.id)}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                            <input
+                              type="color"
+                              value={wt.color || "#808080"}
+                              onChange={(e) => handleWorktreeColorChange(wt.id, e.target.value)}
+                              className="h-6 w-8 rounded border border-border cursor-pointer bg-transparent p-0.5"
+                            />
+                          </div>
                         ))}
                         <Input
                           className="h-6 w-40 text-xs font-mono"

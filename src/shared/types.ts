@@ -108,6 +108,7 @@ export interface Worktree {
   id: number;
   repositoryId: number;
   path: string;
+  color: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -271,6 +272,58 @@ export interface ReviewRequest {
   isDraft: boolean;
   approvedCount: number;
   createdAt: string;
+}
+
+// Agent/Prompt orchestration types
+export type AgentStatus = "idle" | "running";
+export type PromptStatus =
+  | "pending"
+  | "running"
+  | "done"
+  | "need_input"
+  | "failed"
+  | "cancelled"
+  | "timeout";
+
+export interface Agent {
+  id: number;
+  name: string;
+  worktreeId: number;
+  status: AgentStatus;
+  systemPrompt: string | null;
+  allowedTools: string | null;
+  model: string | null;
+  maxTurns: number | null;
+  defaultBranch: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentWithWorktree extends Agent {
+  worktree: Worktree & { repository: Repository };
+}
+
+export interface Prompt {
+  id: number;
+  repositoryId: number;
+  agentId: number | null;
+  taskId: number | null;
+  content: string;
+  status: PromptStatus;
+  permissionMode: string;
+  position: number | null;
+  output: string | null;
+  errorMessage: string | null;
+  sessionId: string | null;
+  costUsd: string | null;
+  durationMs: number | null;
+  inputRequest: string | null;
+  inputResponse: string | null;
+  messages?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 // Helper type guard
