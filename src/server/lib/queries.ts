@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, worktrees } from "../../db/schema";
+import { tasks, worktrees, repositories } from "../../db/schema";
 
 /**
  * Fetch a task with its associated repository (if any).
@@ -13,6 +13,28 @@ export async function getTaskWithRepository(taskId: number) {
       with: { repository: true },
     })) ?? null
   );
+}
+
+/**
+ * Build a Map of repository ID → repository for a list of tasks.
+ */
+export async function buildRepoMap(
+  taskList: { repositoryId: number | null }[],
+): Promise<Map<number, typeof repositories.$inferSelect>> {
+  const repoIds = [...new Set(taskList.filter(t => t.repositoryId).map(t => t.repositoryId!))];
+  const repoMap = new Map<number, typeof repositories.$inferSelect>();
+
+  if (repoIds.length > 0) {
+    const repos = await db
+      .select()
+      .from(repositories)
+      .where(sql`${repositories.id} IN (${sql.join(repoIds.map(id => sql`${id}`), sql`, `)})`);
+    for (const repo of repos) {
+      repoMap.set(repo.id, repo);
+    }
+  }
+
+  return repoMap;
 }
 
 /**

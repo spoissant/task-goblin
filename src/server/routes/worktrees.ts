@@ -5,6 +5,7 @@ import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
+import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
 
 export const worktreeRoutes: Routes = {
@@ -44,15 +45,15 @@ export const worktreeRoutes: Routes = {
         throw new NotFoundError("Repository", repositoryId);
       }
 
-      const now = new Date().toISOString();
+      const timestamp = now();
       const result = await db
         .insert(worktrees)
         .values({
           repositoryId,
           path: body.path,
           color: body.color ?? null,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         })
         .returning();
 
@@ -74,7 +75,7 @@ export const worktreeRoutes: Routes = {
       }
 
       const updates: Record<string, unknown> = {
-        updatedAt: new Date().toISOString(),
+        updatedAt: now(),
       };
       if (body.path !== undefined) updates.path = body.path;
       if (body.color !== undefined) updates.color = body.color;

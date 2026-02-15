@@ -5,6 +5,7 @@ import { withCors, handleCors, withErrorBoundary } from "./middleware";
 import { migrateTaskStatuses } from "./lib/status-migration";
 import { addClient, removeClient, autoBroadcast } from "./lib/sse";
 import { addOutputClient, removeOutputClient } from "./services/agent-runtime";
+import { now } from "./lib/timestamp";
 import { db } from "../db";
 import { agents, prompts } from "../db/schema";
 
@@ -22,14 +23,14 @@ async function startup() {
     .set({
       status: "failed",
       errorMessage: "Server restarted",
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
+      updatedAt: now(),
+      completedAt: now(),
     })
     .where(inArray(prompts.status, ["running", "need_input"]));
 
   await db
     .update(agents)
-    .set({ status: "idle", updatedAt: new Date().toISOString() })
+    .set({ status: "idle", updatedAt: now() })
     .where(eq(agents.status, "running"));
 
   // Start server

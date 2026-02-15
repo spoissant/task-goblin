@@ -1,13 +1,6 @@
 import { existsSync } from "fs";
-import { homedir } from "os";
-import { runGit } from "../lib/git";
-
-function expandPath(path: string): string {
-  if (path.startsWith("~/")) {
-    return path.replace("~", homedir());
-  }
-  return path;
-}
+import { runGit, getCurrentBranch, getConflictedFiles, abortMerge, checkoutBranch } from "../lib/git";
+import { expandPath } from "../lib/path";
 
 export interface DeployResult {
   status: "success";
@@ -49,44 +42,9 @@ export class DeployError extends Error {
   }
 }
 
-async function getCurrentBranch(repoPath: string): Promise<string> {
-  const result = await runGit(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (result.exitCode !== 0) {
-    throw new DeployError("Failed to get current branch", "GIT_ERROR");
-  }
-  return result.stdout;
-}
-
 async function getGitUserName(repoPath: string): Promise<string> {
   const result = await runGit(repoPath, ["config", "user.name"]);
   return result.exitCode === 0 ? result.stdout : "unknown";
-}
-
-async function getConflictedFiles(repoPath: string): Promise<string[]> {
-  const result = await runGit(repoPath, [
-    "diff",
-    "--name-only",
-    "--diff-filter=U",
-  ]);
-  if (result.stdout === "") return [];
-  return result.stdout.split("\n").filter(Boolean);
-}
-
-async function abortMerge(repoPath: string): Promise<void> {
-  await runGit(repoPath, ["merge", "--abort"]);
-}
-
-async function checkoutBranch(
-  repoPath: string,
-  branch: string
-): Promise<void> {
-  const result = await runGit(repoPath, ["checkout", branch]);
-  if (result.exitCode !== 0) {
-    throw new DeployError(
-      `Failed to checkout branch ${branch}: ${result.stderr}`,
-      "CHECKOUT_FAILED"
-    );
-  }
 }
 
 export async function deployBranch(

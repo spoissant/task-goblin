@@ -8,6 +8,36 @@ import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
 import type { Routes } from "../router";
 
+type LogWithTask = {
+  task: {
+    id: number;
+    jiraKey: string | null;
+    prNumber: number | null;
+    title: string;
+    repositoryId: number | null;
+    repository: { owner: string; repo: string } | null;
+  } | null;
+  [key: string]: unknown;
+};
+
+function reshapeLogTask({ task, ...log }: LogWithTask) {
+  return {
+    ...log,
+    task: task
+      ? {
+          id: task.id,
+          jiraKey: task.jiraKey,
+          prNumber: task.prNumber,
+          title: task.title,
+          repository:
+            task.repositoryId && task.repository
+              ? { owner: task.repository.owner, repo: task.repository.repo }
+              : null,
+        }
+      : null,
+  };
+}
+
 export const logRoutes: Routes = {
   "/api/v1/logs": {
     async GET(req) {
@@ -35,22 +65,7 @@ export const logRoutes: Routes = {
         offset,
       });
 
-      // Reshape task.repository for API compatibility
-      const items = rawItems.map(({ task, ...log }) => ({
-        ...log,
-        task: task
-          ? {
-              id: task.id,
-              jiraKey: task.jiraKey,
-              prNumber: task.prNumber,
-              title: task.title,
-              repository:
-                task.repositoryId && task.repository
-                  ? { owner: task.repository.owner, repo: task.repository.repo }
-                  : null,
-            }
-          : null,
-      }));
+      const items = rawItems.map(reshapeLogTask);
 
       // Get total count
       const countResult = await db
@@ -177,21 +192,7 @@ export const logRoutes: Routes = {
         orderBy: desc(logs.createdAt),
       });
 
-      const items = rawItems.map(({ task, ...log }) => ({
-        ...log,
-        task: task
-          ? {
-              id: task.id,
-              jiraKey: task.jiraKey,
-              prNumber: task.prNumber,
-              title: task.title,
-              repository:
-                task.repositoryId && task.repository
-                  ? { owner: task.repository.owner, repo: task.repository.repo }
-                  : null,
-            }
-          : null,
-      }));
+      const items = rawItems.map(reshapeLogTask);
 
       return json({ items, total: items.length });
     },

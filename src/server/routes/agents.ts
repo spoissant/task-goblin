@@ -6,6 +6,7 @@ import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import { startAgent, stopAgent, wakeAgent } from "../services/agent-runtime";
+import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
 
 async function getAgentWithWorktree(agentId: number) {
@@ -59,7 +60,7 @@ export const agentRoutes: Routes = {
         );
       }
 
-      const now = new Date().toISOString();
+      const timestamp = now();
       const result = await db
         .insert(agents)
         .values({
@@ -72,8 +73,8 @@ export const agentRoutes: Routes = {
           model: body.model ?? null,
           maxTurns: body.maxTurns ?? null,
           defaultBranch: body.defaultBranch ?? null,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         })
         .returning();
 
@@ -108,7 +109,7 @@ export const agentRoutes: Routes = {
       }
 
       const updates: Record<string, unknown> = {
-        updatedAt: new Date().toISOString(),
+        updatedAt: now(),
       };
       if (body.name !== undefined) updates.name = body.name;
       if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
@@ -181,7 +182,7 @@ export const agentRoutes: Routes = {
 
       await db
         .update(agents)
-        .set({ status: "running", updatedAt: new Date().toISOString() })
+        .set({ status: "running", updatedAt: now() })
         .where(eq(agents.id, id));
 
       startAgent(id);

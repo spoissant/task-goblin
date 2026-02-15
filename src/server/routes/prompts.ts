@@ -6,6 +6,7 @@ import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import { cancelPrompt, respondToPrompt } from "../services/agent-runtime";
+import { now } from "../lib/timestamp";
 import type { Routes } from "../router";
 
 export const promptRoutes: Routes = {
@@ -70,7 +71,7 @@ export const promptRoutes: Routes = {
           )
         );
 
-      const now = new Date().toISOString();
+      const timestamp = now();
       const result = await db
         .insert(prompts)
         .values({
@@ -79,8 +80,8 @@ export const promptRoutes: Routes = {
           content: body.content,
           permissionMode: body.permissionMode ?? "default",
           position: body.position ?? (maxPos[0]?.max ?? 0) + 1,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         })
         .returning();
 
@@ -124,7 +125,7 @@ export const promptRoutes: Routes = {
       }
 
       const updates: Record<string, unknown> = {
-        updatedAt: new Date().toISOString(),
+        updatedAt: now(),
       };
       if (body.content !== undefined && status === "pending") updates.content = body.content;
       if (body.position !== undefined && status === "pending") updates.position = body.position;
@@ -189,8 +190,8 @@ export const promptRoutes: Routes = {
           .update(prompts)
           .set({
             status: "cancelled",
-            updatedAt: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
+            updatedAt: now(),
+            completedAt: now(),
           })
           .where(eq(prompts.id, id));
       }
@@ -255,7 +256,7 @@ export const promptRoutes: Routes = {
         );
       }
 
-      const now = new Date().toISOString();
+      const timestamp = now();
       const result = await db
         .update(prompts)
         .set({
@@ -271,7 +272,7 @@ export const promptRoutes: Routes = {
           messages: null,
           startedAt: null,
           completedAt: null,
-          updatedAt: now,
+          updatedAt: timestamp,
         })
         .where(eq(prompts.id, id))
         .returning();

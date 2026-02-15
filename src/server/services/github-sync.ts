@@ -11,13 +11,9 @@ import {
 } from "./github-fetchers";
 import { upsertPrTask } from "./github-upsert";
 import { isApiError } from "../lib/errors";
+import type { SyncResult } from "../lib/types";
 
-export interface SyncResult {
-  synced: number;
-  new: number;
-  updated: number;
-  unchanged: number;
-}
+export type { SyncResult };
 
 export class GitHubApiError extends Error {
   constructor(

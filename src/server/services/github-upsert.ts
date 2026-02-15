@@ -2,7 +2,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
 import { now } from "../lib/timestamp";
-import { generateTaskDiff, formatDiffLog } from "../lib/diff";
+import { logDiffsIfChanged } from "../lib/diff";
 import { formatPrCreatedLog, mapPrStateToTaskStatus } from "./github-mappers";
 import type { PrTaskData } from "./github-mappers";
 
@@ -51,13 +51,6 @@ async function updateTaskByJiraKey(
 
   const oldTask = existing[0];
 
-  // Compare fields and generate diff
-  const diffs = generateTaskDiff(
-    oldTask as unknown as Record<string, unknown>,
-    data as unknown as Record<string, unknown>,
-    GITHUB_TRACKED_FIELDS
-  );
-
   // Update PR fields only, preserve title and other Jira data
   await db
     .update(tasks)
@@ -80,19 +73,12 @@ async function updateTaskByJiraKey(
     })
     .where(eq(tasks.id, oldTask.id));
 
-  // Only log if there were actual changes
-  if (diffs.length > 0) {
-    const timestamp = now();
-    await db.insert(logs).values({
-      taskId: oldTask.id,
-      content: formatDiffLog(diffs, LARGE_FIELDS),
-      source: "github",
-      createdAt: timestamp,
-    });
-    return "updated";
-  }
-
-  return "unchanged";
+  const changed = await logDiffsIfChanged(
+    oldTask as unknown as Record<string, unknown>,
+    data as unknown as Record<string, unknown>,
+    { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
+  );
+  return changed ? "updated" : "unchanged";
 }
 
 /**
@@ -112,13 +98,6 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
 
   if (existingByNumber.length > 0) {
     const oldTask = existingByNumber[0];
-
-    // Compare fields and generate diff
-    const diffs = generateTaskDiff(
-      oldTask as unknown as Record<string, unknown>,
-      data as unknown as Record<string, unknown>,
-      GITHUB_TRACKED_FIELDS
-    );
 
     // Update existing, preserve Jira fields if already merged
     await db
@@ -141,19 +120,12 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       })
       .where(eq(tasks.id, oldTask.id));
 
-    // Only log if there were actual changes
-    if (diffs.length > 0) {
-      const timestamp = now();
-      await db.insert(logs).values({
-        taskId: oldTask.id,
-        content: formatDiffLog(diffs, LARGE_FIELDS),
-        source: "github",
-        createdAt: timestamp,
-      });
-      return "updated";
-    }
-
-    return "unchanged";
+    const changed = await logDiffsIfChanged(
+      oldTask as unknown as Record<string, unknown>,
+      data as unknown as Record<string, unknown>,
+      { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
+    );
+    return changed ? "updated" : "unchanged";
   }
 
   // Next, try to find by repositoryId + headBranch (local entry waiting for sync)
@@ -169,13 +141,6 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
 
   if (existingByBranch.length > 0) {
     const oldTask = existingByBranch[0];
-
-    // Compare fields and generate diff
-    const diffs = generateTaskDiff(
-      oldTask as unknown as Record<string, unknown>,
-      data as unknown as Record<string, unknown>,
-      GITHUB_TRACKED_FIELDS
-    );
 
     // Update existing local entry with GitHub data, preserve Jira fields
     await db
@@ -198,19 +163,12 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       })
       .where(eq(tasks.id, oldTask.id));
 
-    // Only log if there were actual changes
-    if (diffs.length > 0) {
-      const timestamp = now();
-      await db.insert(logs).values({
-        taskId: oldTask.id,
-        content: formatDiffLog(diffs, LARGE_FIELDS),
-        source: "github",
-        createdAt: timestamp,
-      });
-      return "updated";
-    }
-
-    return "unchanged";
+    const changed = await logDiffsIfChanged(
+      oldTask as unknown as Record<string, unknown>,
+      data as unknown as Record<string, unknown>,
+      { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
+    );
+    return changed ? "updated" : "unchanged";
   }
 
   // Check if PR title contains Jira keys matching existing tasks

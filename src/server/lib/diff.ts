@@ -1,3 +1,7 @@
+import { db } from "../../db";
+import { logs } from "../../db/schema";
+import { now } from "./timestamp";
+
 export interface FieldDiff {
   field: string;
   old: string | null;
@@ -36,4 +40,30 @@ export function formatDiffLog(
     }
   }
   return lines.join("\n");
+}
+
+/**
+ * Compare old and new task data, insert a log entry if changed.
+ * Returns true if changes were found and logged.
+ */
+export async function logDiffsIfChanged(
+  oldTask: Record<string, unknown>,
+  newData: Record<string, unknown>,
+  opts: {
+    taskId: number;
+    trackedFields: readonly string[];
+    largeFields?: readonly string[];
+    source: string;
+  },
+): Promise<boolean> {
+  const diffs = generateTaskDiff(oldTask, newData, opts.trackedFields);
+  if (diffs.length === 0) return false;
+
+  await db.insert(logs).values({
+    taskId: opts.taskId,
+    content: formatDiffLog(diffs, opts.largeFields),
+    source: opts.source,
+    createdAt: now(),
+  });
+  return true;
 }

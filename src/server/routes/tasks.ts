@@ -1,6 +1,7 @@
 import { eq, and, sql, ne, isNull, isNotNull, or, desc } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, blockedBy, repositories, logs, noteTasks, notes } from "../../db/schema";
+import { buildRepoMap } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -439,19 +440,7 @@ export const taskRoutes: Routes = {
         .where(completedCondition);
       const total = totalResult[0]?.count ?? 0;
 
-      // Get repositories for tasks that have one
-      const repoIds = [...new Set(taskList.filter(t => t.repositoryId).map(t => t.repositoryId!))];
-      const repoMap = new Map<number, typeof repositories.$inferSelect>();
-
-      if (repoIds.length > 0) {
-        const repos = await db
-          .select()
-          .from(repositories)
-          .where(sql`${repositories.id} IN (${sql.join(repoIds.map(id => sql`${id}`), sql`, `)})`);
-        for (const repo of repos) {
-          repoMap.set(repo.id, repo);
-        }
-      }
+      const repoMap = await buildRepoMap(taskList);
 
       const items = taskList.map((task) => ({
         ...task,
@@ -482,19 +471,7 @@ export const taskRoutes: Routes = {
         )
         .orderBy(statusOrderExpr);
 
-      // Get repositories for all tasks that have one
-      const repoIds = [...new Set(taskList.filter(t => t.repositoryId).map(t => t.repositoryId!))];
-      const repoMap = new Map<number, typeof repositories.$inferSelect>();
-
-      if (repoIds.length > 0) {
-        const repos = await db
-          .select()
-          .from(repositories)
-          .where(sql`${repositories.id} IN (${sql.join(repoIds.map(id => sql`${id}`), sql`, `)})`);
-        for (const repo of repos) {
-          repoMap.set(repo.id, repo);
-        }
-      }
+      const repoMap = await buildRepoMap(taskList);
 
       const items = taskList.map((task) => ({
         ...task,
@@ -544,19 +521,7 @@ export const taskRoutes: Routes = {
         )
         .orderBy(statusOrderExpr);
 
-      // Get repositories
-      const repoIds = [...new Set(taskList.filter(t => t.repositoryId).map(t => t.repositoryId!))];
-      const repoMap = new Map<number, typeof repositories.$inferSelect>();
-
-      if (repoIds.length > 0) {
-        const repos = await db
-          .select()
-          .from(repositories)
-          .where(sql`${repositories.id} IN (${sql.join(repoIds.map(id => sql`${id}`), sql`, `)})`);
-        for (const repo of repos) {
-          repoMap.set(repo.id, repo);
-        }
-      }
+      const repoMap = await buildRepoMap(taskList);
 
       const items = taskList.map((task) => ({
         ...task,

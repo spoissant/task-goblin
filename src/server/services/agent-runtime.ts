@@ -9,8 +9,9 @@ import { db } from "../../db";
 import { agents, prompts, tasks } from "../../db/schema";
 import { broadcast } from "../lib/sse";
 import { spawn } from "child_process";
-import { runGit } from "../lib/git";
+import { checkoutBranch } from "../lib/git";
 import { expandPath } from "../lib/path";
+import { now } from "../lib/timestamp";
 
 type SSEClient = {
   controller: ReadableStreamDefaultController;
@@ -75,8 +76,8 @@ class AgentRunner {
         .set({
           agentId: this.agentId,
           status: "running",
-          startedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          startedAt: now(),
+          updatedAt: now(),
         })
         .where(
           and(
@@ -136,8 +137,8 @@ class AgentRunner {
             .set({
               status: "failed",
               errorMessage: err instanceof Error ? err.message : String(err),
-              updatedAt: new Date().toISOString(),
-              completedAt: new Date().toISOString(),
+              updatedAt: now(),
+              completedAt: now(),
             })
             .where(eq(prompts.id, prompt.id));
         }
@@ -284,7 +285,7 @@ class AgentRunner {
           sessionId = message.session_id;
           await db
             .update(prompts)
-            .set({ sessionId, updatedAt: new Date().toISOString() })
+            .set({ sessionId, updatedAt: now() })
             .where(eq(prompts.id, prompt.id));
         }
 
@@ -322,8 +323,8 @@ class AgentRunner {
               status: "timeout",
               errorMessage: "Prompt execution timed out",
               durationMs,
-              updatedAt: new Date().toISOString(),
-              completedAt: new Date().toISOString(),
+              updatedAt: now(),
+              completedAt: now(),
             })
             .where(eq(prompts.id, prompt.id));
         }
@@ -345,8 +346,8 @@ class AgentRunner {
             output: resultMessage.result,
             costUsd: resultMessage.total_cost_usd?.toString() ?? null,
             durationMs,
-            updatedAt: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
+            updatedAt: now(),
+            completedAt: now(),
           })
           .where(eq(prompts.id, prompt.id));
       } else {
@@ -360,8 +361,8 @@ class AgentRunner {
                 : "Execution error",
             costUsd: resultMessage.total_cost_usd?.toString() ?? null,
             durationMs,
-            updatedAt: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
+            updatedAt: now(),
+            completedAt: now(),
           })
           .where(eq(prompts.id, prompt.id));
       }
@@ -372,8 +373,8 @@ class AgentRunner {
         .set({
           status: "done",
           durationMs,
-          updatedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
+          updatedAt: now(),
+          completedAt: now(),
         })
         .where(eq(prompts.id, prompt.id));
     }
@@ -393,7 +394,7 @@ class AgentRunner {
         .set({
           status: "need_input",
           inputRequest: JSON.stringify({ toolName, input }),
-          updatedAt: new Date().toISOString(),
+          updatedAt: now(),
         })
         .where(eq(prompts.id, promptId));
 
@@ -412,7 +413,7 @@ class AgentRunner {
           .set({
             status: "running",
             inputResponse: JSON.stringify(response),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now(),
           })
           .where(eq(prompts.id, promptId))
           .then(() => {
@@ -455,8 +456,8 @@ class AgentRunner {
         .update(prompts)
         .set({
           status: "cancelled",
-          updatedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
+          updatedAt: now(),
+          completedAt: now(),
         })
         .where(eq(prompts.id, promptId));
 
@@ -469,7 +470,7 @@ class AgentRunner {
     // Update agent status in DB
     await db
       .update(agents)
-      .set({ status: "idle", updatedAt: new Date().toISOString() })
+      .set({ status: "idle", updatedAt: now() })
       .where(eq(agents.id, this.agentId));
 
     broadcast("agent");
@@ -481,13 +482,6 @@ class AgentRunner {
 
   getCurrentPromptId() {
     return this.currentPromptId;
-  }
-}
-
-async function checkoutBranch(cwd: string, branch: string): Promise<void> {
-  const result = await runGit(cwd, ["checkout", branch]);
-  if (result.exitCode !== 0) {
-    throw new Error(`git checkout ${branch} failed: ${result.stderr}`);
   }
 }
 
@@ -560,7 +554,7 @@ export async function stopAgent(agentId: number) {
     // Not running in-memory, just update DB
     await db
       .update(agents)
-      .set({ status: "idle", updatedAt: new Date().toISOString() })
+      .set({ status: "idle", updatedAt: now() })
       .where(eq(agents.id, agentId));
 
     broadcast("agent");

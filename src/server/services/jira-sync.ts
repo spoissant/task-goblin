@@ -5,8 +5,11 @@ import { db } from "../../db";
 import { tasks, logs } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
-import { generateTaskDiff, formatDiffLog } from "../lib/diff";
+import { logDiffsIfChanged } from "../lib/diff";
 import { isApiError } from "../lib/errors";
+import type { SyncResult } from "../lib/types";
+
+export type { SyncResult };
 
 const JIRA_TRACKED_FIELDS = [
   "title",
@@ -23,13 +26,6 @@ const LARGE_FIELDS = ["description"] as const;
 
 function formatJiraCreatedLog(status: string, jiraKey: string, title: string): string {
   return `# Task created\n${status} - ${jiraKey} - ${title}`;
-}
-
-export interface SyncResult {
-  synced: number;
-  new: number;
-  updated: number;
-  unchanged: number;
 }
 
 export class JiraApiError extends Error {
@@ -122,13 +118,6 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
   if (existing.length > 0) {
     const oldTask = existing[0];
 
-    // Compare fields and generate diff
-    const diffs = generateTaskDiff(
-      oldTask as unknown as Record<string, unknown>,
-      taskData as unknown as Record<string, unknown>,
-      JIRA_TRACKED_FIELDS
-    );
-
     // Update existing task, preserve PR fields if already merged
     await db
       .update(tasks)
@@ -146,19 +135,12 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
       })
       .where(eq(tasks.jiraKey, taskData.jiraKey));
 
-    // Only log if there were actual changes
-    if (diffs.length > 0) {
-      const timestamp = now();
-      await db.insert(logs).values({
-        taskId: oldTask.id,
-        content: formatDiffLog(diffs, LARGE_FIELDS),
-        source: "jira",
-        createdAt: timestamp,
-      });
-      return "updated";
-    }
-
-    return "unchanged";
+    const changed = await logDiffsIfChanged(
+      oldTask as unknown as Record<string, unknown>,
+      taskData as unknown as Record<string, unknown>,
+      { taskId: oldTask.id, trackedFields: JIRA_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "jira" },
+    );
+    return changed ? "updated" : "unchanged";
   } else {
     // Create new Jira-only task
     const timestamp = now();
