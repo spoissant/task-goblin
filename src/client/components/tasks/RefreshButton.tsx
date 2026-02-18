@@ -1,12 +1,6 @@
 import { useState, useMemo } from "react";
-import { useSyncJira, useSyncGitHub, useSyncAll, type SyncStep } from "@/client/lib/queries";
+import { useSyncAll, type SyncStep } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/client/components/ui/dropdown-menu";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,45 +15,9 @@ export function RefreshButton() {
 
   const syncOptions = useMemo(() => ({ onStepChange: setSyncStep }), []);
 
-  const syncJira = useSyncJira(syncOptions);
-  const syncGitHub = useSyncGitHub(syncOptions);
   const syncAll = useSyncAll(syncOptions);
 
-  const isLoading = syncJira.isPending || syncGitHub.isPending || syncAll.isPending;
-
-  const handleSyncJira = () => {
-    syncJira.mutate(undefined, {
-      onSuccess: (result) => {
-        const parts: string[] = [];
-        if ((result.unchanged ?? 0) > 0) parts.push(`${result.unchanged} unchanged`);
-        if ((result.created ?? 0) > 0) parts.push(`${result.created} created`);
-        if ((result.updated ?? 0) > 0) parts.push(`${result.updated} updated`);
-        if ((result.merged ?? 0) > 0) parts.push(`${result.merged} auto-merged`);
-        const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-        toast.success(`Jira sync: ${summary}`);
-      },
-      onError: (error) => {
-        toast.error(`Jira sync failed: ${error.message}`);
-      },
-    });
-  };
-
-  const handleSyncGitHub = () => {
-    syncGitHub.mutate(undefined, {
-      onSuccess: (result) => {
-        const parts: string[] = [];
-        if ((result.unchanged ?? 0) > 0) parts.push(`${result.unchanged} unchanged`);
-        if ((result.created ?? 0) > 0) parts.push(`${result.created} created`);
-        if ((result.updated ?? 0) > 0) parts.push(`${result.updated} updated`);
-        if ((result.merged ?? 0) > 0) parts.push(`${result.merged} auto-merged`);
-        const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-        toast.success(`GitHub sync: ${summary}`);
-      },
-      onError: (error) => {
-        toast.error(`GitHub sync failed: ${error.message}`);
-      },
-    });
-  };
+  const isLoading = syncAll.isPending;
 
   const handleSyncAll = () => {
     syncAll.mutate(undefined, {
@@ -97,24 +55,9 @@ export function RefreshButton() {
   const buttonLabel = syncStep ? stepLabels[syncStep] : "Sync";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          {buttonLabel}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={handleSyncAll}>
-          Sync All
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleSyncJira}>
-          Sync Jira
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleSyncGitHub}>
-          Sync GitHub
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button variant="outline" disabled={isLoading} onClick={handleSyncAll}>
+      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+      {buttonLabel}
+    </Button>
   );
 }
