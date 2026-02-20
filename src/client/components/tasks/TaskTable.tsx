@@ -175,13 +175,11 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
   // Only show sync if task has Jira or PR
   const canSync = task.jiraKey || task.prNumber;
 
-  const handleSync = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleSync = () => {
     syncTask.mutate({ task, repo });
   };
 
-  const handleOpenLogs = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenLogs = () => {
     onOpenLogs();
   };
 
@@ -194,14 +192,15 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
   };
 
   return (
-    <TableRow>
+    <TableRow
+      data-state={isSelected ? "selected" : undefined}
+    >
       {/* Checkbox */}
       {onSelectionChange && (
         <TableCell>
           <Checkbox
             checked={isSelected}
             onCheckedChange={(checked) => onSelectionChange(!!checked)}
-            onClick={(e) => e.stopPropagation()}
           />
         </TableCell>
       )}
@@ -210,8 +209,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
         <button
           type="button"
           className="font-mono text-xs hover:text-blue-600 cursor-pointer"
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             navigator.clipboard.writeText(String(task.id));
             toast.success("Task ID copied");
           }}
@@ -221,33 +219,36 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
       </TableCell>
       {/* Sync / Unread Logs */}
       <TableCell>
-        {task.unreadLogCount > 0 ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleOpenLogs}
-                className="relative inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted"
-              >
-                <Bell className="h-4 w-4 text-orange-500" />
-                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-4 min-w-[1rem] px-1 flex items-center justify-center font-medium">
-                  {task.unreadLogCount}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{task.unreadLogCount} unread log(s)</TooltipContent>
-          </Tooltip>
-        ) : canSync ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleSync}
-            disabled={syncTask.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {canSync && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleSync}
+              disabled={syncTask.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
+            </Button>
+          )}
+          {task.unreadLogCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleOpenLogs}
+                  className="relative inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted"
+                >
+                  <Bell className="h-4 w-4 text-orange-500" />
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-4 min-w-[1rem] px-1 flex items-center justify-center font-medium">
+                    {task.unreadLogCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{task.unreadLogCount} unread log(s)</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </TableCell>
 
       {/* Shared columns */}
@@ -264,8 +265,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
       <TableCell>
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onOpenTodos();
           }}
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-80 ${
@@ -284,8 +284,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenBlockers, onOpenLogs
         <BlockerStatusIcon
           blockerCount={task.blockerCount}
           completedBlockerCount={task.completedBlockerCount}
-          onClick={(e) => {
-            e?.stopPropagation();
+          onClick={() => {
             onOpenBlockers();
           }}
         />
