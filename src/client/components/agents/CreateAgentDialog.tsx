@@ -11,8 +11,10 @@ import {
   SelectValue,
 } from "@/client/components/ui/select";
 import { Textarea } from "@/client/components/ui/textarea";
+import { TagInput } from "@/client/components/settings/TagInput";
 import { useCreateAgent } from "@/client/lib/queries/agents";
 import type { Worktree, Repository } from "@/client/lib/types";
+import { DEFAULT_ALLOWED_TOOLS } from "@/shared/constants";
 import { toast } from "sonner";
 
 interface CreateAgentDialogProps {
@@ -33,6 +35,7 @@ export function CreateAgentDialog({
   const [systemPrompt, setSystemPrompt] = useState("");
   const [maxTurns, setMaxTurns] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("");
+  const [allowedTools, setAllowedTools] = useState<string[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +49,7 @@ export function CreateAgentDialog({
         systemPrompt: systemPrompt.trim() || null,
         maxTurns: maxTurns ? Number(maxTurns) : null,
         defaultBranch: defaultBranch.trim() || null,
+        allowedTools: allowedTools.length > 0 ? allowedTools : null,
       },
       {
         onSuccess: () => {
@@ -56,6 +60,7 @@ export function CreateAgentDialog({
           setSystemPrompt("");
           setMaxTurns("");
           setDefaultBranch("");
+          setAllowedTools([]);
         },
         onError: () => {
           toast.error("Failed to create agent");
@@ -154,6 +159,18 @@ export function CreateAgentDialog({
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="Optional additional instructions..."
             rows={3}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Additional Allowed Tools</Label>
+          <p className="text-xs text-muted-foreground">
+            Default: {DEFAULT_ALLOWED_TOOLS.join(", ")}
+          </p>
+          <TagInput
+            tags={allowedTools}
+            onChange={setAllowedTools}
+            placeholder='e.g. Bash(bun:*)'
           />
         </div>
       </form>

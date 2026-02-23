@@ -17,6 +17,24 @@ import { EmptyState } from "@/client/components/ui/empty-state";
 import { RefreshCw, GitPullRequestArrow } from "lucide-react";
 import type { ReviewRequest } from "@/client/lib/types";
 
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now();
+  const then = new Date(dateString).getTime();
+  const diffSeconds = Math.round((then - now) / 1000);
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  for (const [unit, seconds] of units) {
+    if (Math.abs(diffSeconds) >= seconds) {
+      return rtf.format(Math.round(diffSeconds / seconds), unit);
+    }
+  }
+  return rtf.format(diffSeconds, "second");
+}
+
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
@@ -67,6 +85,7 @@ export function ReviewsPage() {
                 <TableHead>Title</TableHead>
                 <TableHead className="w-[150px]">Repo</TableHead>
                 <TableHead className="w-[120px]">Author</TableHead>
+                <TableHead className="w-[120px]">Created</TableHead>
                 <TableHead className="w-[80px]">Reviews</TableHead>
               </TableRow>
             </TableHeader>
@@ -125,6 +144,11 @@ function ReviewRequestRow({ request }: ReviewRequestRowProps) {
       {/* Author */}
       <TableCell className="text-sm">
         {request.author}
+      </TableCell>
+
+      {/* Created */}
+      <TableCell className="text-sm text-muted-foreground" title={new Date(request.createdAt).toLocaleString()}>
+        {formatRelativeTime(request.createdAt)}
       </TableCell>
 
       {/* Reviews */}

@@ -320,6 +320,7 @@ export interface Prompt {
   inputRequest: string | null;
   inputResponse: string | null;
   messages?: string | null;
+  stderr: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;

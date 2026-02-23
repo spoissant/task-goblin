@@ -264,6 +264,7 @@ export const promptRoutes: Routes = {
           agentId: null,
           output: null,
           errorMessage: null,
+          stderr: null,
           sessionId: null,
           costUsd: null,
           durationMs: null,

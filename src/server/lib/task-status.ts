@@ -446,7 +446,7 @@ export const statusOrderExpr = sql`CASE
   WHEN LOWER(${tasks.status}) = 'closed' THEN 3
   WHEN LOWER(${tasks.status}) IN ('ready to prod', 'ready_to_prod') THEN 4
   WHEN LOWER(${tasks.status}) IN ('ready to merge', 'ready_to_merge') THEN 5
-  WHEN LOWER(${tasks.status}) = 'qa' THEN 6
+  WHEN LOWER(${tasks.status}) IN ('qa', 'design qa', 'design_qa') THEN 6
   WHEN LOWER(${tasks.status}) IN ('ready for test', 'ready_for_test') THEN 7
   WHEN LOWER(${tasks.status}) IN ('code review', 'code_review') THEN 8
   WHEN LOWER(${tasks.status}) IN ('in progress', 'in_progress') THEN 9

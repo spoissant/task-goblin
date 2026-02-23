@@ -11,8 +11,10 @@ import {
   SelectValue,
 } from "@/client/components/ui/select";
 import { Textarea } from "@/client/components/ui/textarea";
+import { TagInput } from "@/client/components/settings/TagInput";
 import { useUpdateAgent } from "@/client/lib/queries/agents";
 import type { AgentWithWorktree } from "@/client/lib/types";
+import { DEFAULT_ALLOWED_TOOLS } from "@/shared/constants";
 import { toast } from "sonner";
 
 interface EditAgentDialogProps {
@@ -36,6 +38,9 @@ export function EditAgentDialog({
   const [defaultBranch, setDefaultBranch] = useState(
     agent.defaultBranch || ""
   );
+  const [allowedTools, setAllowedTools] = useState<string[]>(
+    agent.allowedTools ? JSON.parse(agent.allowedTools) : []
+  );
 
   useEffect(() => {
     setName(agent.name);
@@ -43,6 +48,7 @@ export function EditAgentDialog({
     setSystemPrompt(agent.systemPrompt || "");
     setMaxTurns(agent.maxTurns ? String(agent.maxTurns) : "");
     setDefaultBranch(agent.defaultBranch || "");
+    setAllowedTools(agent.allowedTools ? JSON.parse(agent.allowedTools) : []);
   }, [agent]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -57,6 +63,7 @@ export function EditAgentDialog({
         systemPrompt: systemPrompt.trim() || null,
         maxTurns: maxTurns ? Number(maxTurns) : null,
         defaultBranch: defaultBranch.trim() || null,
+        allowedTools: allowedTools.length > 0 ? allowedTools : null,
       },
       {
         onSuccess: () => {
@@ -152,6 +159,18 @@ export function EditAgentDialog({
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="Optional additional instructions..."
             rows={3}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Additional Allowed Tools</Label>
+          <p className="text-xs text-muted-foreground">
+            Default: {DEFAULT_ALLOWED_TOOLS.join(", ")}
+          </p>
+          <TagInput
+            tags={allowedTools}
+            onChange={setAllowedTools}
+            placeholder='e.g. Bash(bun:*)'
           />
         </div>
       </form>

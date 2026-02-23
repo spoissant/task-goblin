@@ -217,13 +217,21 @@ export function PromptCard({ prompt, isFirst, isLast }: PromptCardProps) {
               </pre>
             </div>
           )}
-          {prompt.errorMessage && (
+          {(prompt.errorMessage || prompt.status === "failed") && (
             <div>
               <span className="text-[10px] text-red-400 font-medium">Error:</span>
               <pre className="text-xs text-red-400 whitespace-pre-wrap break-words bg-red-950/20 rounded p-2 mt-0.5">
-                {prompt.errorMessage}
+                {prompt.errorMessage || "Unknown error"}
               </pre>
             </div>
+          )}
+          {prompt.stderr && (
+            <details>
+              <summary className="text-[10px] text-orange-400 font-medium cursor-pointer">Stderr</summary>
+              <pre className="text-xs text-orange-400 whitespace-pre-wrap break-words bg-orange-950/20 rounded p-2 mt-0.5 max-h-40 overflow-y-auto">
+                {prompt.stderr}
+              </pre>
+            </details>
           )}
           {isTerminal && terminalMessages.length > 0 && (
             <div>

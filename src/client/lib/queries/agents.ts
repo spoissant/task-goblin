@@ -25,6 +25,7 @@ export function useCreateAgent() {
       systemPrompt?: string | null;
       maxTurns?: number | null;
       defaultBranch?: string | null;
+      allowedTools?: string[] | null;
     }) => api.post<Agent>("/agents", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentKeys.all });
@@ -46,6 +47,7 @@ export function useUpdateAgent() {
       systemPrompt?: string | null;
       maxTurns?: number | null;
       defaultBranch?: string | null;
+      allowedTools?: string[] | null;
     }) => api.patch<Agent>(`/agents/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentKeys.all });

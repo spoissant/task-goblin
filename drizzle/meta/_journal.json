@@ -120,6 +120,13 @@
       "when": 1771113600000,
       "tag": "0016_add_prompt_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1771165394736,
+      "tag": "0017_lucky_magma",
+      "breakpoints": true
     }
   ]
 }

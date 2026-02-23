@@ -8,10 +8,14 @@ import {
 import { db } from "../../db";
 import { agents, prompts, tasks } from "../../db/schema";
 import { broadcast } from "../lib/sse";
+import { DEFAULT_ALLOWED_TOOLS } from "../../shared/constants";
 import { spawn } from "child_process";
 import { checkoutBranch } from "../lib/git";
 import { expandPath } from "../lib/path";
 import { now } from "../lib/timestamp";
+import { getTaskWithRepository } from "../lib/queries";
+import { syncJiraItemByKey } from "./jira-sync";
+import { syncGitHubPullRequestByNumber } from "./github-sync";
 
 type SSEClient = {
   controller: ReadableStreamDefaultController;
@@ -30,6 +34,26 @@ const outputClients = new Map<number, Set<SSEClient>>();
 // Per-prompt output buffer for replaying to late-connecting clients
 const outputBuffers = new Map<number, any[]>();
 
+function matchesAllowedTool(
+  toolName: string,
+  input: Record<string, unknown>,
+  pattern: string,
+): boolean {
+  // Bash pattern: "Bash(gh:*)" → toolName === "Bash" and command matches glob
+  const bashMatch = pattern.match(/^(\w+)\((.+)\)$/);
+  if (bashMatch) {
+    if (toolName !== bashMatch[1]) return false;
+    const glob = bashMatch[2];
+    const command = typeof input.command === "string" ? input.command : "";
+    const regex = new RegExp(
+      "^" + glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$",
+    );
+    return regex.test(command);
+  }
+  // Simple name match: "Read" → toolName === "Read"
+  return toolName === pattern;
+}
+
 class AgentRunner {
   private polling = false;
   private currentPromptId: number | null = null;
@@ -39,6 +63,8 @@ class AgentRunner {
     | null = null;
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private wakeResolve: (() => void) | null = null;
+  private allowedTools: string[] = [];
+  private stderrChunks: Buffer[] = [];
 
   constructor(private agentId: number) {}
 
@@ -132,11 +158,15 @@ class AgentRunner {
           .where(eq(prompts.id, prompt.id));
 
         if (current.length > 0 && current[0].status === "running") {
+          const stderrOutput = this.stderrChunks.length > 0
+            ? Buffer.concat(this.stderrChunks).toString("utf-8").trim() || null
+            : null;
           await db
             .update(prompts)
             .set({
               status: "failed",
               errorMessage: err instanceof Error ? err.message : String(err),
+              stderr: stderrOutput,
               updatedAt: now(),
               completedAt: now(),
             })
@@ -176,6 +206,11 @@ class AgentRunner {
     const { worktree, ...agent } = agentRow;
     const resolvedPath = expandPath(worktree.path);
 
+    const agentTools: string[] = agent.allowedTools
+      ? JSON.parse(agent.allowedTools)
+      : [];
+    this.allowedTools = [...DEFAULT_ALLOWED_TOOLS, ...agentTools];
+
     // Load task context if taskId set
     let task: typeof tasks.$inferSelect | null = null;
     if (prompt.taskId) {
@@ -184,6 +219,39 @@ class AgentRunner {
         .from(tasks)
         .where(eq(tasks.id, prompt.taskId));
       if (taskRows.length > 0) task = taskRows[0];
+    }
+
+    // Pre-sync task data from external sources
+    if (task) {
+      if (task.jiraKey) {
+        try {
+          await syncJiraItemByKey(task.jiraKey);
+          console.log(`[agent-runtime] synced Jira ${task.jiraKey}`);
+        } catch (err) {
+          console.error(`[agent-runtime] Jira sync failed for ${task.jiraKey}:`, err);
+        }
+      }
+      if (task.prNumber && task.repositoryId) {
+        try {
+          const taskWithRepo = await getTaskWithRepository(task.id);
+          if (taskWithRepo?.repository) {
+            await syncGitHubPullRequestByNumber(
+              taskWithRepo.repository.owner,
+              taskWithRepo.repository.repo,
+              task.prNumber,
+            );
+            console.log(`[agent-runtime] synced GitHub PR #${task.prNumber}`);
+          }
+        } catch (err) {
+          console.error(`[agent-runtime] GitHub sync failed for PR #${task.prNumber}:`, err);
+        }
+      }
+      // Re-fetch task after sync for fresh data
+      const refreshed = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, task.id));
+      if (refreshed.length > 0) task = refreshed[0];
     }
 
     // Checkout target branch before execution
@@ -226,6 +294,10 @@ class AgentRunner {
 
     const startTime = Date.now();
 
+    // Capture stderr + exit code from subprocess
+    this.stderrChunks = [];
+    let exitCode: number | null = null;
+
     // Ensure the Claude Code subprocess can find git
     const extraPaths = ["/opt/homebrew/bin", "/usr/local/bin"];
     const augmentedPath = [process.env.PATH, ...extraPaths].join(":");
@@ -240,9 +312,10 @@ class AgentRunner {
       options: {
         cwd: resolvedPath,
         systemPrompt,
-        allowedTools: agent.allowedTools
-          ? JSON.parse(agent.allowedTools)
-          : undefined,
+        allowedTools: [
+          ...DEFAULT_ALLOWED_TOOLS,
+          ...(agent.allowedTools ? JSON.parse(agent.allowedTools) : []),
+        ],
         model: agent.model || undefined,
         maxTurns: agent.maxTurns || undefined,
         permissionMode: (prompt.permissionMode || "default") as any,
@@ -257,6 +330,12 @@ class AgentRunner {
             cwd: opts.cwd,
             env: opts.env,
             stdio: ["pipe", "pipe", "pipe"],
+          });
+          proc.stderr?.on("data", (chunk: Buffer) => {
+            this.stderrChunks.push(chunk);
+          });
+          proc.on("exit", (code) => {
+            exitCode = code;
           });
           proc.on("error", (err) => {
             console.error(`[agent-runtime] subprocess error:`, err.message);
@@ -335,6 +414,13 @@ class AgentRunner {
     }
 
     const durationMs = Date.now() - startTime;
+    const stderrOutput = this.stderrChunks.length > 0
+      ? Buffer.concat(this.stderrChunks).toString("utf-8").trim() || null
+      : null;
+
+    if (stderrOutput) {
+      console.error(`[agent-runtime] stderr for prompt ${prompt.id}:`, stderrOutput.slice(0, 500));
+    }
 
     // Success or error result
     if (resultMessage) {
@@ -345,6 +431,7 @@ class AgentRunner {
             status: "done",
             output: resultMessage.result,
             costUsd: resultMessage.total_cost_usd?.toString() ?? null,
+            stderr: stderrOutput,
             durationMs,
             updatedAt: now(),
             completedAt: now(),
@@ -356,10 +443,11 @@ class AgentRunner {
           .set({
             status: "failed",
             errorMessage:
-              "errors" in resultMessage
-                ? resultMessage.errors?.join("; ")
-                : "Execution error",
+              ("errors" in resultMessage && resultMessage.errors?.length
+                ? resultMessage.errors.join("; ")
+                : null) || `Execution error (${resultMessage.subtype})`,
             costUsd: resultMessage.total_cost_usd?.toString() ?? null,
+            stderr: stderrOutput,
             durationMs,
             updatedAt: now(),
             completedAt: now(),
@@ -367,11 +455,13 @@ class AgentRunner {
           .where(eq(prompts.id, prompt.id));
       }
     } else {
-      // No result message — mark as done with no output
+      // No result message — process exited abnormally
       await db
         .update(prompts)
         .set({
-          status: "done",
+          status: "failed",
+          errorMessage: stderrOutput || `Process exited with no result (exit code: ${exitCode})`,
+          stderr: stderrOutput,
           durationMs,
           updatedAt: now(),
           completedAt: now(),
@@ -387,6 +477,11 @@ class AgentRunner {
     toolName: string,
     input: Record<string, unknown>,
   ): Promise<PermissionResult> {
+    // Auto-approve if tool matches allowedTools
+    if (this.allowedTools.some((p) => matchesAllowedTool(toolName, input, p))) {
+      return Promise.resolve({ behavior: "allow" as const });
+    }
+
     return new Promise(async (resolve) => {
       // Update prompt to need_input
       await db
@@ -467,6 +562,7 @@ class AgentRunner {
 
   async stop() {
     this.polling = false;
+    await this.cancel();
     // Update agent status in DB
     await db
       .update(agents)
@@ -494,8 +590,13 @@ function buildPromptContent(
   if (!task) return content;
 
   const parts: string[] = ["## Task Context"];
+  parts.push(`- Task ID: ${task.id}`);
   parts.push(`- Title: ${task.title}`);
-  // TODO: Add more context here?
+  if (task.jiraKey) parts.push(`- Jira Key: ${task.jiraKey}`);
+  if (task.epicKey) parts.push(`- Jira Epic Key: ${task.epicKey}`);
+  if (task.status) parts.push(`- Jira Status: ${task.status}`);
+  if (task.headBranch) parts.push(`- GitHub Branch: ${task.headBranch}`);
+  if (task.prNumber) parts.push(`- GitHub PR: #${task.prNumber}`);
   parts.push("");
   parts.push("## Instructions");
   parts.push(content);

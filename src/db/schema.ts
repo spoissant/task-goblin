@@ -160,6 +160,7 @@ export const prompts = sqliteTable("prompts", {
   inputRequest: text("input_request"), // JSON: { toolName, input }
   inputResponse: text("input_response"), // JSON: user's response
   messages: text("messages"), // JSON: persisted output buffer (tool calls, assistant messages, etc.)
+  stderr: text("stderr"), // captured stderr from subprocess
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   startedAt: text("started_at"),
