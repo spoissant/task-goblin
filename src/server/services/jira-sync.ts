@@ -7,6 +7,7 @@ import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-clien
 import { now } from "../lib/timestamp";
 import { logDiffsIfChanged } from "../lib/diff";
 import { isApiError } from "../lib/errors";
+import { getCompletedStatusNames } from "../lib/task-status";
 import type { SyncResult } from "../lib/types";
 
 export type { SyncResult };
@@ -217,9 +218,10 @@ export async function syncJiraItems(): Promise<SyncResult> {
     }
 
     // Sync orphaned tasks (Jira issues that transitioned to Done)
+    const doneStatuses = new Set(await getCompletedStatusNames());
     const orphanedTasks = syncedKeys.size > 0
       ? await db
-          .select({ jiraKey: tasks.jiraKey })
+          .select({ jiraKey: tasks.jiraKey, status: tasks.status })
           .from(tasks)
           .where(
             and(
@@ -228,12 +230,13 @@ export async function syncJiraItems(): Promise<SyncResult> {
             )
           )
       : await db
-          .select({ jiraKey: tasks.jiraKey })
+          .select({ jiraKey: tasks.jiraKey, status: tasks.status })
           .from(tasks)
           .where(isNotNull(tasks.jiraKey));
 
     for (const task of orphanedTasks) {
       if (!task.jiraKey) continue;
+      if (doneStatuses.has(task.status?.toLowerCase() ?? "")) continue;
       try {
         const issue = await client.issues.getIssue({
           issueIdOrKey: task.jiraKey,

@@ -1,4 +1,4 @@
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, or, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
@@ -138,7 +138,8 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
       .where(
         and(
           isNotNull(tasks.prNumber),
-          isNotNull(tasks.repositoryId)
+          isNotNull(tasks.repositoryId),
+          or(eq(tasks.prState, "open"), isNull(tasks.prState))
         )
       )
       .then((rows) =>
