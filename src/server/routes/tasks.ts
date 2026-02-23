@@ -421,14 +421,18 @@ export const taskRoutes: Routes = {
         url.searchParams.get("limit") || "25",
         url.searchParams.get("offset")
       );
+      const showDone = url.searchParams.get("showDone") === "true";
 
       const completedCondition = getCompletedCondition();
+      const whereCondition = showDone
+        ? completedCondition
+        : and(completedCondition, sql`LOWER(${tasks.status}) != 'done'`);
 
       // Get paginated completed tasks
       const taskList = await db
         .select()
         .from(tasks)
-        .where(completedCondition)
+        .where(whereCondition)
         .orderBy(statusOrderExpr)
         .limit(limit)
         .offset(offset);
@@ -437,7 +441,7 @@ export const taskRoutes: Routes = {
       const totalResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(tasks)
-        .where(completedCondition);
+        .where(whereCondition);
       const total = totalResult[0]?.count ?? 0;
 
       const repoMap = await buildRepoMap(taskList);

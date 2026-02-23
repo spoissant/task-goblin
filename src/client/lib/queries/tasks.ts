@@ -11,7 +11,7 @@ export const taskKeys = {
   withRelations: () => [...taskKeys.all, "with-relations"] as const,
   orphanJira: () => [...taskKeys.all, "orphan-jira"] as const,
   orphanPr: () => [...taskKeys.all, "orphan-pr"] as const,
-  completed: (pagination: { limit: number; offset: number }) => [...taskKeys.all, "completed", pagination] as const,
+  completed: (pagination: { limit: number; offset: number; showDone?: boolean }) => [...taskKeys.all, "completed", pagination] as const,
 };
 
 export function useTasksQuery(filters: { status?: string; excludeCompleted?: boolean } = {}) {
@@ -28,10 +28,10 @@ export function useTasksQuery(filters: { status?: string; excludeCompleted?: boo
 }
 
 // Completed tasks with pagination
-export function useCompletedTasksQuery({ limit = 25, offset = 0 }: { limit?: number; offset?: number } = {}) {
+export function useCompletedTasksQuery({ limit = 25, offset = 0, showDone = false }: { limit?: number; offset?: number; showDone?: boolean } = {}) {
   return useQuery({
-    queryKey: taskKeys.completed({ limit, offset }),
-    queryFn: () => api.get<PaginatedResponse<TaskWithRepository>>(`/tasks/completed?limit=${limit}&offset=${offset}`),
+    queryKey: taskKeys.completed({ limit, offset, showDone }),
+    queryFn: () => api.get<PaginatedResponse<TaskWithRepository>>(`/tasks/completed?limit=${limit}&offset=${offset}&showDone=${showDone}`),
   });
 }
 

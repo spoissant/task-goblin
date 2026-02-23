@@ -5,6 +5,7 @@ import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
+import { Checkbox } from "@/client/components/ui/checkbox";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { InteractiveStatusBadge } from "@/client/components/tasks/InteractiveStatusBadge";
 import { ChecksStatusCell } from "@/client/components/tasks/ChecksStatusCell";
@@ -29,10 +30,12 @@ const PAGE_SIZE = 25;
 
 export function CompletedPage() {
   const [page, setPage] = useState(0);
+  const [showDone, setShowDone] = useState(false);
 
   const { data, isLoading, error } = useCompletedTasksQuery({
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
+    showDone,
   });
   const { data: settingsData } = useSettingsQuery();
 
@@ -43,11 +46,23 @@ export function CompletedPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Completed Tasks</h1>
-        {data && (
-          <span className="text-sm text-muted-foreground">
-            {data.total} completed task{data.total !== 1 ? "s" : ""}
-          </span>
-        )}
+        <div className="flex items-center gap-4">
+          {data && (
+            <span className="text-sm text-muted-foreground">
+              {data.total} completed task{data.total !== 1 ? "s" : ""}
+            </span>
+          )}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={showDone}
+              onCheckedChange={(checked) => {
+                setShowDone(checked === true);
+                setPage(0);
+              }}
+            />
+            Show done
+          </label>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mb-6 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-800 dark:text-amber-200 text-sm">
