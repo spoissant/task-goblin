@@ -8,8 +8,6 @@ import {
   logs,
   notes,
   noteTasks,
-  agents,
-  prompts,
 } from "./schema";
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -17,7 +15,6 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   blockedBy: many(blockedBy),
   logs: many(logs),
   noteTasks: many(noteTasks),
-  prompts: many(prompts),
   repository: one(repositories, {
     fields: [tasks.repositoryId],
     references: [repositories.id],
@@ -34,7 +31,6 @@ export const todosRelations = relations(todos, ({ one }) => ({
 export const repositoriesRelations = relations(repositories, ({ many }) => ({
   tasks: many(tasks),
   worktrees: many(worktrees),
-  prompts: many(prompts),
 }));
 
 export const worktreesRelations = relations(worktrees, ({ one }) => ({
@@ -42,7 +38,6 @@ export const worktreesRelations = relations(worktrees, ({ one }) => ({
     fields: [worktrees.repositoryId],
     references: [repositories.id],
   }),
-  agent: one(agents),
 }));
 
 export const blockedByRelations = relations(blockedBy, ({ one }) => ({
@@ -80,29 +75,6 @@ export const noteTasksRelations = relations(noteTasks, ({ one }) => ({
   }),
   task: one(tasks, {
     fields: [noteTasks.taskId],
-    references: [tasks.id],
-  }),
-}));
-
-export const agentsRelations = relations(agents, ({ one, many }) => ({
-  worktree: one(worktrees, {
-    fields: [agents.worktreeId],
-    references: [worktrees.id],
-  }),
-  prompts: many(prompts),
-}));
-
-export const promptsRelations = relations(prompts, ({ one }) => ({
-  repository: one(repositories, {
-    fields: [prompts.repositoryId],
-    references: [repositories.id],
-  }),
-  agent: one(agents, {
-    fields: [prompts.agentId],
-    references: [agents.id],
-  }),
-  task: one(tasks, {
-    fields: [prompts.taskId],
     references: [tasks.id],
   }),
 }));

@@ -12,8 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   GitPullRequestArrow,
-  Bot,
-  MessageSquare,
 } from "lucide-react";
 import {
   Tooltip,
@@ -24,8 +22,6 @@ import {
 
 const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
-  { to: "/agents", icon: Bot, label: "Agents" },
-  { to: "/prompts", icon: MessageSquare, label: "Prompts" },
   { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },

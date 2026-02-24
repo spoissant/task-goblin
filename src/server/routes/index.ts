@@ -11,8 +11,6 @@ import { deployRoutes } from "./deploy";
 import { syncBranchRoutes } from "./sync-branch";
 import { noteRoutes } from "./notes";
 import { worktreeRoutes } from "./worktrees";
-import { agentRoutes } from "./agents";
-import { promptRoutes } from "./prompts";
 import { json } from "../response";
 
 const healthRoute: Routes = {
@@ -37,6 +35,4 @@ export const routes: Routes = {
   ...syncBranchRoutes,
   ...noteRoutes,
   ...worktreeRoutes,
-  ...agentRoutes,
-  ...promptRoutes,
 };

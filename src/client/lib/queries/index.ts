@@ -6,5 +6,3 @@ export * from "./sync";
 export * from "./blocked-by";
 export * from "./logs";
 export * from "./reviews";
-export * from "./agents";
-export * from "./prompts";

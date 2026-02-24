@@ -8,8 +8,6 @@ import { LogsPage } from "./pages/LogsPage";
 import { NotesPage } from "./pages/NotesPage";
 import { NoteDetailPage } from "./pages/NoteDetailPage";
 import { ReviewsPage } from "./pages/ReviewsPage";
-import { AgentsPage } from "./pages/AgentsPage";
-import { PromptsPage } from "./pages/PromptsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -48,14 +46,6 @@ export const router = createBrowserRouter([
       {
         path: "reviews",
         element: <ReviewsPage />,
-      },
-      {
-        path: "agents",
-        element: <AgentsPage />,
-      },
-      {
-        path: "prompts",
-        element: <PromptsPage />,
       },
       {
         path: "settings",

@@ -7,7 +7,6 @@ import { BulkDeployResultsDialog } from "@/client/components/tasks/BulkDeployRes
 import { useTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
 import { useMarkAllLogsRead, useUnreadCountQuery } from "@/client/lib/queries/logs";
 import { useBulkDeploy } from "@/client/lib/queries/deploy";
-import { useCreatePrompt } from "@/client/lib/queries/prompts";
 import { Button } from "@/client/components/ui/button";
 import { Plus, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -23,7 +22,6 @@ export function TasksPage() {
   const { data: tasksData } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const bulkDeploy = useBulkDeploy();
-  const createPrompt = useCreatePrompt();
   const markAllRead = useMarkAllLogsRead();
   const { data: unreadCount } = useUnreadCountQuery();
 
@@ -96,32 +94,6 @@ export function TasksPage() {
     );
   };
 
-  const handleBulkPrompt = async (content: string) => {
-    const eligible = selectedTasks.filter((t) => t.repositoryId);
-    if (eligible.length === 0) {
-      toast.error("No selected tasks have a repository");
-      return;
-    }
-    const results = await Promise.allSettled(
-      eligible.map((task) =>
-        createPrompt.mutateAsync({
-          repositoryId: task.repositoryId!,
-          taskId: task.id,
-          content,
-        }),
-      ),
-    );
-    const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    if (succeeded === eligible.length) {
-      toast.success(`Created ${succeeded} prompt(s)`);
-    } else if (succeeded > 0) {
-      toast.warning(`Created ${succeeded}/${eligible.length} prompt(s)`);
-    } else {
-      toast.error("Failed to create prompts");
-    }
-    setSelectedIds(new Set());
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -156,8 +128,6 @@ export function TasksPage() {
               setDeployTargetBranch("");
             }}
             isDeploying={bulkDeploy.isPending}
-            onBulkPrompt={handleBulkPrompt}
-            onCustomPrompt={handleBulkPrompt}
           />
         </div>
       </div>
