@@ -150,6 +150,9 @@ export const githubRoutes: Routes = {
           const approvedCount = Array.from(reviewerStates.values())
             .filter((state) => state === "APPROVED").length;
 
+          const userState = reviewerStates.get(config.username);
+          if (userState === "APPROVED") continue;
+
           const isDraft = item.draft ?? false;
 
           items.push({
