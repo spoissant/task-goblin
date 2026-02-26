@@ -22,8 +22,8 @@ import {
 
 const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
-  { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
+  { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/notes", icon: StickyNote, label: "Notes" },
