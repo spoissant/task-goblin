@@ -3,7 +3,6 @@ import type {
   Task,
   TaskWithRepository,
   Todo,
-  BlockedBy,
   Repository,
   ListResponse,
   SyncResult,
@@ -16,19 +15,10 @@ import type {
 export { ApiError };
 
 // Re-export types for MCP tools
-export type { Task, TaskWithRepository, Todo, BlockedBy, Repository, ListResponse, SyncResult, SplitResult, Note, NoteWithTasks };
-
-// MCP-specific types
-export interface BlockedByRecord {
-  id: number;
-  blockedTaskId: number | null;
-  blockerTaskId: number | null;
-  blockerTodoId: number | null;
-}
+export type { Task, TaskWithRepository, Todo, Repository, ListResponse, SyncResult, SplitResult, Note, NoteWithTasks };
 
 export interface TaskWithRelations extends TaskWithRepository {
   todos: Todo[];
-  blockedBy: BlockedByRecord[];
   notes: LinkedNote[];
 }
 

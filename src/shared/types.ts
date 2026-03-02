@@ -52,7 +52,6 @@ export interface LinkedNote {
 // Task detail with relations
 export interface TaskDetail extends Task {
   todos: Todo[];
-  blockedBy: BlockedBy[];
   repository: Repository | null;
   logs: Log[];
   notes: LinkedNote[];
@@ -67,8 +66,6 @@ export interface TaskWithRepository extends Task {
 export interface TaskWithTodos extends Task {
   pendingTodos: NextTodo[];
   unreadLogCount: number;
-  blockerCount: number;
-  completedBlockerCount: number;
 }
 
 export interface Todo {
@@ -144,13 +141,6 @@ export interface SyncBranchResult {
   taskBranch: string;
   mainBranch: string;
   commitSha: string;
-}
-
-export interface BlockedBy {
-  id: number;
-  blockedTaskId: number | null;
-  blockerTaskId: number | null;
-  blockerTodoId: number | null;
 }
 
 export interface Settings {

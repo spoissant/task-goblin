@@ -16,7 +16,6 @@ beforeAll(() => {
 
 beforeEach(() => {
   // Clear all tables before each test
-  sqlite.exec("DELETE FROM blocked_by");
   sqlite.exec("DELETE FROM logs");
   sqlite.exec("DELETE FROM todos");
   sqlite.exec("DELETE FROM tasks");

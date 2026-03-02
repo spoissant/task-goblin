@@ -3,7 +3,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   get,
   patch,
-  post,
   resolveTaskId,
   type TaskWithRelations,
 } from "../client.js";
@@ -14,7 +13,7 @@ export function registerTaskTools(server: McpServer) {
     "get_task",
     {
       description:
-        "Get a single task by ID, Jira key, PR number, or branch name. Returns task with todos and blockers.",
+        "Get a single task by ID, Jira key, PR number, or branch name. Returns task with todos.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),
@@ -55,18 +54,9 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
-        blockedBy: z
-          .array(
-            z.object({
-              taskId: z.number().optional(),
-              todoId: z.number().optional(),
-            })
-          )
-          .optional()
-          .describe("Array of blockers to add (each must have exactly one of taskId or todoId)"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, blockedBy }) => {
+    async ({ id, jiraKey, prNumber, repo, branch, title, description, status }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
 
@@ -77,16 +67,6 @@ export function registerTaskTools(server: McpServer) {
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
-        }
-
-        if (blockedBy && blockedBy.length > 0) {
-          for (const blocker of blockedBy) {
-            await post("/api/v1/blocked-by", {
-              blockedTaskId: taskId,
-              blockerTaskId: blocker.taskId || null,
-              blockerTodoId: blocker.todoId || null,
-            });
-          }
         }
 
         const fullTask = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);

@@ -80,7 +80,6 @@ Response formats:
 - **Task** - unified task (manual, Jira, PR) with status, notes, instructions
 - **Todo** - checklist items with ordering
 - **Repository** - GitHub repo config
-- **BlockedBy** - polymorphic junction (task blocked by task OR todo)
 - **Logs** - activity audit trail with read/unread
 - **StatusCategories** - configurable status workflow states
 - **TaskFilters** - filter bar configuration

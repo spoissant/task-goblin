@@ -66,16 +66,6 @@ export const worktrees = sqliteTable("worktrees", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// 4. BlockedBy - Explicit FK blocking relationships (tasks only)
-export const blockedBy = sqliteTable("blocked_by", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  // What is blocked (must be a task)
-  blockedTaskId: integer("blocked_task_id").references(() => tasks.id),
-  // What is blocking (one must be set)
-  blockerTaskId: integer("blocker_task_id").references(() => tasks.id),
-  blockerTodoId: integer("blocker_todo_id").references(() => todos.id),
-});
-
 // 5. Settings - Key-value config store
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),

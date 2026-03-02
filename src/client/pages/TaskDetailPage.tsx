@@ -10,7 +10,6 @@ import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { LinkedNotesViewer } from "@/client/components/tasks/LinkedNotesViewer";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { TodoList } from "@/client/components/todos/TodoList";
-import { BlockedByList } from "@/client/components/tasks/BlockedByList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
@@ -271,16 +270,12 @@ export function TaskDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Grid: Todos on left, BlockedBy on right */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TodoList
-          todos={task.todos}
-          taskId={taskId}
-          showCompleted={showCompleted}
-          onShowCompletedChange={setShowCompleted}
-        />
-        <BlockedByList blockedBy={task.blockedBy} taskId={taskId} />
-      </div>
+      <TodoList
+        todos={task.todos}
+        taskId={taskId}
+        showCompleted={showCompleted}
+        onShowCompletedChange={setShowCompleted}
+      />
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
 

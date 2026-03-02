@@ -4,7 +4,6 @@ import {
   todos,
   repositories,
   worktrees,
-  blockedBy,
   logs,
   notes,
   noteTasks,
@@ -12,7 +11,6 @@ import {
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   todos: many(todos),
-  blockedBy: many(blockedBy),
   logs: many(logs),
   noteTasks: many(noteTasks),
   repository: one(repositories, {
@@ -37,23 +35,6 @@ export const worktreesRelations = relations(worktrees, ({ one }) => ({
   repository: one(repositories, {
     fields: [worktrees.repositoryId],
     references: [repositories.id],
-  }),
-}));
-
-export const blockedByRelations = relations(blockedBy, ({ one }) => ({
-  blockedTask: one(tasks, {
-    fields: [blockedBy.blockedTaskId],
-    references: [tasks.id],
-    relationName: "blockedTask",
-  }),
-  blockerTask: one(tasks, {
-    fields: [blockedBy.blockerTaskId],
-    references: [tasks.id],
-    relationName: "blockerTask",
-  }),
-  blockerTodo: one(todos, {
-    fields: [blockedBy.blockerTodoId],
-    references: [todos.id],
   }),
 }));
 

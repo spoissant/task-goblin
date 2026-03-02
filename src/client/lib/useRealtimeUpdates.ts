@@ -6,7 +6,6 @@ const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
   todo: [["todos"], ["tasks"]],
   note: [["notes"], ["tasks"]],
   log: [["logs"], ["tasks"]],
-  blocker: [["tasks"]],
   setting: [["settings"], ["statusCategories"]],
 };
 

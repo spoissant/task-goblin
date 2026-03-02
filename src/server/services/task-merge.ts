@@ -1,6 +1,6 @@
 import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, blockedBy } from "../../db/schema";
+import { tasks, todos } from "../../db/schema";
 import { json } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -154,12 +154,6 @@ export async function mergeSingleTask(
       .update(todos)
       .set({ taskId: targetId })
       .where(eq(todos.taskId, sourceId));
-
-    // Move blockedBy relations from source to target
-    await tx
-      .update(blockedBy)
-      .set({ blockedTaskId: targetId })
-      .where(eq(blockedBy.blockedTaskId, sourceId));
 
     // Delete source task
     await tx.delete(tasks).where(eq(tasks.id, sourceId));

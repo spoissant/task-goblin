@@ -2,7 +2,6 @@ import type { Routes } from "../router";
 import { taskRoutes } from "./tasks";
 import { taskMergeRoutes } from "../services/task-merge";
 import { todoRoutes } from "./todos";
-import { blockedByRoutes } from "./blocked-by";
 import { repositoryRoutes } from "./repositories";
 import { settingsRoutes } from "./settings";
 import { githubRoutes } from "./github";
@@ -26,7 +25,6 @@ export const routes: Routes = {
   ...taskRoutes,
   ...taskMergeRoutes,
   ...todoRoutes,
-  ...blockedByRoutes,
   ...repositoryRoutes,
   ...settingsRoutes,
   ...githubRoutes,

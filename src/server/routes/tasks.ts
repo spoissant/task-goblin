@@ -1,6 +1,6 @@
 import { eq, and, sql, ne, isNull, isNotNull, or, desc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, blockedBy, repositories, logs, noteTasks, notes } from "../../db/schema";
+import { tasks, todos, repositories, logs, noteTasks, notes } from "../../db/schema";
 import { buildRepoMap } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
@@ -14,7 +14,6 @@ import {
   statusOrderExpr,
   isStatusSelectable,
   getSelectableStatuses,
-  getCompletedStatusNames,
 } from "../lib/task-status";
 import type { Routes } from "../router";
 
@@ -23,7 +22,6 @@ export const taskRoutes: Routes = {
     async GET(req) {
       const url = new URL(req.url);
       const status = url.searchParams.get("status");
-      const blocked = url.searchParams.get("blocked");
       const orphanJira = url.searchParams.get("orphanJira");
       const orphanPr = url.searchParams.get("orphanPr");
       const linked = url.searchParams.get("linked");
@@ -42,16 +40,6 @@ export const taskRoutes: Routes = {
 
       if (status) {
         conditions.push(eq(tasks.status, status));
-      }
-
-      if (blocked === "true") {
-        conditions.push(
-          sql`${tasks.id} IN (SELECT blocked_task_id FROM blocked_by WHERE blocked_task_id IS NOT NULL)`
-        );
-      } else if (blocked === "false") {
-        conditions.push(
-          sql`${tasks.id} NOT IN (SELECT blocked_task_id FROM blocked_by WHERE blocked_task_id IS NOT NULL)`
-        );
       }
 
       // Filter for orphan Jira tasks (jiraKey set, no prNumber)
@@ -147,66 +135,10 @@ export const taskRoutes: Routes = {
         }
       }
 
-      // Get blocker counts for each task
-      const blockerCountsMap = new Map<number, number>();
-      if (taskIds.length > 0) {
-        const blockerCounts = await db
-          .select({
-            blockedTaskId: blockedBy.blockedTaskId,
-            count: sql<number>`count(*)`,
-          })
-          .from(blockedBy)
-          .where(
-            sql`${blockedBy.blockedTaskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`
-          )
-          .groupBy(blockedBy.blockedTaskId);
-
-        for (const row of blockerCounts) {
-          if (row.blockedTaskId) {
-            blockerCountsMap.set(row.blockedTaskId, row.count);
-          }
-        }
-      }
-
-      // Get completed blocker counts for each task
-      const completedBlockerCountsMap = new Map<number, number>();
-      if (taskIds.length > 0) {
-        const completedStatuses = await getCompletedStatusNames();
-
-        // Build SQL condition for completed task statuses
-        const completedStatusCondition = completedStatuses.length > 0
-          ? sql`LOWER(blocker_task.status) IN (${sql.join(completedStatuses.map(s => sql`${s}`), sql`, `)})`
-          : sql`1 = 0`;
-
-        // Count completed blockers:
-        // - Task blockers: status is in completed category
-        // - Todo blockers: done IS NOT NULL
-        const completedBlockerCounts = await db.all<{ blockedTaskId: number; count: number }>(sql`
-          SELECT blocked_task_id as blockedTaskId, COUNT(*) as count
-          FROM blocked_by
-          LEFT JOIN tasks AS blocker_task ON blocked_by.blocker_task_id = blocker_task.id
-          LEFT JOIN todos AS blocker_todo ON blocked_by.blocker_todo_id = blocker_todo.id
-          WHERE blocked_by.blocked_task_id IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})
-            AND (
-              (blocked_by.blocker_task_id IS NOT NULL AND ${completedStatusCondition})
-              OR (blocked_by.blocker_todo_id IS NOT NULL AND blocker_todo.done IS NOT NULL)
-            )
-          GROUP BY blocked_by.blocked_task_id
-        `);
-
-        for (const row of completedBlockerCounts) {
-          if (row.blockedTaskId) {
-            completedBlockerCountsMap.set(row.blockedTaskId, row.count);
-          }
-        }
-      }
-
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
         unreadLogCount: unreadLogCountsMap.get(task.id) || 0,
-        blockerCount: blockerCountsMap.get(task.id) || 0,
-        completedBlockerCount: completedBlockerCountsMap.get(task.id) || 0,
       }));
 
       // Get total count for pagination
@@ -271,11 +203,6 @@ export const taskRoutes: Routes = {
         .from(todos)
         .where(eq(todos.taskId, id));
 
-      const taskBlockedBy = await db
-        .select()
-        .from(blockedBy)
-        .where(eq(blockedBy.blockedTaskId, id));
-
       // Get repository if task has one
       let repository = null;
       if (task.repositoryId) {
@@ -306,7 +233,6 @@ export const taskRoutes: Routes = {
       return json({
         ...task,
         todos: taskTodos,
-        blockedBy: taskBlockedBy,
         repository,
         logs: taskLogs,
         notes: linkedNotes,
@@ -399,10 +325,7 @@ export const taskRoutes: Routes = {
         throw new NotFoundError("Task", id);
       }
 
-      // Cascade delete: blockedBy, todos
-      await db
-        .delete(blockedBy)
-        .where(eq(blockedBy.blockedTaskId, id));
+      // Cascade delete: todos
       await db
         .delete(todos)
         .where(eq(todos.taskId, id));

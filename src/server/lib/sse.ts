@@ -42,7 +42,6 @@ export function autoBroadcast(pathname: string) {
   if (pathname.includes("/logs")) entity = "log";
   else if (pathname.includes("/todos")) entity = "todo";
   else if (pathname.includes("/notes")) entity = "note";
-  else if (pathname.includes("/blocked-by")) entity = "blocker";
   else if (pathname.includes("/settings")) entity = "setting";
   else if (
     pathname.includes("/tasks") ||
