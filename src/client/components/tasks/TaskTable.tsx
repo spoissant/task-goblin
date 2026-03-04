@@ -24,10 +24,11 @@ import { EmptyState } from "@/client/components/ui/empty-state";
 interface TaskTableProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
+  titleFilter?: string;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange }: TaskTableProps) {
-  const { data, isLoading, error } = useTasksQuery({});
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter }: TaskTableProps) {
+  const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);

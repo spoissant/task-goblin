@@ -1,4 +1,4 @@
-import { eq, and, sql, ne, isNull, isNotNull, or, desc } from "drizzle-orm";
+import { eq, and, sql, ne, isNull, isNotNull, or, desc, like } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, repositories, logs, noteTasks, notes } from "../../db/schema";
 import { buildRepoMap } from "../lib/queries";
@@ -25,6 +25,7 @@ export const taskRoutes: Routes = {
       const orphanJira = url.searchParams.get("orphanJira");
       const orphanPr = url.searchParams.get("orphanPr");
       const linked = url.searchParams.get("linked");
+      const title = url.searchParams.get("title");
       const excludeCompleted = url.searchParams.get("excludeCompleted") !== "false"; // default true
       const { limit, offset } = validatePagination(
         url.searchParams.get("limit"),
@@ -52,6 +53,10 @@ export const taskRoutes: Routes = {
       if (orphanPr === "true") {
         conditions.push(isNotNull(tasks.prNumber));
         conditions.push(isNull(tasks.jiraKey));
+      }
+
+      if (title) {
+        conditions.push(like(tasks.title, `%${title}%`));
       }
 
       // Filter for linked tasks (manual OR both jiraKey and prNumber set)
@@ -345,11 +350,16 @@ export const taskRoutes: Routes = {
         url.searchParams.get("offset")
       );
       const showDone = url.searchParams.get("showDone") === "true";
+      const title = url.searchParams.get("title");
 
-      const completedCondition = getCompletedCondition();
-      const whereCondition = showDone
-        ? completedCondition
-        : and(completedCondition, sql`LOWER(${tasks.status}) != 'done'`);
+      const conditions = [getCompletedCondition()];
+      if (!showDone) {
+        conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled')`);
+      }
+      if (title) {
+        conditions.push(like(tasks.title, `%${title}%`));
+      }
+      const whereCondition = and(...conditions);
 
       // Get paginated completed tasks
       const taskList = await db

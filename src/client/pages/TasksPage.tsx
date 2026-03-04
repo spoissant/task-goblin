@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
@@ -8,16 +8,24 @@ import { useTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
 import { useMarkAllLogsRead, useUnreadCountQuery } from "@/client/lib/queries/logs";
 import { useBulkDeploy } from "@/client/lib/queries/deploy";
 import { Button } from "@/client/components/ui/button";
-import { Plus, CheckCheck } from "lucide-react";
+import { Input } from "@/client/components/ui/input";
+import { Plus, CheckCheck, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
 
 export function TasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deployTargetBranch, setDeployTargetBranch] = useState("");
   const [resultsDialogOpen, setResultsDialogOpen] = useState(false);
   const [deployResults, setDeployResults] = useState<BulkDeployResult | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const { data: tasksData } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
@@ -115,6 +123,16 @@ export function TasksPage() {
         </div>
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search tasks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       <div className="mb-6">
         <div className={selectedIds.size === 0 ? "invisible" : ""}>
           <BulkActionsBar
@@ -135,6 +153,7 @@ export function TasksPage() {
       <TaskTable
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
+        titleFilter={debouncedQuery}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />

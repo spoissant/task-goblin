@@ -5,20 +5,21 @@ import type { Task, TaskDetail, TaskWithRepository, TaskWithTodos, ListResponse,
 export const taskKeys = {
   all: ["tasks"] as const,
   lists: () => [...taskKeys.all, "list"] as const,
-  list: (filters: { status?: string; excludeCompleted?: boolean }) => [...taskKeys.lists(), filters] as const,
+  list: (filters: { status?: string; excludeCompleted?: boolean; title?: string }) => [...taskKeys.lists(), filters] as const,
   details: () => [...taskKeys.all, "detail"] as const,
   detail: (id: number) => [...taskKeys.details(), id] as const,
   withRelations: () => [...taskKeys.all, "with-relations"] as const,
   orphanJira: () => [...taskKeys.all, "orphan-jira"] as const,
   orphanPr: () => [...taskKeys.all, "orphan-pr"] as const,
-  completed: (pagination: { limit: number; offset: number; showDone?: boolean }) => [...taskKeys.all, "completed", pagination] as const,
+  completed: (pagination: { limit: number; offset: number; showDone?: boolean; title?: string }) => [...taskKeys.all, "completed", pagination] as const,
 };
 
-export function useTasksQuery(filters: { status?: string; excludeCompleted?: boolean } = {}) {
+export function useTasksQuery(filters: { status?: string; excludeCompleted?: boolean; title?: string } = {}) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   // excludeCompleted defaults to true on backend, only pass if explicitly false
   if (filters.excludeCompleted === false) params.set("excludeCompleted", "false");
+  if (filters.title) params.set("title", filters.title);
   const query = params.toString();
 
   return useQuery({
@@ -28,10 +29,12 @@ export function useTasksQuery(filters: { status?: string; excludeCompleted?: boo
 }
 
 // Completed tasks with pagination
-export function useCompletedTasksQuery({ limit = 25, offset = 0, showDone = false }: { limit?: number; offset?: number; showDone?: boolean } = {}) {
+export function useCompletedTasksQuery({ limit = 25, offset = 0, showDone = false, title }: { limit?: number; offset?: number; showDone?: boolean; title?: string } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset), showDone: String(showDone) });
+  if (title) params.set("title", title);
   return useQuery({
-    queryKey: taskKeys.completed({ limit, offset, showDone }),
-    queryFn: () => api.get<PaginatedResponse<TaskWithRepository>>(`/tasks/completed?limit=${limit}&offset=${offset}&showDone=${showDone}`),
+    queryKey: taskKeys.completed({ limit, offset, showDone, title }),
+    queryFn: () => api.get<PaginatedResponse<TaskWithRepository>>(`/tasks/completed?${params}`),
   });
 }
 

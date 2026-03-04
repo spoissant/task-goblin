@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useCompletedTasksQuery, useSyncTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
@@ -20,7 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { Input } from "@/client/components/ui/input";
+import { RefreshCw, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { getJiraUrl, getPrUrl } from "@/client/components/tasks/columns/cells";
@@ -31,11 +32,22 @@ const PAGE_SIZE = 25;
 export function CompletedPage() {
   const [page, setPage] = useState(0);
   const [showDone, setShowDone] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const { data, isLoading, error } = useCompletedTasksQuery({
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
     showDone,
+    title: debouncedQuery,
   });
   const { data: settingsData } = useSettingsQuery();
 
@@ -63,6 +75,16 @@ export function CompletedPage() {
             Show done
           </label>
         </div>
+      </div>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search completed tasks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <div className="flex items-center gap-2 mb-6 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-800 dark:text-amber-200 text-sm">
