@@ -59,6 +59,29 @@ export const taskRoutes: Routes = {
         conditions.push(like(tasks.title, `%${title}%`));
       }
 
+      // Filter by checks status (passing / failing)
+      const checks = url.searchParams.get("checks");
+      if (checks === "passing" || checks === "failing") {
+        conditions.push(eq(tasks.checksStatus, checks));
+      }
+
+      // Filter by max approved review count (fewer than N)
+      const maxReviews = url.searchParams.get("maxReviews");
+      if (maxReviews !== null) {
+        const n = parseInt(maxReviews, 10);
+        if (!isNaN(n)) {
+          conditions.push(sql`COALESCE(${tasks.approvedReviewCount}, 0) < ${n}`);
+        }
+      }
+
+      // Filter by unresolved comments
+      const hasComments = url.searchParams.get("hasComments");
+      if (hasComments === "true") {
+        conditions.push(sql`COALESCE(${tasks.unresolvedCommentCount}, 0) > 0`);
+      } else if (hasComments === "false") {
+        conditions.push(sql`COALESCE(${tasks.unresolvedCommentCount}, 0) = 0`);
+      }
+
       // Filter for linked tasks (manual OR both jiraKey and prNumber set)
       if (linked === "true") {
         conditions.push(

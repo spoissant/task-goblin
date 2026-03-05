@@ -41,6 +41,9 @@ export interface Task {
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
   unresolvedCommentCount: number | null;
   hasConflicts: number | null;
+  changedFiles: number | null;
+  additions: number | null;
+  deletions: number | null;
 }
 
 // Linked note summary (id + title only)

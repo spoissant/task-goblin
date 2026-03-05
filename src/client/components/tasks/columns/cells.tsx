@@ -208,6 +208,21 @@ export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null
   );
 }
 
+export function ChangesCell({ task }: { task: Task }) {
+  if (task.changedFiles == null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="flex items-center justify-end gap-1.5 text-xs font-mono">
+      <Badge variant="outline" className="text-xs px-1.5">{task.changedFiles}</Badge>
+      <div className="flex flex-col leading-tight text-right">
+        <span className="text-green-600">+{task.additions ?? 0}</span>
+        <span className="text-red-600">-{task.deletions ?? 0}</span>
+      </div>
+    </div>
+  );
+}
+
 export function CommentsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
   return (
     <UnresolvedCommentsIcon
