@@ -1,9 +1,7 @@
 import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
 import { useUnreadCountQuery } from "@/client/lib/queries";
-import { usePendingTodoCountQuery } from "@/client/lib/queries/todos";
 import {
-  SquareCheck,
   CheckCircle,
   ScrollText,
   StickyNote,
@@ -23,7 +21,6 @@ import {
 const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
-  { to: "/todos", icon: SquareCheck, label: "Todos", showBadge: true },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/notes", icon: StickyNote, label: "Notes" },
@@ -38,10 +35,8 @@ interface SidebarProps {
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: unreadData } = useUnreadCountQuery();
   const unreadCount = unreadData?.count ?? 0;
-  const pendingTodoCount = usePendingTodoCountQuery();
 
   const getBadgeCount = (to: string) => {
-    if (to === "/todos") return pendingTodoCount;
     if (to === "/logs") return unreadCount;
     return 0;
   };

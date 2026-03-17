@@ -126,11 +126,6 @@ export function usePromoteTodo() {
   });
 }
 
-export function usePendingTodoCountQuery() {
-  const { data } = useTodosQuery({ done: false });
-  return data?.total ?? 0;
-}
-
 export function useCurrentTodo() {
   const { data, isLoading } = useTodosQuery({ done: false });
 

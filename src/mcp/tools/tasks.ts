@@ -47,7 +47,7 @@ export function registerTaskTools(server: McpServer) {
         "List tasks with optional filters. Returns paginated results.",
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
-        title: z.string().optional().describe("Substring search on title"),
+        title: z.string().optional().describe("Substring search on title, Jira key, or branch name"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
         maxReviews: z.number().int().optional().describe("Tasks with fewer than N approved reviews"),
