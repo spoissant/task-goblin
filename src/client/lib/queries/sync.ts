@@ -111,7 +111,7 @@ export function useSyncAll(options?: SyncOptions) {
   });
 }
 
-interface SyncTaskParams {
+export interface SyncTaskParams {
   task: Task;
   repo?: Repository;
 }
@@ -149,6 +149,45 @@ export function useSyncTask() {
       }
 
       return results;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
+export interface SyncVisibleProgress {
+  current: number;
+  total: number;
+}
+
+export function useSyncVisibleTasks() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      items,
+      onProgress,
+    }: {
+      items: SyncTaskParams[];
+      onProgress?: (progress: SyncVisibleProgress) => void;
+    }) => {
+      for (let i = 0; i < items.length; i++) {
+        onProgress?.({ current: i + 1, total: items.length });
+        const { task, repo } = items[i];
+
+        if (task.jiraKey) {
+          try {
+            await api.post(`/sync/jira/${task.jiraKey}`);
+          } catch {}
+        }
+
+        if (task.prNumber && repo) {
+          try {
+            await api.post(`/sync/github/${repo.owner}/${repo.repo}/${task.prNumber}`);
+          } catch {}
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });

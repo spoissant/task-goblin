@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { useCompletedTasksQuery, useSyncTask } from "@/client/lib/queries";
+import { useCompletedTasksQuery, useSyncTask, useSyncVisibleTasks } from "@/client/lib/queries";
+import type { SyncVisibleProgress, SyncTaskParams } from "@/client/lib/queries/sync";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
@@ -34,6 +35,8 @@ export function CompletedPage() {
   const [showDone, setShowDone] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [syncProgress, setSyncProgress] = useState<SyncVisibleProgress | null>(null);
+  const syncVisible = useSyncVisibleTasks();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -89,9 +92,45 @@ export function CompletedPage() {
 
       <div className="flex items-center gap-2 mb-6 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-800 dark:text-amber-200 text-sm">
         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-        <span>
+        <span className="flex-1">
           Completed issues are NOT synced during the "Sync all" action. Use the sync button on individual rows if you need the latest state.
         </span>
+        {data && data.items.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-shrink-0"
+            disabled={syncVisible.isPending}
+            onClick={() => {
+              const syncable: SyncTaskParams[] = data.items
+                .filter((t) => t.jiraKey || t.prNumber)
+                .map((t) => ({ task: t, repo: t.repository ?? undefined }));
+              if (!syncable.length) {
+                toast.info("No syncable tasks on this page");
+                return;
+              }
+              setSyncProgress({ current: 0, total: syncable.length });
+              syncVisible.mutate(
+                { items: syncable, onProgress: setSyncProgress },
+                {
+                  onSuccess: () => {
+                    toast.success(`Synced ${syncable.length} task${syncable.length !== 1 ? "s" : ""}`);
+                    setSyncProgress(null);
+                  },
+                  onError: () => {
+                    toast.error("Sync failed");
+                    setSyncProgress(null);
+                  },
+                }
+              );
+            }}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncVisible.isPending ? "animate-spin" : ""}`} />
+            {syncVisible.isPending && syncProgress
+              ? `${syncProgress.current}/${syncProgress.total}`
+              : "Sync visible"}
+          </Button>
+        )}
       </div>
 
       {isLoading && (
