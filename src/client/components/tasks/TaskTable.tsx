@@ -25,9 +25,10 @@ interface TaskTableProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   titleFilter?: string;
+  highlightedTaskId?: number | null;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlightedTaskId }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -110,6 +111,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter }: TaskT
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
+              isHighlighted={highlightedTaskId === task.id}
               onSelectionChange={onSelectionChange ? (selected) => {
                 const newSelection = new Set(selectedIds);
                 if (selected) {
@@ -150,10 +152,11 @@ interface TaskRowProps {
   onOpenTodos: () => void;
   onOpenLogs: () => void;
   isSelected: boolean;
+  isHighlighted?: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -181,6 +184,7 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, on
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
+      className={isHighlighted ? "bg-green-100 dark:bg-green-900/40" : undefined}
     >
       {/* Checkbox */}
       {onSelectionChange && (

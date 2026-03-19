@@ -1,9 +1,13 @@
+import { useState, useRef, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Link } from "react-router";
+import { useUpdateTodo } from "@/client/lib/queries";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Button } from "@/client/components/ui/button";
-import { GripVertical, Trash2 } from "lucide-react";
+import { Input } from "@/client/components/ui/input";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Linkify } from "@/client/components/ui/Linkify";
 import type { TodoWithTask } from "@/client/lib/types";
 
@@ -12,9 +16,16 @@ interface SortableTodoItemProps {
   remainingCount?: number;
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
+  isSelected?: boolean;
+  onSelect?: (todoId: number) => void;
 }
 
-export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete }: SortableTodoItemProps) {
+export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete, isSelected, onSelect }: SortableTodoItemProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(todo.content);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const updateTodo = useUpdateTodo();
+
   const {
     attributes,
     listeners,
@@ -30,11 +41,52 @@ export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete }: S
     opacity: isDragging ? 0.5 : 1,
   };
 
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== todo.content) {
+      updateTodo.mutate(
+        { id: todo.id, content: trimmed },
+        {
+          onError: () => {
+            toast.error("Failed to update todo");
+            setEditValue(todo.content);
+          },
+        }
+      );
+    } else {
+      setEditValue(todo.content);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSave();
+    } else if (e.key === "Escape") {
+      setEditValue(todo.content);
+      setIsEditing(false);
+    }
+  };
+
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className="relative flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-muted/50 group"
+      className={`relative flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-muted/50 group cursor-pointer ${
+        isSelected ? "bg-green-100 dark:bg-green-900/40" : ""
+      }`}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button, a, input, [role='checkbox']")) return;
+        onSelect?.(todo.id);
+      }}
     >
       {remainingCount !== undefined && remainingCount > 0 && (
         <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -62,14 +114,33 @@ export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete }: S
             {todo.task.title}
           </Link>
         )}
-        <span
-          className={`text-sm block ${
-            todo.done ? "line-through text-muted-foreground" : ""
-          }`}
-        >
-          <Linkify>{todo.content}</Linkify>
-        </span>
+        {isEditing ? (
+          <Input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="h-7 text-sm"
+          />
+        ) : (
+          <span
+            className={`text-sm block ${
+              todo.done ? "line-through text-muted-foreground" : ""
+            }`}
+          >
+            <Linkify>{todo.content}</Linkify>
+          </span>
+        )}
       </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={() => setIsEditing(true)}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
       <Button
         size="icon"
         variant="ghost"

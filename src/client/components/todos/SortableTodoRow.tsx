@@ -5,7 +5,7 @@ import { useUpdateTodo } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Linkify } from "@/client/components/ui/Linkify";
 import type { Todo } from "@/client/lib/types";
@@ -107,6 +107,16 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
         >
           <Linkify>{todo.content}</Linkify>
         </span>
+      )}
+      {editable && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          onClick={() => setIsEditing(true)}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
       )}
       <Button
         size="icon"

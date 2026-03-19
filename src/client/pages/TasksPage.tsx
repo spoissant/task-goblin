@@ -35,7 +35,7 @@ import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import { Plus, CheckCheck, Search, X } from "lucide-react";
+import { Plus, CheckCheck, Search, X, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
 
@@ -53,6 +53,8 @@ export function TasksPage() {
   const [groupByTask, setGroupByTask] = useState(false);
   const [newTodo, setNewTodo] = useState("");
   const [isAddingTodo, setIsAddingTodo] = useState(false);
+  const [todosCollapsed, setTodosCollapsed] = useState(false);
+  const [selectedTodoTaskId, setSelectedTodoTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
@@ -230,7 +232,13 @@ export function TasksPage() {
       {(filteredTodos.length > 0 || isAddingTodo) && (
         <div className="mb-4 max-h-[50vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Todos</h2>
+            <button
+              onClick={() => setTodosCollapsed(!todosCollapsed)}
+              className="flex items-center gap-1 text-sm font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+            >
+              {todosCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              Todos{todosData?.items && ` (${todosData.items.filter((t) => !t.done).length})`}
+            </button>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -261,60 +269,73 @@ export function TasksPage() {
             </div>
           </div>
 
-          {isAddingTodo && (
-            <div className="flex items-center gap-3 p-3 mb-2 rounded-md border bg-card">
-              <div className="w-4" />
-              <Checkbox disabled />
-              <Input
-                value={newTodo}
-                onChange={(e) => setNewTodo(e.target.value)}
-                onKeyDown={handleTodoKeyDown}
-                placeholder="Add a todo..."
-                className="flex-1"
-                autoFocus
-              />
-              <Button
-                size="sm"
-                onClick={handleAddTodo}
-                disabled={!newTodo.trim() || createTodo.isPending}
-              >
-                Add
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setNewTodo("");
-                  setIsAddingTodo(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={filteredTodos.map((t) => t.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <ul className="space-y-2">
-                {filteredTodos.map((todo) => (
-                  <SortableTodoItem
-                    key={todo.id}
-                    todo={todo}
-                    remainingCount={groupByTask && todo.taskId ? remainingByTask.get(todo.taskId) ?? 0 : 0}
-                    onToggle={handleToggle}
-                    onDelete={handleDeleteTodo}
+          {!todosCollapsed && (
+            <>
+              {isAddingTodo && (
+                <div className="flex items-center gap-3 p-3 mb-2 rounded-md border bg-card">
+                  <div className="w-4" />
+                  <Checkbox disabled />
+                  <Input
+                    value={newTodo}
+                    onChange={(e) => setNewTodo(e.target.value)}
+                    onKeyDown={handleTodoKeyDown}
+                    placeholder="Add a todo..."
+                    className="flex-1"
+                    autoFocus
                   />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+                  <Button
+                    size="sm"
+                    onClick={handleAddTodo}
+                    disabled={!newTodo.trim() || createTodo.isPending}
+                  >
+                    Add
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setNewTodo("");
+                      setIsAddingTodo(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={filteredTodos.map((t) => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="space-y-2">
+                    {filteredTodos.map((todo) => (
+                      <SortableTodoItem
+                        key={todo.id}
+                        todo={todo}
+                        remainingCount={groupByTask && todo.taskId ? remainingByTask.get(todo.taskId) ?? 0 : 0}
+                        onToggle={handleToggle}
+                        onDelete={handleDeleteTodo}
+                        isSelected={selectedTodoTaskId !== null && todo.taskId === selectedTodoTaskId}
+                        onSelect={(todoId) => {
+                          const clicked = filteredTodos.find((t) => t.id === todoId);
+                          if (!clicked?.taskId || clicked.taskId === selectedTodoTaskId) {
+                            setSelectedTodoTaskId(null);
+                          } else {
+                            setSelectedTodoTaskId(clicked.taskId);
+                          }
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            </>
+          )}
         </div>
       )}
 
@@ -372,6 +393,7 @@ export function TasksPage() {
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         titleFilter={debouncedQuery}
+        highlightedTaskId={selectedTodoTaskId}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
