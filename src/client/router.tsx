@@ -3,7 +3,7 @@ import { RootLayout } from "./components/layout/RootLayout";
 import { TasksPage } from "./pages/TasksPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { CompletedPage } from "./pages/CompletedPage";
-import { LogsPage } from "./pages/LogsPage";
+
 import { NotesPage } from "./pages/NotesPage";
 import { NoteDetailPage } from "./pages/NoteDetailPage";
 import { ReviewsPage } from "./pages/ReviewsPage";
@@ -26,11 +26,7 @@ export const router = createBrowserRouter([
         path: "completed",
         element: <CompletedPage />,
       },
-      {
-        path: "logs",
-        element: <LogsPage />,
-      },
-      {
+{
         path: "notes",
         element: <NotesPage />,
       },

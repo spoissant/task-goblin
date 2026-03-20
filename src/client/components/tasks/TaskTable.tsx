@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
-import { useSettingsQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
+import { normalizeStatus } from "@/client/lib/utils";
+import type { StatusCategory } from "@/client/lib/types";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -14,12 +16,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, ListTodo, Bell } from "lucide-react";
+import { RefreshCw, ListTodo } from "lucide-react";
 import { TodosDialog } from "./TodosDialog";
-import { TaskLogsModal } from "./TaskLogsModal";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
+
+// Map Tailwind bg class to rgba for faint row tinting
+const STATUS_ROW_COLORS: Record<string, { light: string; dark: string }> = {
+  "bg-slate-500":   { light: "rgba(100,116,139,0.07)", dark: "rgba(100,116,139,0.12)" },
+  "bg-fuchsia-500": { light: "rgba(217,70,239,0.07)",  dark: "rgba(217,70,239,0.12)" },
+  "bg-yellow-600":  { light: "rgba(202,138,4,0.07)",   dark: "rgba(202,138,4,0.12)" },
+  "bg-blue-600":    { light: "rgba(37,99,235,0.07)",   dark: "rgba(37,99,235,0.12)" },
+  "bg-green-700":   { light: "rgba(21,128,61,0.07)",   dark: "rgba(21,128,61,0.12)" },
+  "bg-red-500":     { light: "rgba(239,68,68,0.07)",   dark: "rgba(239,68,68,0.12)" },
+};
+
+function getStatusRowColor(status: string, categories?: StatusCategory[]): { light: string; dark: string } | undefined {
+  if (!categories) return undefined;
+  const normalized = normalizeStatus(status);
+  for (const cat of categories) {
+    if (normalizeStatus(cat.name) === normalized) return STATUS_ROW_COLORS[cat.color];
+    for (const jiraStatus of cat.jiraMappings) {
+      if (normalizeStatus(jiraStatus) === normalized) return STATUS_ROW_COLORS[cat.color];
+    }
+  }
+  return undefined;
+}
 
 interface TaskTableProps {
   selectedIds?: Set<number>;
@@ -32,8 +55,8 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
+  const { data: statusSettings } = useStatusSettingsQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
-  const [logsModalTask, setLogsModalTask] = useState<{ id: number; title: string } | null>(null);
 
   // Extract jiraHost from settings
   const jiraHost = settingsData?.jira_host || null;
@@ -108,8 +131,8 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
               task={task}
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
               jiraHost={jiraHost}
+              statusCategories={statusSettings?.categories}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
-              onOpenLogs={() => setLogsModalTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               isHighlighted={highlightedTaskId === task.id}
               onSelectionChange={onSelectionChange ? (selected) => {
@@ -133,14 +156,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
           taskTitle={todoDialogTask.title}
         />
       )}
-      {logsModalTask && (
-        <TaskLogsModal
-          open={!!logsModalTask}
-          onOpenChange={(open) => !open && setLogsModalTask(null)}
-          taskId={logsModalTask.id}
-          taskTitle={logsModalTask.title}
-        />
-      )}
     </TooltipProvider>
   );
 }
@@ -149,14 +164,14 @@ interface TaskRowProps {
   task: TaskWithTodos;
   repo?: Repository;
   jiraHost: string | null;
+  statusCategories?: StatusCategory[];
   onOpenTodos: () => void;
-  onOpenLogs: () => void;
   isSelected: boolean;
   isHighlighted?: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, statusCategories, onOpenTodos, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -169,10 +184,6 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
     syncTask.mutate({ task, repo });
   };
 
-  const handleOpenLogs = () => {
-    onOpenLogs();
-  };
-
   // Context for column renderers
   const columnContext = {
     repo,
@@ -181,10 +192,18 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
     linkToTask: true,
   };
 
+  const isDark = document.documentElement.classList.contains("dark");
+  const rowColor = getStatusRowColor(task.status, statusCategories);
+  const rowBg = rowColor ? (isDark ? rowColor.dark : rowColor.light) : undefined;
+
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
-      className={isHighlighted ? "bg-green-100 dark:bg-green-900/40" : undefined}
+      className={[
+        isHighlighted && "task-highlight",
+        isSelected && "task-selected",
+      ].filter(Boolean).join(" ") || undefined}
+      style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
       {/* Checkbox */}
       {onSelectionChange && (
@@ -221,23 +240,6 @@ function TaskRow({ task, repo, jiraHost, onOpenTodos, onOpenLogs, isSelected, is
             >
               <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
             </Button>
-          )}
-          {task.unreadLogCount > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleOpenLogs}
-                  className="relative inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted"
-                >
-                  <Bell className="h-4 w-4 text-orange-500" />
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-4 min-w-[1rem] px-1 flex items-center justify-center font-medium">
-                    {task.unreadLogCount}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>{task.unreadLogCount} unread log(s)</TooltipContent>
-            </Tooltip>
           )}
         </div>
       </TableCell>

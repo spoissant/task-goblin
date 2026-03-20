@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type { DeployResult, BulkDeployResult } from "../types";
 import { taskKeys } from "./tasks";
-import { logKeys } from "./logs";
+
 
 interface DeployConflictResponse {
   error: {
@@ -52,7 +52,6 @@ export function useDeployBranch() {
     },
     onSuccess: (_, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
-      queryClient.invalidateQueries({ queryKey: logKeys.all });
     },
   });
 }
@@ -74,7 +73,6 @@ export function useBulkDeploy() {
         queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
       }
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: logKeys.all });
     },
   });
 }

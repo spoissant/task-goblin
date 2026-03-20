@@ -1,24 +1,9 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, logs } from "../../db/schema";
+import { tasks } from "../../db/schema";
 import { now } from "../lib/timestamp";
-import { logDiffsIfChanged } from "../lib/diff";
-import { formatPrCreatedLog, mapPrStateToTaskStatus } from "./github-mappers";
+import { mapPrStateToTaskStatus } from "./github-mappers";
 import type { PrTaskData } from "./github-mappers";
-
-const GITHUB_TRACKED_FIELDS = [
-  "prState",
-  "prAuthor",
-  "headBranch",
-  "baseBranch",
-  "isDraft",
-  "checksStatus",
-  "approvedReviewCount",
-  "unresolvedCommentCount",
-  "hasConflicts",
-] as const;
-
-const LARGE_FIELDS = ["checksDetails"] as const;
 
 /**
  * Extract Jira keys from PR title in format [KEY-123]
@@ -76,12 +61,7 @@ async function updateTaskByJiraKey(
     })
     .where(eq(tasks.id, oldTask.id));
 
-  const changed = await logDiffsIfChanged(
-    oldTask as unknown as Record<string, unknown>,
-    data as unknown as Record<string, unknown>,
-    { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
-  );
-  return changed ? "updated" : "unchanged";
+  return "updated";
 }
 
 /**
@@ -126,12 +106,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       })
       .where(eq(tasks.id, oldTask.id));
 
-    const changed = await logDiffsIfChanged(
-      oldTask as unknown as Record<string, unknown>,
-      data as unknown as Record<string, unknown>,
-      { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
-    );
-    return changed ? "updated" : "unchanged";
+    return "updated";
   }
 
   // Next, try to find by repositoryId + headBranch (local entry waiting for sync)
@@ -172,12 +147,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       })
       .where(eq(tasks.id, oldTask.id));
 
-    const changed = await logDiffsIfChanged(
-      oldTask as unknown as Record<string, unknown>,
-      data as unknown as Record<string, unknown>,
-      { taskId: oldTask.id, trackedFields: GITHUB_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "github" },
-    );
-    return changed ? "updated" : "unchanged";
+    return "updated";
   }
 
   // Check if PR title contains Jira keys matching existing tasks
@@ -224,14 +194,6 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       updatedAt: timestamp,
     })
     .returning({ id: tasks.id });
-
-  // Log new task creation
-  await db.insert(logs).values({
-    taskId: result[0].id,
-    content: formatPrCreatedLog(data.isDraft, data.prState, data.prNumber, data.headBranch),
-    source: "github",
-    createdAt: timestamp,
-  });
 
   return "new";
 }

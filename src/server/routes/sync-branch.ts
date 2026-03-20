@@ -2,7 +2,7 @@ import { json } from "../response";
 import { NotFoundError, AppError } from "../lib/errors";
 import { parseId } from "../lib/validation";
 import { expandPath } from "../lib/path";
-import { logActivity } from "../lib/logging";
+
 import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import {
   syncBranch,
@@ -68,11 +68,6 @@ export const syncBranchRoutes: Routes = {
         );
 
         if (result.status === "conflict") {
-          await logActivity(
-            taskId,
-            `Sync from ${task.baseBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`,
-            "sync"
-          );
           return json(
             {
               error: {
@@ -84,12 +79,6 @@ export const syncBranchRoutes: Routes = {
             409
           );
         }
-
-        await logActivity(
-          taskId,
-          `Synced from ${task.baseBranch} (${result.commitSha.substring(0, 7)})`,
-          "sync"
-        );
 
         return json(result);
       } catch (err) {

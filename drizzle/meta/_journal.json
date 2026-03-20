@@ -148,6 +148,13 @@
       "when": 1772718372982,
       "tag": "0020_public_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1773949030294,
+      "tag": "0021_bumpy_iron_lad",
+      "breakpoints": true
     }
   ]
 }

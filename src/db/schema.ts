@@ -75,16 +75,6 @@ export const settings = sqliteTable("settings", {
   value: text("value"),
 });
 
-// 6. Logs - Activity logs for tracking events
-export const logs = sqliteTable("logs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  taskId: integer("task_id").references(() => tasks.id),
-  content: text("content").notNull(),
-  createdAt: text("created_at").notNull(),
-  readAt: text("read_at"), // null = unread
-  source: text("source").notNull(),
-});
-
 // 7. Status Categories - color + completion state + display order
 export const statusCategories = sqliteTable("status_categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),

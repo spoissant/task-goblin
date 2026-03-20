@@ -4,14 +4,12 @@ import {
   todos,
   repositories,
   worktrees,
-  logs,
   notes,
   noteTasks,
 } from "./schema";
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   todos: many(todos),
-  logs: many(logs),
   noteTasks: many(noteTasks),
   repository: one(repositories, {
     fields: [tasks.repositoryId],
@@ -35,13 +33,6 @@ export const worktreesRelations = relations(worktrees, ({ one }) => ({
   repository: one(repositories, {
     fields: [worktrees.repositoryId],
     references: [repositories.id],
-  }),
-}));
-
-export const logsRelations = relations(logs, ({ one }) => ({
-  task: one(tasks, {
-    fields: [logs.taskId],
-    references: [tasks.id],
   }),
 }));
 

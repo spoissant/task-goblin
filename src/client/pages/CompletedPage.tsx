@@ -152,10 +152,10 @@ export function CompletedPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead>
-                  <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
                   <TableHead className="w-[100px]">Epic</TableHead>
                   <TableHead className="w-[100px]">Key</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[120px]">Repo</TableHead>
                   <TableHead className="w-[150px]">Branch</TableHead>
@@ -220,15 +220,6 @@ function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
         )}
       </TableCell>
 
-      {/* Status */}
-      <TableCell>
-        <InteractiveStatusBadge
-          taskId={task.id}
-          status={task.status}
-          jiraKey={task.jiraKey}
-        />
-      </TableCell>
-
       {/* Type */}
       <TableCell>
         {task.type ? (
@@ -282,6 +273,15 @@ function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
         })() : (
           <span className="text-muted-foreground">—</span>
         )}
+      </TableCell>
+
+      {/* Status */}
+      <TableCell>
+        <InteractiveStatusBadge
+          taskId={task.id}
+          status={task.status}
+          jiraKey={task.jiraKey}
+        />
       </TableCell>
 
       {/* Title */}

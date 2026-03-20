@@ -1,6 +1,6 @@
-import { eq, and, sql, ne, isNull, isNotNull, or, desc, like } from "drizzle-orm";
+import { eq, and, sql, ne, isNull, isNotNull, or, like } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, repositories, logs, noteTasks, notes } from "../../db/schema";
+import { tasks, todos, repositories, noteTasks, notes } from "../../db/schema";
 import { buildRepoMap } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
@@ -143,34 +143,9 @@ export const taskRoutes: Routes = {
         }
       }
 
-      // Get unread log counts for each task
-      const unreadLogCountsMap = new Map<number, number>();
-      if (taskIds.length > 0) {
-        const unreadLogCounts = await db
-          .select({
-            taskId: logs.taskId,
-            count: sql<number>`count(*)`,
-          })
-          .from(logs)
-          .where(
-            and(
-              sql`${logs.taskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`,
-              isNull(logs.readAt)
-            )
-          )
-          .groupBy(logs.taskId);
-
-        for (const row of unreadLogCounts) {
-          if (row.taskId) {
-            unreadLogCountsMap.set(row.taskId, row.count);
-          }
-        }
-      }
-
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
-        unreadLogCount: unreadLogCountsMap.get(task.id) || 0,
       }));
 
       // Get total count for pagination
@@ -245,13 +220,6 @@ export const taskRoutes: Routes = {
         repository = repoResult[0] || null;
       }
 
-      // Get logs for this task
-      const taskLogs = await db
-        .select()
-        .from(logs)
-        .where(eq(logs.taskId, id))
-        .orderBy(desc(logs.createdAt));
-
       // Get linked notes for this task
       const linkedNotes = await db
         .select({
@@ -266,7 +234,6 @@ export const taskRoutes: Routes = {
         ...task,
         todos: taskTodos,
         repository,
-        logs: taskLogs,
         notes: linkedNotes,
       });
     },

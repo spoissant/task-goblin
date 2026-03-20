@@ -27,11 +27,6 @@ export interface PrTaskData {
   onDeploymentBranches: string | null;
 }
 
-export function formatPrCreatedLog(isDraft: number, prState: string, prNumber: number, headBranch: string): string {
-  const draftStatus = isDraft ? "Draft" : "Ready";
-  return `# Task created\n${draftStatus} - ${prState} - #${prNumber} - ${headBranch}`;
-}
-
 export function mapPrToTaskData(
   pr: {
     number: number;

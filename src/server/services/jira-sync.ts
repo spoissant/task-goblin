@@ -2,32 +2,14 @@ import { eq, and, isNotNull, notInArray } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
 import { convert as adfToMd } from "adf-to-md";
 import { db } from "../../db";
-import { tasks, logs } from "../../db/schema";
+import { tasks } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
-import { logDiffsIfChanged } from "../lib/diff";
 import { isApiError } from "../lib/errors";
 import { getCompletedStatusNames } from "../lib/task-status";
 import type { SyncResult } from "../lib/types";
 
 export type { SyncResult };
-
-const JIRA_TRACKED_FIELDS = [
-  "title",
-  "description",
-  "status",
-  "type",
-  "assignee",
-  "priority",
-  "sprint",
-  "epicKey",
-] as const;
-
-const LARGE_FIELDS = ["description"] as const;
-
-function formatJiraCreatedLog(status: string, jiraKey: string, title: string): string {
-  return `# Task created\n${status} - ${jiraKey} - ${title}`;
-}
 
 export class JiraApiError extends Error {
   constructor(
@@ -136,12 +118,7 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
       })
       .where(eq(tasks.jiraKey, taskData.jiraKey));
 
-    const changed = await logDiffsIfChanged(
-      oldTask as unknown as Record<string, unknown>,
-      taskData as unknown as Record<string, unknown>,
-      { taskId: oldTask.id, trackedFields: JIRA_TRACKED_FIELDS, largeFields: LARGE_FIELDS, source: "jira" },
-    );
-    return changed ? "updated" : "unchanged";
+    return "updated";
   } else {
     // Create new Jira-only task
     const timestamp = now();
@@ -152,14 +129,6 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         createdAt: timestamp,
       })
       .returning({ id: tasks.id });
-
-    // Log new task creation
-    await db.insert(logs).values({
-      taskId: result[0].id,
-      content: formatJiraCreatedLog(taskData.status, taskData.jiraKey, taskData.title),
-      source: "jira",
-      createdAt: timestamp,
-    });
 
     return "new";
   }

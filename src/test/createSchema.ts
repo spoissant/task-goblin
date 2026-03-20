@@ -66,7 +66,6 @@ export function generateTestSchema(): string {
     schema.repositories,
     schema.tasks,
     schema.todos,
-    schema.logs,
     schema.statusCategories,
     schema.notes,
     schema.noteTasks,

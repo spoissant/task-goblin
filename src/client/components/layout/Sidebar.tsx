@@ -1,9 +1,7 @@
 import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
-import { useUnreadCountQuery } from "@/client/lib/queries";
 import {
   CheckCircle,
-  ScrollText,
   StickyNote,
   Settings,
   ListChecks,
@@ -22,7 +20,6 @@ const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
-  { to: "/logs", icon: ScrollText, label: "Logs", showBadge: true },
   { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -33,14 +30,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
-  const { data: unreadData } = useUnreadCountQuery();
-  const unreadCount = unreadData?.count ?? 0;
-
-  const getBadgeCount = (to: string) => {
-    if (to === "/logs") return unreadCount;
-    return 0;
-  };
-
   return (
     <TooltipProvider delayDuration={0}>
       <aside
@@ -70,7 +59,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </div>
         <nav className={cn("space-y-1", isCollapsed && "flex flex-col items-center")}>
           {navItems.map((item) => {
-            const badgeCount = getBadgeCount(item.to);
             const linkContent = (
               <NavLink
                 key={item.to}
@@ -86,24 +74,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   )
                 }
               >
-                <span className="relative">
-                  <item.icon className="h-4 w-4" />
-                  {item.showBadge && badgeCount > 0 && isCollapsed && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                      {badgeCount > 99 ? "99+" : badgeCount}
-                    </span>
-                  )}
-                </span>
-                {!isCollapsed && (
-                  <>
-                    {item.label}
-                    {item.showBadge && badgeCount > 0 && (
-                      <span className="ml-auto bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
-                        {badgeCount > 99 ? "99+" : badgeCount}
-                      </span>
-                    )}
-                  </>
-                )}
+                <item.icon className="h-4 w-4" />
+                {!isCollapsed && item.label}
               </NavLink>
             );
 
@@ -113,7 +85,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                   <TooltipContent side="right">
                     {item.label}
-                    {item.showBadge && badgeCount > 0 && ` (${badgeCount})`}
                   </TooltipContent>
                 </Tooltip>
               );

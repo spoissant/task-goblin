@@ -56,7 +56,6 @@ export interface LinkedNote {
 export interface TaskDetail extends Task {
   todos: Todo[];
   repository: Repository | null;
-  logs: Log[];
   notes: LinkedNote[];
 }
 
@@ -68,7 +67,6 @@ export interface TaskWithRepository extends Task {
 // Task with pending todos for dashboard
 export interface TaskWithTodos extends Task {
   pendingTodos: NextTodo[];
-  unreadLogCount: number;
 }
 
 export interface Todo {
@@ -148,24 +146,6 @@ export interface SyncBranchResult {
 
 export interface Settings {
   [key: string]: string | null;
-}
-
-export interface LogTask {
-  id: number;
-  jiraKey: string | null;
-  prNumber: number | null;
-  title: string;
-  repository: { owner: string; repo: string } | null;
-}
-
-export interface Log {
-  id: number;
-  taskId: number | null;
-  content: string;
-  createdAt: string;
-  readAt: string | null;
-  source: string;
-  task?: LogTask | null;
 }
 
 export interface JiraConfig {

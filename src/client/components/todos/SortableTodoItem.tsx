@@ -80,7 +80,7 @@ export function SortableTodoItem({ todo, remainingCount, onToggle, onDelete, isS
       ref={setNodeRef}
       style={style}
       className={`relative flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-muted/50 group cursor-pointer ${
-        isSelected ? "bg-green-100 dark:bg-green-900/40" : ""
+        isSelected ? "task-highlight" : ""
       }`}
       onClick={(e) => {
         const target = e.target as HTMLElement;

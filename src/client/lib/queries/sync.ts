@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type { SyncResult, MatchResult, Task, Repository, SyncBranchResult } from "../types";
 import { taskKeys } from "./tasks";
-import { logKeys } from "./logs";
+
 
 export type SyncStep = "jira" | "github" | "matching";
 
@@ -245,7 +245,6 @@ export function useSyncBranch() {
     },
     onSuccess: (_, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
-      queryClient.invalidateQueries({ queryKey: logKeys.all });
     },
   });
 }

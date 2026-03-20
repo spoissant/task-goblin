@@ -5,7 +5,7 @@ import { todoRoutes } from "./todos";
 import { repositoryRoutes } from "./repositories";
 import { settingsRoutes } from "./settings";
 import { githubRoutes } from "./github";
-import { logRoutes } from "./logs";
+
 import { deployRoutes } from "./deploy";
 import { syncBranchRoutes } from "./sync-branch";
 import { noteRoutes } from "./notes";
@@ -28,7 +28,7 @@ export const routes: Routes = {
   ...repositoryRoutes,
   ...settingsRoutes,
   ...githubRoutes,
-  ...logRoutes,
+
   ...deployRoutes,
   ...syncBranchRoutes,
   ...noteRoutes,

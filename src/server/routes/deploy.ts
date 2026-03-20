@@ -6,7 +6,7 @@ import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId, parseDeploymentBranches } from "../lib/validation";
 import { expandPath } from "../lib/path";
-import { logActivity } from "../lib/logging";
+
 import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import {
   deployBranch,
@@ -82,11 +82,6 @@ export const deployRoutes: Routes = {
         );
 
         if (result.status === "conflict") {
-          await logActivity(
-            taskId,
-            `Deploy to ${body.targetBranch} failed: merge conflict in ${result.conflictedFiles.join(", ")}`,
-            "deploy"
-          );
           return json(
             {
               error: {
@@ -98,12 +93,6 @@ export const deployRoutes: Routes = {
             409
           );
         }
-
-        await logActivity(
-          taskId,
-          `Deployed to ${body.targetBranch} (${result.commitSha.substring(0, 7)})`,
-          "deploy"
-        );
 
         return json(result);
       } catch (err) {
@@ -213,23 +202,6 @@ export const deployRoutes: Routes = {
           taskBranchInfos,
           body.targetBranch
         );
-
-        // Log activity for each task
-        for (const taskResult of result.results) {
-          if (taskResult.status === "success") {
-            await logActivity(
-              taskResult.taskId,
-              `Deployed to ${body.targetBranch} (${taskResult.commitSha?.substring(0, 7)})`,
-              "deploy"
-            );
-          } else if (taskResult.status === "conflict") {
-            await logActivity(
-              taskResult.taskId,
-              `Deploy to ${body.targetBranch} failed: merge conflict in ${taskResult.conflictedFiles?.join(", ")}`,
-              "deploy"
-            );
-          }
-        }
 
         return json(result);
       } catch (err) {

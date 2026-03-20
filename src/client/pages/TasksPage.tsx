@@ -28,14 +28,14 @@ import {
   useReorderTodo,
   useCreateTodo,
 } from "@/client/lib/queries";
-import { useMarkAllLogsRead, useUnreadCountQuery } from "@/client/lib/queries/logs";
+
 import { useBulkDeploy } from "@/client/lib/queries/deploy";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import { Plus, CheckCheck, Search, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Search, X, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
 
@@ -64,9 +64,6 @@ export function TasksPage() {
   const { data: tasksData } = useTasksQuery({});
   const { data: reposData } = useRepositoriesQuery();
   const bulkDeploy = useBulkDeploy();
-  const markAllRead = useMarkAllLogsRead();
-  const { data: unreadCount } = useUnreadCountQuery();
-
   // Todo queries
   const { data: todosData } = useTodosQuery();
   const toggleTodo = useToggleTodo();
@@ -128,6 +125,10 @@ export function TasksPage() {
   };
 
   const handleToggle = (id: number) => {
+    const todo = todosData?.items?.find((t) => t.id === id);
+    if (todo?.taskId && todo.taskId === selectedTodoTaskId) {
+      setSelectedTodoTaskId(null);
+    }
     toggleTodo.mutate(id, { onError: () => toast.error("Failed to toggle todo") });
   };
 
@@ -239,6 +240,21 @@ export function TasksPage() {
               {todosCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               Todos{todosData?.items && ` (${todosData.items.filter((t) => !t.done).length})`}
             </button>
+            {todosCollapsed && (() => {
+              const firstActive = todosData?.items?.find((t) => !t.done);
+              if (!firstActive) return null;
+              const prefix = firstActive.task
+                ? `${firstActive.task.jiraKey ? `${firstActive.task.jiraKey}: ` : firstActive.task.title + " — "}`
+                : "";
+              return (
+                <span
+                  className="flex-1 min-w-0 text-sm text-muted-foreground truncate px-3 cursor-pointer"
+                  onClick={() => setTodosCollapsed(false)}
+                >
+                  {prefix}{firstActive.content}
+                </span>
+              );
+            })()}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -374,14 +390,6 @@ export function TasksPage() {
             )}
           </div>
           <RefreshButton />
-          <Button
-            variant="outline"
-            onClick={() => markAllRead.mutate()}
-            disabled={!unreadCount?.count || markAllRead.isPending}
-          >
-            <CheckCheck className="h-4 w-4 mr-2" />
-            Mark all as read
-          </Button>
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Task

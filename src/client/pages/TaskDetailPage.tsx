@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
-import { useMarkLogRead } from "@/client/lib/queries/logs";
+
 import { useDeployBranch } from "@/client/lib/queries/deploy";
 import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
@@ -12,9 +12,7 @@ import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
-import { Checkbox } from "@/client/components/ui/checkbox";
-import { Badge } from "@/client/components/ui/badge";
+
 import {
   Select,
   SelectContent,
@@ -23,9 +21,8 @@ import {
   SelectValue,
 } from "@/client/components/ui/select";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
-import { ArrowLeft, RefreshCw, Trash2, Check, Upload, GitMerge } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, Upload, GitMerge } from "lucide-react";
 import { toast } from "sonner";
-import type { Log } from "@/client/lib/types";
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,7 +32,6 @@ export function TaskDetailPage() {
   const { data: task, isLoading, error } = useTaskQuery(taskId);
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
-  const markLogRead = useMarkLogRead();
   const deployBranch = useDeployBranch();
   const syncBranch = useSyncBranch();
   const syncTask = useSyncTask();
@@ -46,8 +42,6 @@ export function TaskDetailPage() {
   const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
   const [conflictSource, setConflictSource] = useState<"deploy" | "sync">("deploy");
   const [showCompleted, setShowCompleted] = useState(false);
-  const [showReadLogs, setShowReadLogs] = useState(false);
-
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
 
@@ -216,59 +210,6 @@ export function TaskDetailPage() {
       {(task.jiraKey || task.prNumber) && (
         <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
       )}
-
-      {/* Activity Logs Section - Full Width */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Activity</CardTitle>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={showReadLogs}
-              onCheckedChange={(checked) => setShowReadLogs(checked === true)}
-            />
-            Show read logs
-          </label>
-        </CardHeader>
-        <CardContent>
-          {task.logs.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No activity logs</p>
-          ) : (
-            <div className="space-y-3">
-              {task.logs.filter((log: Log) => showReadLogs || !log.readAt).map((log: Log) => (
-                <div
-                  key={log.id}
-                  className={`flex items-start justify-between gap-2 p-2 rounded ${
-                    log.readAt ? "opacity-60" : "bg-muted/50"
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-xs">
-                        {log.source}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm">{log.content}</p>
-                  </div>
-                  {!log.readAt && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => markLogRead.mutate(log.id)}
-                      title="Mark as read"
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <TodoList
         todos={task.todos}
