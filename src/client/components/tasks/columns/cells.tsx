@@ -36,7 +36,7 @@ export function TypeCell({ task }: { task: Task }) {
   return (
     <div className="flex items-center gap-1">
       <Badge variant="outline" className="text-xs">{task.type}</Badge>
-      {task.type.toLowerCase() === "bug" && task.priority && task.priority !== "To be qualified" && (
+      {task.priority && task.priority !== "To be qualified" && (
         <Badge className={`text-xs ${PRIORITY_COLORS[task.priority] ?? ""}`}>
           {task.priority}
         </Badge>
