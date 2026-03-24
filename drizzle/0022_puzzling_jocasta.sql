@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `high_priority` integer DEFAULT 0;

@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { MessageSquare } from "lucide-react";
+import { Flame, MessageSquare } from "lucide-react";
 import type { Task, Repository } from "@/client/lib/types";
 import {
   TypeCell,
@@ -16,6 +16,7 @@ import {
   ChecksCell,
   ReviewsCell,
   CommentsCell,
+  HighPriorityCell,
   getJiraUrl,
   getPrUrl,
 } from "./cells";
@@ -36,6 +37,7 @@ export {
   ChecksCell,
   ReviewsCell,
   CommentsCell,
+  HighPriorityCell,
   getJiraUrl,
   getPrUrl,
 };
@@ -58,6 +60,19 @@ export interface ColumnContext {
 
 // Shared Column Definitions
 export const COLUMNS = {
+  highPriority: {
+    key: "highPriority",
+    header: (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Flame className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent>High Priority</TooltipContent>
+      </Tooltip>
+    ),
+    width: "40px",
+    render: (task) => <HighPriorityCell task={task} />,
+  },
   type: {
     key: "type",
     header: "Type",
@@ -161,6 +176,7 @@ export function getColumn(key: keyof typeof COLUMNS): ColumnDef {
 
 // Column order for TaskTable (main tasks list)
 export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
+  "highPriority",
   "type",
   "sprint",
   "epic",

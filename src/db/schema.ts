@@ -18,6 +18,9 @@ export const tasks = sqliteTable("tasks", {
   epicKey: text("epic_key"), // parent epic key
   jiraSyncedAt: text("jira_synced_at"),
 
+  // Manual flags (not synced from Jira/GitHub)
+  highPriority: integer("high_priority").default(0),
+
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: integer("pr_number"),
   repositoryId: integer("repository_id").references(() => repositories.id),

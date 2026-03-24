@@ -306,6 +306,7 @@ export const taskRoutes: Routes = {
       if ("title" in body) updates.title = body.title;
       if ("description" in body) updates.description = body.description;
       if ("status" in body) updates.status = body.status;
+      if ("highPriority" in body) updates.highPriority = body.highPriority ? 1 : 0;
 
       const result = await db
         .update(tasks)

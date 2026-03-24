@@ -26,6 +26,9 @@ export interface Task {
   epicKey: string | null;
   jiraSyncedAt: string | null;
 
+  // Manual flags
+  highPriority: number | null;
+
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: number | null;
   repositoryId: number | null;

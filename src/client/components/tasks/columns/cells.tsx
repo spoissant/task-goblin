@@ -5,8 +5,10 @@ import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
+import { Flame } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
+import { useUpdateTask } from "@/client/lib/queries/tasks";
 
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-600 text-white hover:bg-red-600",
@@ -229,5 +231,29 @@ export function CommentsCell({ task, prUrl }: { task: Task; prUrl?: string | nul
       count={task.unresolvedCommentCount}
       prUrl={prUrl}
     />
+  );
+}
+
+export function HighPriorityCell({ task }: { task: Task }) {
+  const updateTask = useUpdateTask();
+  const isHigh = !!task.highPriority;
+
+  return (
+    <button
+      type="button"
+      className="cursor-pointer hover:opacity-80"
+      onClick={(e) => {
+        e.stopPropagation();
+        updateTask.mutate({ id: task.id, highPriority: !isHigh });
+      }}
+    >
+      <Flame
+        className={`h-4 w-4 transition-colors ${
+          isHigh
+            ? "text-orange-500 fill-orange-500 flame-glow"
+            : "text-muted-foreground/30"
+        }`}
+      />
+    </button>
   );
 }
