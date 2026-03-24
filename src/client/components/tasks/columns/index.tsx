@@ -176,11 +176,11 @@ export function getColumn(key: keyof typeof COLUMNS): ColumnDef {
 
 // Column order for TaskTable (main tasks list)
 export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
-  "highPriority",
   "type",
   "sprint",
   "epic",
   "key",
+  "highPriority",
   "status",
   "title",
   "repo",
