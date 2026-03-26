@@ -1,7 +1,10 @@
+import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys } from "@/client/lib/queries";
+import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
+import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
@@ -15,7 +18,7 @@ import {
 } from "@/client/components/ui/table";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { RefreshCw, GitPullRequestArrow } from "lucide-react";
-import type { ReviewRequest } from "@/client/lib/types";
+import type { ReviewRequest, Repository } from "@/client/lib/types";
 
 function formatRelativeTime(dateString: string): string {
   const now = Date.now();
@@ -38,6 +41,17 @@ function formatRelativeTime(dateString: string): string {
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
+  const { data: reposData } = useRepositoriesQuery();
+
+  const repoBySlug = useMemo(() => {
+    const map = new Map<string, Repository>();
+    if (reposData?.items) {
+      for (const repo of reposData.items) {
+        map.set(`${repo.owner}/${repo.repo}`, repo);
+      }
+    }
+    return map;
+  }, [reposData]);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -91,7 +105,7 @@ export function ReviewsPage() {
             </TableHeader>
             <TableBody>
               {data.items.map((request) => (
-                <ReviewRequestRow key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`} request={request} />
+                <ReviewRequestRow key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`} request={request} repoBySlug={repoBySlug} />
               ))}
             </TableBody>
           </Table>
@@ -103,9 +117,11 @@ export function ReviewsPage() {
 
 interface ReviewRequestRowProps {
   request: ReviewRequest;
+  repoBySlug: Map<string, Repository>;
 }
 
-function ReviewRequestRow({ request }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug }: ReviewRequestRowProps) {
+  const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
     <TableRow>
       {/* PR Number */}
@@ -136,9 +152,13 @@ function ReviewRequestRow({ request }: ReviewRequestRowProps) {
 
       {/* Repository */}
       <TableCell>
-        <Badge variant="outline" className="text-xs">
-          {request.repo.repo}
-        </Badge>
+        {repo ? (
+          <RepoBadge repo={repo} />
+        ) : (
+          <Badge variant="outline" className="text-xs">
+            {request.repo.repo}
+          </Badge>
+        )}
       </TableCell>
 
       {/* Author */}

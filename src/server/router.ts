@@ -61,7 +61,7 @@ export function createRouter(routes: Routes) {
           if (handler) {
             const params: Record<string, string> = {};
             route.paramNames.forEach((name, i) => {
-              params[name] = match[i + 1];
+              params[name] = decodeURIComponent(match[i + 1]);
             });
             return { handler, params };
           }
