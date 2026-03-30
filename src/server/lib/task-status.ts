@@ -454,6 +454,8 @@ export const statusOrderExpr = sql`CASE
   WHEN LOWER(${tasks.status}) = 'accepted' THEN 11
   WHEN LOWER(${tasks.status}) = 'backlog' THEN 12
   WHEN LOWER(${tasks.status}) IN ('on hold', 'on_hold') THEN 13
-  ELSE 14
+  WHEN LOWER(${tasks.status}) IN ('triage needed', 'triage_needed') THEN 14
+  WHEN LOWER(${tasks.status}) = 'blocked' THEN 15
+  ELSE 16
 END`;
 
