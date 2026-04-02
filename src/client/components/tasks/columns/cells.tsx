@@ -53,7 +53,7 @@ export function SprintCell({ task }: { task: Task }) {
   }
   return (
     <span className="truncate block" title={task.sprint}>
-      {task.sprint}
+      {task.sprint.replace(/Connect & Learn/g, "C&L")}
     </span>
   );
 }

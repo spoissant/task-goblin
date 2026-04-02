@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   get,
+  post,
   patch,
   resolveTaskId,
   type TaskWithRelations,
@@ -73,6 +74,31 @@ export function registerTaskTools(server: McpServer) {
 
         const data = await get<ListResponse<Task>>(path);
         return { content: [{ type: "text", text: JSON.stringify(data) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // create_task
+  server.registerTool(
+    "create_task",
+    {
+      description: "Create a task from a GitHub PR. Syncs the PR from GitHub and returns the created or updated task.",
+      inputSchema: {
+        owner: z.string().describe("GitHub repo owner (user or org)"),
+        repo: z.string().describe("GitHub repo name"),
+        prNumber: z.number().int().describe("GitHub PR number"),
+      },
+    },
+    async ({ owner, repo, prNumber }) => {
+      try {
+        await post(`/api/v1/sync/github/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${prNumber}`);
+        const task = await get<TaskWithRelations>(
+          `/api/v1/tasks/by-pr/${prNumber}?repo=${encodeURIComponent(`${owner}/${repo}`)}`
+        );
+        return { content: [{ type: "text", text: JSON.stringify(task) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

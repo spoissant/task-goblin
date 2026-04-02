@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"bun run dev:api\" \"bun run dev:web\"",
+    "dev": "concurrently -k \"bun run dev:api\" \"wait-on tcp:3456 && bun run dev:web\"",
     "dev:api": "bun --watch src/server/index.ts",
     "dev:web": "vite",
     "dev:kill": "lsof -ti:3456 | xargs kill 2>/dev/null; lsof -ti:5173 | xargs kill 2>/dev/null; echo 'Services killed'",
@@ -56,6 +56,7 @@
     "drizzle-kit": "^0.30.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "wait-on": "^9.0.4"
   }
 }

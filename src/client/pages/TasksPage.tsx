@@ -49,6 +49,7 @@ export function TasksPage() {
   const [deployResults, setDeployResults] = useState<BulkDeployResult | null>(null);
 
   // Todo state
+  const [hideLowPriority, setHideLowPriority] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [groupByTask, setGroupByTask] = useState(false);
   const [newTodo, setNewTodo] = useState("");
@@ -389,6 +390,16 @@ export function TasksPage() {
               </button>
             )}
           </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="hide-low-priority"
+              checked={hideLowPriority}
+              onCheckedChange={(checked) => setHideLowPriority(checked === true)}
+            />
+            <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
+              Hide low priority
+            </Label>
+          </div>
           <RefreshButton />
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -402,6 +413,7 @@ export function TasksPage() {
         onSelectionChange={setSelectedIds}
         titleFilter={debouncedQuery}
         highlightedTaskId={selectedTodoTaskId}
+        hideLowPriority={hideLowPriority}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
