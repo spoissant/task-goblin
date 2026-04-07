@@ -49,7 +49,7 @@ export function TasksPage() {
   const [deployResults, setDeployResults] = useState<BulkDeployResult | null>(null);
 
   // Todo state
-  const [hideLowPriority, setHideLowPriority] = useState(false);
+  const [hideLowPriority, setHideLowPriority] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
   const [groupByTask, setGroupByTask] = useState(false);
   const [newTodo, setNewTodo] = useState("");
@@ -397,7 +397,7 @@ export function TasksPage() {
               onCheckedChange={(checked) => setHideLowPriority(checked === true)}
             />
             <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
-              Hide low priority
+              Sprint view
             </Label>
           </div>
           <RefreshButton />
