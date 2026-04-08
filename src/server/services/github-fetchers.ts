@@ -133,9 +133,9 @@ export async function fetchCheckRunsStatus(
     const details = Array.from(allDetails.values());
 
     // Aggregate status:
-    // - "failed" if any check has conclusion === "failure" | "timed_out"
+    // - "failing" if any check has conclusion === "failure" | "timed_out"
     // - "pending" if any check has status !== "completed"
-    // - "passed" if all checks have conclusion === "success" | "skipped" | "neutral"
+    // - "passing" if all checks have conclusion === "success" | "skipped" | "neutral"
     let checksStatus: string;
 
     const hasFailed = details.some(
@@ -146,11 +146,11 @@ export async function fetchCheckRunsStatus(
     );
 
     if (hasFailed) {
-      checksStatus = "failed";
+      checksStatus = "failing";
     } else if (hasPending) {
       checksStatus = "pending";
     } else {
-      checksStatus = "passed";
+      checksStatus = "passing";
     }
 
     return {

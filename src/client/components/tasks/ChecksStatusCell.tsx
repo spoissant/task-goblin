@@ -29,9 +29,9 @@ function getStatusIcon(status: string | null) {
   if (!status) return null;
 
   switch (status) {
-    case "passed":
+    case "passing":
       return <CheckCircle className="h-4 w-4 text-green-500" />;
-    case "failed":
+    case "failing":
       return <XCircle className="h-4 w-4 text-red-500" />;
     case "pending":
       return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
