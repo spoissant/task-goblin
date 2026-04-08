@@ -8,6 +8,7 @@ import {
   type TaskWithRelations,
   type ListResponse,
   type Task,
+  type SyncResult,
 } from "../client.js";
 
 export function registerTaskTools(server: McpServer) {
@@ -103,6 +104,42 @@ export function registerTaskTools(server: McpServer) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
       }
+    }
+  );
+
+  // sync
+  server.registerTool(
+    "sync",
+    {
+      description:
+        "Trigger a full sync: pulls latest Jira issues and GitHub PRs, then auto-matches orphaned tasks.",
+      inputSchema: {},
+    },
+    async () => {
+      const result: { jira?: SyncResult; github?: SyncResult; matched?: number; errors: string[] } = {
+        errors: [],
+      };
+
+      try {
+        result.jira = await post<SyncResult>("/api/v1/sync/jira");
+      } catch (err) {
+        result.errors.push(`Jira: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      try {
+        result.github = await post<SyncResult>("/api/v1/sync/github");
+      } catch (err) {
+        result.errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      try {
+        const match = await post<{ merged: number }>("/api/v1/sync/match");
+        result.matched = match.merged;
+      } catch (err) {
+        result.errors.push(`Match: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
     }
   );
 
