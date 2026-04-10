@@ -356,57 +356,61 @@ export function TasksPage() {
         </div>
       )}
 
-      {selectedIds.size > 0 ? (
-        <div className="mb-4">
-          <BulkActionsBar
-            selectedCount={selectedIds.size}
-            deploymentBranches={deploymentBranches}
-            targetBranch={deployTargetBranch}
-            onTargetBranchChange={setDeployTargetBranch}
-            onDeploy={handleBulkDeploy}
-            onClearSelection={() => {
-              setSelectedIds(new Set());
-              setDeployTargetBranch("");
-            }}
-            isDeploying={bulkDeploy.isPending}
-          />
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-9"
+      <div className="flex items-center gap-2 mb-4">
+        {selectedIds.size > 0 ? (
+          <div className="flex-1">
+            <BulkActionsBar
+              selectedCount={selectedIds.size}
+              deploymentBranches={deploymentBranches}
+              targetBranch={deployTargetBranch}
+              onTargetBranchChange={setDeployTargetBranch}
+              onDeploy={handleBulkDeploy}
+              onClearSelection={() => {
+                setSelectedIds(new Set());
+                setDeployTargetBranch("");
+              }}
+              isDeploying={bulkDeploy.isPending}
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="hide-low-priority"
-              checked={hideLowPriority}
-              onCheckedChange={(checked) => setHideLowPriority(checked === true)}
-            />
-            <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
-              Sprint view
-            </Label>
-          </div>
-          <RefreshButton />
+        ) : (
+          <>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Checkbox
+                id="hide-low-priority"
+                checked={hideLowPriority}
+                onCheckedChange={(checked) => setHideLowPriority(checked === true)}
+              />
+              <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
+                Sprint view
+              </Label>
+            </div>
+          </>
+        )}
+        <RefreshButton />
+        {selectedIds.size === 0 && (
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Task
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <TaskTable
         selectedIds={selectedIds}
