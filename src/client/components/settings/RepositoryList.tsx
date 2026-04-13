@@ -37,6 +37,7 @@ export function RepositoryList() {
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
   const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
+  const [slackChannelInputs, setSlackChannelInputs] = useState<Record<number, string>>({});
 
   const handleBadgeColorChange = (id: number, color: string) => {
     updateRepo.mutate(
@@ -175,6 +176,7 @@ export function RepositoryList() {
                   <TableHead>Badge Color</TableHead>
                   <TableHead>Worktrees</TableHead>
                   <TableHead>Deployment Branches</TableHead>
+                  <TableHead>Slack Channel</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -267,6 +269,25 @@ export function RepositoryList() {
                           </div>
                         );
                       })()}
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-6 w-36 text-xs font-mono"
+                        placeholder="#channel-name"
+                        value={slackChannelInputs[repo.id] ?? (repo.slackChannel || "")}
+                        onChange={(e) => setSlackChannelInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                        onBlur={() => {
+                          const val = slackChannelInputs[repo.id];
+                          if (val === undefined) return;
+                          updateRepo.mutate(
+                            { id: repo.id, slackChannel: val.trim() || null },
+                            { onError: () => toast.error("Failed to update Slack channel") }
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Checkbox

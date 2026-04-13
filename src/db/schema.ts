@@ -39,6 +39,9 @@ export const tasks = sqliteTable("tasks", {
   changedFiles: integer("changed_files"),
   additions: integer("additions"),
   deletions: integer("deletions"),
+
+  // Automation flags (not synced from Jira/GitHub)
+  choreSkips: text("chore_skips"), // JSON: {"pr-checks": true, "pr-comments": true, ...}
 });
 
 // 2. Todo - Checklist items linked only to tasks
@@ -60,6 +63,7 @@ export const repositories = sqliteTable("repositories", {
   enabled: integer("enabled").notNull().default(1), // SQLite bool
   badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
+  slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
 });
 
 // 3b. Worktree - Local filesystem paths per repository
@@ -70,6 +74,13 @@ export const worktrees = sqliteTable("worktrees", {
   color: text("color"), // Tailwind color name for visual identification
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+// 4. Team Channels - maps GitHub team slugs to Slack channels for code review routing
+export const teamChannels = sqliteTable("team_channels", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  githubTeamSlug: text("github_team_slug").notNull().unique(), // e.g. "team-backend"
+  slackChannel: text("slack_channel").notNull(), // e.g. "#team-backend-prs"
 });
 
 // 5. Settings - Key-value config store

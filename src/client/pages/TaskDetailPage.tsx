@@ -9,6 +9,7 @@ import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { LinkedNotesViewer } from "@/client/components/tasks/LinkedNotesViewer";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
+import { ChoreSkipsEditor } from "@/client/components/tasks/ChoreSkipsEditor";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
@@ -209,6 +210,11 @@ export function TaskDetailPage() {
       {/* Summary Bar */}
       {(task.jiraKey || task.prNumber) && (
         <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
+      )}
+
+      {/* Goblin Chore Skips — only for tasks with PRs */}
+      {task.prNumber && (
+        <ChoreSkipsEditor taskId={taskId} choreSkips={task.choreSkips ?? null} />
       )}
 
       <TodoList

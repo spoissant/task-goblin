@@ -10,6 +10,7 @@ import { deployRoutes } from "./deploy";
 import { syncBranchRoutes } from "./sync-branch";
 import { noteRoutes } from "./notes";
 import { worktreeRoutes } from "./worktrees";
+import { teamChannelRoutes } from "./team-channels";
 import { json } from "../response";
 
 const healthRoute: Routes = {
@@ -33,4 +34,5 @@ export const routes: Routes = {
   ...syncBranchRoutes,
   ...noteRoutes,
   ...worktreeRoutes,
+  ...teamChannelRoutes,
 };

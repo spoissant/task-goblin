@@ -47,6 +47,7 @@ export interface Task {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
+  choreSkips: string | null; // JSON: {"pr-checks": true, ...}
 }
 
 // Linked note summary (id + title only)
@@ -102,7 +103,14 @@ export interface Repository {
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names
+  slackChannel: string | null; // Slack channel for review requests
   worktrees?: Worktree[];
+}
+
+export interface TeamChannel {
+  id: number;
+  githubTeamSlug: string;
+  slackChannel: string;
 }
 
 export interface Worktree {

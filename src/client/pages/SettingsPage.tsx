@@ -2,6 +2,7 @@ import { JiraConfigForm } from "@/client/components/settings/JiraConfigForm";
 import { GitHubConfigForm } from "@/client/components/settings/GitHubConfigForm";
 import { RepositoryList } from "@/client/components/settings/RepositoryList";
 import { StatusCategoriesForm } from "@/client/components/settings/StatusCategoriesForm";
+import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
 import { Separator } from "@/client/components/ui/separator";
 
 export function SettingsPage() {
@@ -27,6 +28,16 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">GitHub Repositories</h2>
           <RepositoryList />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Team Channel Mappings</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Map GitHub team slugs to Slack channels. When a PR has CODEOWNERS review requests, the goblin chore runner will notify the matching channels.
+          </p>
+          <TeamChannelList />
         </section>
 
         <Separator />

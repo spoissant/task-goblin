@@ -1,0 +1,1 @@
+ALTER TABLE `repositories` ADD `slack_channel` text;

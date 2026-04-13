@@ -133,6 +133,7 @@ export const repositoryRoutes: Routes = {
       if (body.repo !== undefined) updates.repo = body.repo;
       if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
       if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
+      if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel || null;
       if (body.deploymentBranches !== undefined) {
         updates.deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
           ? JSON.stringify(body.deploymentBranches)

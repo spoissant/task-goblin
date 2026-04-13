@@ -43,6 +43,17 @@ export const taskRoutes: Routes = {
         conditions.push(eq(tasks.status, status));
       }
 
+      // Filter by multiple statuses (comma-separated, e.g. "Code Review,QA,Ready to Merge")
+      const statusesParam = url.searchParams.get("statuses");
+      if (statusesParam) {
+        const statusList = statusesParam.split(",").map((s) => s.trim()).filter(Boolean);
+        if (statusList.length === 1) {
+          conditions.push(eq(tasks.status, statusList[0]));
+        } else if (statusList.length > 1) {
+          conditions.push(sql`${tasks.status} IN (${sql.join(statusList.map((s) => sql`${s}`), sql`, `)})`);
+        }
+      }
+
       // Filter for orphan Jira tasks (jiraKey set, no prNumber)
       if (orphanJira === "true") {
         conditions.push(isNotNull(tasks.jiraKey));
@@ -307,6 +318,7 @@ export const taskRoutes: Routes = {
       if ("description" in body) updates.description = body.description;
       if ("status" in body) updates.status = body.status;
       if ("highPriority" in body) updates.highPriority = body.highPriority ? 1 : 0;
+      if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
 
       const result = await db
         .update(tasks)

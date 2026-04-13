@@ -49,6 +49,7 @@ export function registerTaskTools(server: McpServer) {
         "List tasks with optional filters. Returns paginated results.",
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
+        statuses: z.string().optional().describe("Comma-separated list of status names to filter by (e.g. 'Code Review,Ready to Merge')"),
         title: z.string().optional().describe("Substring search on title, Jira key, or branch name"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
@@ -58,10 +59,11 @@ export function registerTaskTools(server: McpServer) {
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    async ({ status, title, completed, checks, maxReviews, hasComments, limit, offset }) => {
+    async ({ status, statuses, title, completed, checks, maxReviews, hasComments, limit, offset }) => {
       try {
         const params = new URLSearchParams();
         if (status) params.set("status", status);
+        if (statuses) params.set("statuses", statuses);
         if (title) params.set("title", title);
         if (checks) params.set("checks", checks);
         if (maxReviews !== undefined) params.set("maxReviews", String(maxReviews));
@@ -160,9 +162,10 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
+        choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"pr-checks\": true}'"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status }) => {
+    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, choreSkips }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
 
@@ -170,6 +173,7 @@ export function registerTaskTools(server: McpServer) {
         if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status;
+        if (choreSkips !== undefined) updates.choreSkips = choreSkips;
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
