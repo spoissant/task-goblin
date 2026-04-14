@@ -10,6 +10,7 @@ const CHORE_LABELS: Record<string, string> = {
   "review-request": "Review Request",
   "merge-conflicts": "Merge Conflicts",
   "deploy-staging": "Deploy to Staging",
+  "dev-qa": "Dev QA",
 };
 
 interface ChoreSkipsEditorProps {

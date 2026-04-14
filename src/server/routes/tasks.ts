@@ -154,9 +154,12 @@ export const taskRoutes: Routes = {
         }
       }
 
+      const repoMap = await buildRepoMap(taskList);
+
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
+        repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
       }));
 
       // Get total count for pagination

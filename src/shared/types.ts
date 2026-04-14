@@ -71,6 +71,7 @@ export interface TaskWithRepository extends Task {
 // Task with pending todos for dashboard
 export interface TaskWithTodos extends Task {
   pendingTodos: NextTodo[];
+  repository: Repository | null;
 }
 
 export interface Todo {
