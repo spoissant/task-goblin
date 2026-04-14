@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useLocalStorage } from "@/client/lib/useLocalStorage";
 import {
   DndContext,
   closestCenter,
@@ -49,12 +50,12 @@ export function TasksPage() {
   const [deployResults, setDeployResults] = useState<BulkDeployResult | null>(null);
 
   // Todo state
-  const [hideLowPriority, setHideLowPriority] = useState(true);
-  const [showCompleted, setShowCompleted] = useState(false);
-  const [groupByTask, setGroupByTask] = useState(false);
+  const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
+  const [showCompleted, setShowCompleted] = useLocalStorage("tasksPage.showCompleted", false);
+  const [groupByTask, setGroupByTask] = useLocalStorage("tasksPage.groupByTask", false);
   const [newTodo, setNewTodo] = useState("");
   const [isAddingTodo, setIsAddingTodo] = useState(false);
-  const [todosCollapsed, setTodosCollapsed] = useState(false);
+  const [todosCollapsed, setTodosCollapsed] = useLocalStorage("tasksPage.todosCollapsed", false);
   const [selectedTodoTaskId, setSelectedTodoTaskId] = useState<number | null>(null);
 
   useEffect(() => {

@@ -1,23 +1,14 @@
-import { useState, useEffect } from "react";
 import { Outlet } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { Toaster } from "@/client/components/ui/sonner";
 import { cn } from "@/client/lib/utils";
 import { useRealtimeUpdates } from "@/client/lib/useRealtimeUpdates";
-
-const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
+import { useLocalStorage } from "@/client/lib/useLocalStorage";
 
 export function RootLayout() {
   useRealtimeUpdates();
 
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    return stored === "true";
-  });
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
-  }, [isCollapsed]);
+  const [isCollapsed, setIsCollapsed] = useLocalStorage("sidebar-collapsed", false);
 
   const toggleCollapsed = () => setIsCollapsed((prev) => !prev);
 
