@@ -130,12 +130,12 @@ const CHORES: ChoreDefinition[] = [
     number: 7,
     key: "dev-qa",
     name: "Dev QA",
-    condition: "status = Code Review AND onDeploymentBranches.length > 0",
+    condition: "status = Code Review AND deployedOnBranches.length > 0",
     prompt: "/chore-dev-qa {{taskId}}",
     tier: 1,
     match: (t) =>
       (t.status === "Code Review" || t.status === "Code review") &&
-      parseDeploymentBranches(t.onDeploymentBranches).length > 0,
+      parseDeploymentBranches(t.deployedOnBranches).length > 0,
   },
   {
     number: 8,

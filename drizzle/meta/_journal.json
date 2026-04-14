@@ -183,6 +183,13 @@
       "when": 1775834027005,
       "tag": "0025_loud_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1776197379809,
+      "tag": "0026_tense_archangel",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,7 @@ export const tasks = sqliteTable("tasks", {
   approvedReviewCount: integer("approved_review_count"),
   prSyncedAt: text("pr_synced_at"),
   onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on
+  deployedOnBranches: text("deployed_on_branches"), // JSON array of deployment branches where this PR's code is actually deployed
   unresolvedCommentCount: integer("unresolved_comment_count").default(0),
   hasConflicts: integer("has_conflicts").default(0),
   changedFiles: integer("changed_files"),
@@ -63,6 +64,7 @@ export const repositories = sqliteTable("repositories", {
   enabled: integer("enabled").notNull().default(1), // SQLite bool
   badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
+  deploymentUrls: text("deployment_urls"), // JSON object mapping branch -> environment URL (e.g., {"staging": "https://staging.hvbrt.com"})
   slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
 });
 

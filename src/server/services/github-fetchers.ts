@@ -163,6 +163,67 @@ export async function fetchCheckRunsStatus(
   }
 }
 
+export async function fetchDeployedVersions(
+  deploymentUrls: Record<string, string>
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+
+  await Promise.allSettled(
+    Object.entries(deploymentUrls).map(async ([branch, url]) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const res = await fetch(url, { method: "HEAD", signal: controller.signal });
+        const version = res.headers.get("x-app-version");
+        if (version) {
+          const match = version.match(/-([a-f0-9]{7,40})\.\w+$/);
+          if (match) {
+            result.set(branch, match[1]);
+          }
+        }
+      } catch {
+        // Skip on error
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+
+  return result;
+}
+
+export async function detectDeployedBranches(
+  client: GitHubClient,
+  owner: string,
+  repo: string,
+  headBranch: string,
+  deployedVersions: Map<string, string>
+): Promise<string[]> {
+  if (deployedVersions.size === 0) return [];
+
+  const entries = [...deployedVersions.entries()];
+
+  const results = await Promise.allSettled(
+    entries.map(([, sha]) =>
+      client.repos.compareCommits({
+        owner,
+        repo,
+        base: sha,
+        head: headBranch,
+      })
+    )
+  );
+
+  return results
+    .map((result, i) => {
+      if (result.status === "fulfilled" && result.value.data.ahead_by === 0) {
+        return entries[i][0]; // branch name
+      }
+      return null;
+    })
+    .filter((branch): branch is string => branch !== null);
+}
+
 export async function detectDeploymentBranches(
   client: GitHubClient,
   owner: string,

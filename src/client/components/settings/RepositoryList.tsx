@@ -38,6 +38,8 @@ export function RepositoryList() {
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
   const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
   const [slackChannelInputs, setSlackChannelInputs] = useState<Record<number, string>>({});
+  // URL inputs keyed by `${repoId}-${branch}`
+  const [deploymentUrlInputs, setDeploymentUrlInputs] = useState<Record<string, string>>({});
 
   const handleBadgeColorChange = (id: number, color: string) => {
     updateRepo.mutate(
@@ -68,6 +70,32 @@ export function RepositoryList() {
     } catch {
       return [];
     }
+  };
+
+  const parseDeploymentUrls = (json: string | null): Record<string, string> => {
+    if (!json) return {};
+    try {
+      return JSON.parse(json);
+    } catch {
+      return {};
+    }
+  };
+
+  const handleDeploymentUrlBlur = (id: number, branch: string, currentUrls: Record<string, string>) => {
+    const key = `${id}-${branch}`;
+    const val = deploymentUrlInputs[key];
+    if (val === undefined) return;
+    const trimmed = val.trim();
+    const updated = { ...currentUrls };
+    if (trimmed) {
+      updated[branch] = trimmed;
+    } else {
+      delete updated[branch];
+    }
+    updateRepo.mutate(
+      { id, deploymentUrls: Object.keys(updated).length > 0 ? updated : null },
+      { onError: () => toast.error("Failed to update deployment URL") }
+    );
   };
 
   const handleAddDeploymentBranch = (id: number, currentBranches: string[]) => {
@@ -236,24 +264,37 @@ export function RepositoryList() {
                     <TableCell>
                       {(() => {
                         const branches = parseDeploymentBranches(repo.deploymentBranches);
+                        const urls = parseDeploymentUrls(repo.deploymentUrls);
                         return (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {branches.map((branch) => (
-                              <Badge
-                                key={branch}
-                                variant="secondary"
-                                className="gap-1 pr-1"
-                              >
-                                {branch}
-                                <button
-                                  type="button"
-                                  className="rounded-full hover:bg-muted-foreground/20 p-0.5"
-                                  onClick={() => handleRemoveDeploymentBranch(repo.id, branches, branch)}
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </Badge>
-                            ))}
+                          <div className="space-y-1.5">
+                            {branches.map((branch) => {
+                              const urlKey = `${repo.id}-${branch}`;
+                              const urlValue = deploymentUrlInputs[urlKey] ?? (urls[branch] || "");
+                              return (
+                                <div key={branch} className="flex items-center gap-1.5">
+                                  <Badge variant="secondary" className="gap-1 pr-1 shrink-0">
+                                    {branch}
+                                    <button
+                                      type="button"
+                                      className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                                      onClick={() => handleRemoveDeploymentBranch(repo.id, branches, branch)}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </Badge>
+                                  <Input
+                                    className="h-6 w-48 text-xs font-mono"
+                                    placeholder="https://..."
+                                    value={urlValue}
+                                    onChange={(e) => setDeploymentUrlInputs((prev) => ({ ...prev, [urlKey]: e.target.value }))}
+                                    onBlur={() => handleDeploymentUrlBlur(repo.id, branch, urls)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })}
                             <Input
                               className="h-6 w-20 text-xs"
                               placeholder="staging"

@@ -8,6 +8,8 @@ import {
   fetchUnresolvedCommentCount,
   fetchCheckRunsStatus,
   detectDeploymentBranches,
+  fetchDeployedVersions,
+  detectDeployedBranches,
 } from "./github-fetchers";
 import { upsertPrTask } from "./github-upsert";
 import { isApiError } from "../lib/errors";
@@ -42,6 +44,18 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
   // Build lookup maps for O(1) repo access
   const reposByKey = new Map(repos.map((r) => [`${r.owner}/${r.repo}`, r]));
   const reposById = new Map(repos.map((r) => [r.id, r]));
+
+  // Pre-fetch deployed versions for repos with deploymentUrls configured
+  const deployedVersionsByRepo = new Map<number, Map<string, string>>();
+  await Promise.all(
+    repos
+      .filter((r) => r.deploymentUrls)
+      .map(async (r) => {
+        const urls = JSON.parse(r.deploymentUrls!) as Record<string, string>;
+        const versions = await fetchDeployedVersions(urls);
+        if (versions.size > 0) deployedVersionsByRepo.set(r.id, versions);
+      })
+  );
 
   // Build repo filter: (repo:owner/name OR repo:owner/name2 ...)
   const repoFilters = repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ");
@@ -99,8 +113,10 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
               ? JSON.parse(repo.deploymentBranches)
               : [];
 
-            // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
-            const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
+            const deployedVersions = deployedVersionsByRepo.get(repo.id) ?? new Map<string, string>();
+
+            // Fetch approved review count, check runs, deployment branches, deployed versions, and unresolved comments in parallel
+            const [approvedCount, checksResult, onDeploymentBranches, deployedOnBranches, unresolvedCount] = await Promise.all([
               fetchApprovedReviewCount(client, owner, repoName, item.number),
               fullPr.head?.sha
                 ? fetchCheckRunsStatus(client, owner, repoName, fullPr.head.sha)
@@ -108,10 +124,13 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
               fullPr.head?.ref && deploymentBranches.length > 0
                 ? detectDeploymentBranches(client, owner, repoName, fullPr.head.ref, deploymentBranches)
                 : Promise.resolve([]),
+              fullPr.head?.ref && deployedVersions.size > 0
+                ? detectDeployedBranches(client, owner, repoName, fullPr.head.ref, deployedVersions)
+                : Promise.resolve([]),
               fetchUnresolvedCommentCount(client, owner, repoName, item.number),
             ]);
 
-            const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
+            const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount, deployedOnBranches);
             return upsertPrTask(taskData);
           })
         );
@@ -179,7 +198,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
           ]);
 
           // Orphaned PRs are closed/merged, clear deployment branches
-          const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount);
+          const taskData = mapPrToTaskData(pr, repo.id, approvedCount, checksResult, [], unresolvedCount, []);
           return upsertPrTask(taskData);
         })
       );
@@ -268,8 +287,13 @@ export async function syncGitHubPullRequestByNumber(
     // Detect deployment branches only for open PRs
     const isOpen = pr.state === "open" && !pr.merged;
 
-    // Fetch approved review count, check runs, deployment branches, and unresolved comments in parallel
-    const [approvedCount, checksResult, onDeploymentBranches, unresolvedCount] = await Promise.all([
+    // Pre-fetch deployed versions for this repo if configured
+    const deployedVersions = repository.deploymentUrls
+      ? await fetchDeployedVersions(JSON.parse(repository.deploymentUrls) as Record<string, string>)
+      : new Map<string, string>();
+
+    // Fetch approved review count, check runs, deployment branches, deployed versions, and unresolved comments in parallel
+    const [approvedCount, checksResult, onDeploymentBranches, deployedOnBranches, unresolvedCount] = await Promise.all([
       fetchApprovedReviewCount(client, owner, repo, prNumber),
       pr.head?.sha
         ? fetchCheckRunsStatus(client, owner, repo, pr.head.sha)
@@ -277,10 +301,13 @@ export async function syncGitHubPullRequestByNumber(
       isOpen && pr.head?.ref && deploymentBranches.length > 0
         ? detectDeploymentBranches(client, owner, repo, pr.head.ref, deploymentBranches)
         : Promise.resolve([]),
+      isOpen && pr.head?.ref && deployedVersions.size > 0
+        ? detectDeployedBranches(client, owner, repo, pr.head.ref, deployedVersions)
+        : Promise.resolve([]),
       fetchUnresolvedCommentCount(client, owner, repo, prNumber),
     ]);
 
-    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount);
+    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount, deployedOnBranches);
     const status = await upsertPrTask(taskData);
     return { status };
   } catch (err: unknown) {

@@ -42,6 +42,7 @@ export interface Task {
   approvedReviewCount: number | null;
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
+  deployedOnBranches: string | null; // JSON array of deployment branches where this PR's code is actually deployed
   unresolvedCommentCount: number | null;
   hasConflicts: number | null;
   changedFiles: number | null;
@@ -104,6 +105,7 @@ export interface Repository {
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names
+  deploymentUrls: string | null; // JSON object mapping branch -> environment URL
   slackChannel: string | null; // Slack channel for review requests
   worktrees?: Worktree[];
 }

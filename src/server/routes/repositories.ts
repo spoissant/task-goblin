@@ -44,6 +44,12 @@ export const repositoryRoutes: Routes = {
         deploymentBranches = JSON.stringify(body.deploymentBranches);
       }
 
+      // Convert deploymentUrls object to JSON string (null if empty)
+      let deploymentUrls: string | null = null;
+      if (body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0) {
+        deploymentUrls = JSON.stringify(body.deploymentUrls);
+      }
+
       const result = await db
         .insert(repositories)
         .values({
@@ -52,6 +58,7 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
           badgeColor: body.badgeColor ?? null,
           deploymentBranches,
+          deploymentUrls,
         })
         .returning();
 
@@ -101,6 +108,14 @@ export const repositoryRoutes: Routes = {
           : null;
       }
 
+      // Convert deploymentUrls object to JSON string (null if empty)
+      let deploymentUrls: string | null = existing[0].deploymentUrls;
+      if (body.deploymentUrls !== undefined) {
+        deploymentUrls = body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0
+          ? JSON.stringify(body.deploymentUrls)
+          : null;
+      }
+
       const result = await db
         .update(repositories)
         .set({
@@ -109,6 +124,7 @@ export const repositoryRoutes: Routes = {
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
           badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
           deploymentBranches,
+          deploymentUrls,
         })
         .where(eq(repositories.id, id))
         .returning();
@@ -137,6 +153,11 @@ export const repositoryRoutes: Routes = {
       if (body.deploymentBranches !== undefined) {
         updates.deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
           ? JSON.stringify(body.deploymentBranches)
+          : null;
+      }
+      if (body.deploymentUrls !== undefined) {
+        updates.deploymentUrls = body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0
+          ? JSON.stringify(body.deploymentUrls)
           : null;
       }
       if (Object.keys(updates).length === 0) {
