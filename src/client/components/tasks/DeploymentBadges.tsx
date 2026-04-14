@@ -33,7 +33,7 @@ export function DeploymentBadges({ branches, deployedBranches }: DeploymentBadge
   return (
     <div className="flex flex-wrap gap-1">
       {deployed.map((branch) => (
-        <Badge key={branch} variant="secondary" className="text-xs">
+        <Badge key={branch} variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
           {branch}
         </Badge>
       ))}
