@@ -4,14 +4,14 @@ import { useUpdateTask } from "@/client/lib/queries";
 import { toast } from "sonner";
 
 const CHORE_LABELS: Record<string, string> = {
-  "jira-create-ticket": "Create Jira Ticket",
-  "pr-checks": "PR Checks",
-  "pr-comments": "PR Comments",
-  "draft-review": "Draft Review",
-  "review-request": "Review Request",
-  "merge-conflicts": "Merge Conflicts",
-  "deploy-staging": "Deploy to Staging",
-  "dev-qa": "Dev QA",
+  "assign-jira-ticket": "Assign Jira Ticket",
+  "fix-pr-checks": "Fix PR checks",
+  "address-pr-comments": "Address PR Comments",
+  "code-review-pr": "Code review my PR",
+  "request-reviews": "Request Code Reviews",
+  "fix-merge-conflicts": "Fix Merge Conflicts",
+  "deploy-test-env": "Deploy to Test Env",
+  "dev-qa-video": "Requires Dev QA Video",
 };
 
 interface ChoreSkipsEditorProps {

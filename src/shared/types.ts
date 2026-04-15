@@ -48,7 +48,7 @@ export interface Task {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
-  choreSkips: string | null; // JSON: {"pr-checks": true, ...}
+  choreSkips: string | null; // JSON: {"fix-pr-checks": true, ...}
 }
 
 // Linked note summary (id + title only)

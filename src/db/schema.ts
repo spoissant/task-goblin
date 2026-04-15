@@ -42,7 +42,7 @@ export const tasks = sqliteTable("tasks", {
   deletions: integer("deletions"),
 
   // Automation flags (not synced from Jira/GitHub)
-  choreSkips: text("chore_skips"), // JSON: {"pr-checks": true, "pr-comments": true, ...}
+  choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, ...}
 });
 
 // 2. Todo - Checklist items linked only to tasks

@@ -162,7 +162,7 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
-        choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"pr-checks\": true}'"),
+        choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
       },
     },
     async ({ id, jiraKey, prNumber, repo, branch, title, description, status, choreSkips }) => {
