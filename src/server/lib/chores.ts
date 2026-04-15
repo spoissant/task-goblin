@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
-import { getNotCompletedCondition } from "./task-status";
+import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
 
@@ -14,7 +14,7 @@ interface ChoreDefinition {
   name: string;
   condition: string;
   prompt: string; // template: {{taskId}}, {{jiraKey}}
-  tier: 1 | 2 | 3;
+  categories: string[] | null; // null = all active tasks; array = category names from DB
   match: (task: TaskRow, repo: RepoRow | null) => boolean;
 }
 
@@ -36,17 +36,6 @@ export interface ChoreTask {
   status: string;
   repository: { owner: string; repo: string } | null;
 }
-
-const TIER_1_STATUSES = ["Code Review", "Code review", "Ready for Test", "QA", "Design QA", "Ready to Merge"];
-
-// Lower value = closer to merge = sorted first
-const STATUS_MERGE_ORDER: Record<string, number> = {
-  "ready to merge": 0,
-  "design qa": 1,
-  "qa": 2,
-  "ready for test": 3,
-  "code review": 4,
-};
 
 function parseChoreSkips(value: string | null): Record<string, boolean> {
   if (!value) return {};
@@ -72,7 +61,7 @@ const CHORES: ChoreDefinition[] = [
     name: "Create Jira Ticket",
     condition: "prNumber != null AND jiraKey = null",
     prompt: "/chore-jira-create-ticket {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t) => t.prNumber !== null && !t.jiraKey,
   },
   {
@@ -81,7 +70,7 @@ const CHORES: ChoreDefinition[] = [
     name: "Failed PR Checks",
     condition: "checksStatus = failing",
     prompt: "/chore-pr-checks {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t) => t.checksStatus === "failing",
   },
   {
@@ -90,16 +79,16 @@ const CHORES: ChoreDefinition[] = [
     name: "Unresolved PR Comments",
     condition: "unresolvedCommentCount > 0",
     prompt: "/chore-pr-comments {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t) => (t.unresolvedCommentCount ?? 0) > 0,
   },
   {
     number: 4,
     key: "draft-review",
     name: "Draft PR Pre-Review",
-    condition: "isDraft = true",
+    condition: "status category = Code Review AND isDraft = true",
     prompt: "/chore-draft-review {{taskId}}",
-    tier: 1,
+    categories: ["Code Review"],
     match: (t) => t.isDraft === 1,
   },
   {
@@ -108,7 +97,7 @@ const CHORES: ChoreDefinition[] = [
     name: "Request Code Reviews",
     condition: "isDraft = false AND prState = open AND approvedReviewCount < 2",
     prompt: "/chore-request-reviews {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t) => t.isDraft === 0 && t.prState === "open" && (t.approvedReviewCount ?? 0) < 2,
   },
   {
@@ -117,7 +106,7 @@ const CHORES: ChoreDefinition[] = [
     name: "Merge Conflicts",
     condition: "hasConflicts = true",
     prompt: "/chore-merge-conflicts {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t) => t.hasConflicts === 1,
   },
   {
@@ -126,7 +115,7 @@ const CHORES: ChoreDefinition[] = [
     name: "Deploy to Staging",
     condition: "prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
     prompt: "/chore-deploy-staging {{taskId}}",
-    tier: 1,
+    categories: null,
     match: (t, repo) =>
       t.prState === "open" &&
       t.checksStatus === "passing" &&
@@ -139,30 +128,28 @@ const CHORES: ChoreDefinition[] = [
     number: 8,
     key: "dev-qa",
     name: "Dev QA",
-    condition: "status = Code Review AND deployedOnBranches.length > 0",
+    condition: "status category = Code Review AND deployedOnBranches.length > 0",
     prompt: "/chore-dev-qa {{taskId}}",
-    tier: 1,
-    match: (t) =>
-      (t.status === "Code Review" || t.status === "Code review") &&
-      parseDeploymentBranches(t.deployedOnBranches).length > 0,
+    categories: ["Code Review"],
+    match: (t) => parseDeploymentBranches(t.deployedOnBranches).length > 0,
   },
   {
     number: 9,
     key: "continue-work",
     name: "Continue In Progress",
-    condition: "status = In Progress",
+    condition: "status category = In Progress",
     prompt: "/chore-continue-work {{taskId}}",
-    tier: 2,
-    match: (t) => t.status === "In Progress",
+    categories: ["In Progress"],
+    match: () => true,
   },
   {
     number: 10,
     key: "start-task",
     name: "Start New Task",
-    condition: "status IN (To Do, Backlog, Ready to refine)",
+    condition: "status category = Backlog",
     prompt: "/chore-start-task {{taskId}}",
-    tier: 3,
-    match: (t) => ["To Do", "Backlog", "Ready to refine"].includes(t.status),
+    categories: ["Backlog"],
+    match: () => true,
   },
 ];
 
@@ -183,25 +170,6 @@ function resolvePrompt(template: string, task: TaskRow): string {
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };
 
-function sortTier1(list: TaskWithRepo[]): TaskWithRepo[] {
-  return [...list].sort((a, b) => {
-    const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
-    if (hpDiff !== 0) return hpDiff;
-    const aOrder = STATUS_MERGE_ORDER[a.task.status.toLowerCase()] ?? 99;
-    const bOrder = STATUS_MERGE_ORDER[b.task.status.toLowerCase()] ?? 99;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    return a.task.id - b.task.id;
-  });
-}
-
-function sortTier23(list: TaskWithRepo[]): TaskWithRepo[] {
-  return [...list].sort((a, b) => {
-    const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
-    if (hpDiff !== 0) return hpDiff;
-    return a.task.id - b.task.id;
-  });
-}
-
 export interface GetChoresOptions {
   minChore?: number;
   maxChore?: number;
@@ -219,7 +187,18 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
 
   if (filteredChores.length === 0) return [];
 
-  const neededTiers = new Set(filteredChores.map((c) => c.tier));
+  // Load status categories once — used for resolving category names → status strings and for sorting
+  const allCategories = await getStatusCategories();
+
+  const categoryToStatuses = new Map<string, string[]>();
+  const statusToDisplayOrder = new Map<string, number>();
+  for (const cat of allCategories) {
+    const statuses = [cat.name, ...cat.jiraMappings];
+    categoryToStatuses.set(cat.name, statuses);
+    for (const s of statuses) {
+      statusToDisplayOrder.set(s.toLowerCase(), cat.displayOrder);
+    }
+  }
 
   // Optional repo filter — resolve owner/repo to ID
   let repoId: number | null = null;
@@ -236,41 +215,71 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
 
   const notCompleted = getNotCompletedCondition();
 
+  async function fetchAllActive(): Promise<TaskRow[]> {
+    const conditions = [notCompleted];
+    if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
+    return db.select().from(tasks).where(and(...conditions));
+  }
+
   async function fetchByStatuses(statuses: string[]): Promise<TaskRow[]> {
+    if (statuses.length === 0) return [];
     const conditions = [
       notCompleted,
       sql`${tasks.status} IN (${sql.join(statuses.map((s) => sql`${s}`), sql`, `)})`,
     ];
-    if (repoId !== null) {
-      conditions.push(eq(tasks.repositoryId, repoId));
-    }
+    if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
     return db.select().from(tasks).where(and(...conditions));
   }
 
-  const [tier1Rows, tier2Rows, tier3Rows] = await Promise.all([
-    neededTiers.has(1) ? fetchByStatuses(TIER_1_STATUSES) : Promise.resolve([]),
-    neededTiers.has(2) ? fetchByStatuses(["In Progress"]) : Promise.resolve([]),
-    neededTiers.has(3) ? fetchByStatuses(["To Do", "Backlog", "Ready to refine"]) : Promise.resolve([]),
-  ]);
+  // Collect unique category keys needed by the filtered chore set
+  const neededKeys = new Set<string | null>();
+  for (const chore of filteredChores) {
+    neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
+  }
 
-  const allTasks = [...tier1Rows, ...tier2Rows, ...tier3Rows];
-  const repoMap = await buildRepoMap(allTasks);
+  // Batch-fetch all unique category sets in parallel
+  const batchRows = new Map<string | null, TaskRow[]>();
+  await Promise.all(
+    [...neededKeys].map(async (key) => {
+      let rows: TaskRow[];
+      if (key === null) {
+        rows = await fetchAllActive();
+      } else {
+        const categoryNames: string[] = JSON.parse(key);
+        const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
+        rows = await fetchByStatuses(statuses);
+      }
+      batchRows.set(key, rows);
+    })
+  );
 
-  function attachRepo(rows: TaskRow[]): TaskWithRepo[] {
-    return rows.map((task) => ({
+  // Build a single repoMap across all fetched tasks
+  const allRows = [...batchRows.values()].flat();
+  const repoMap = await buildRepoMap(allRows);
+
+  // Attach repos and sort each batch: highPriority DESC → displayOrder DESC (closer to merge first) → id ASC
+  const candidateCache = new Map<string | null, TaskWithRepo[]>();
+  for (const [key, rows] of batchRows) {
+    const withRepo: TaskWithRepo[] = rows.map((task) => ({
       task,
       repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
     }));
+    withRepo.sort((a, b) => {
+      const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
+      if (hpDiff !== 0) return hpDiff;
+      const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? -1;
+      const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? -1;
+      if (aOrder !== bOrder) return bOrder - aOrder;
+      return a.task.id - b.task.id;
+    });
+    candidateCache.set(key, withRepo);
   }
-
-  const tier1 = sortTier1(attachRepo(tier1Rows));
-  const tier2 = sortTier23(attachRepo(tier2Rows));
-  const tier3 = sortTier23(attachRepo(tier3Rows));
 
   const entries: ChoreEntry[] = [];
 
   for (const chore of filteredChores) {
-    const candidates = chore.tier === 1 ? tier1 : chore.tier === 2 ? tier2 : tier3;
+    const cacheKey = chore.categories ? JSON.stringify(chore.categories) : null;
+    const candidates = candidateCache.get(cacheKey) ?? [];
 
     for (const { task, repo } of candidates) {
       const skips = parseChoreSkips(task.choreSkips);
