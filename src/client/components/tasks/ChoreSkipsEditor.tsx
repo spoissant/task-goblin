@@ -4,6 +4,7 @@ import { useUpdateTask } from "@/client/lib/queries";
 import { toast } from "sonner";
 
 const CHORE_LABELS: Record<string, string> = {
+  "jira-create-ticket": "Create Jira Ticket",
   "pr-checks": "PR Checks",
   "pr-comments": "PR Comments",
   "draft-review": "Draft Review",

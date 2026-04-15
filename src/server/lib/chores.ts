@@ -68,6 +68,15 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
 const CHORES: ChoreDefinition[] = [
   {
     number: 1,
+    key: "jira-create-ticket",
+    name: "Create Jira Ticket",
+    condition: "prNumber != null AND jiraKey = null",
+    prompt: "/chore-jira-create-ticket {{taskId}}",
+    tier: 1,
+    match: (t) => t.prNumber !== null && !t.jiraKey,
+  },
+  {
+    number: 2,
     key: "pr-checks",
     name: "Failed PR Checks",
     condition: "checksStatus = failing",
@@ -76,7 +85,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.checksStatus === "failing",
   },
   {
-    number: 2,
+    number: 3,
     key: "pr-comments",
     name: "Unresolved PR Comments",
     condition: "unresolvedCommentCount > 0",
@@ -85,7 +94,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => (t.unresolvedCommentCount ?? 0) > 0,
   },
   {
-    number: 3,
+    number: 4,
     key: "draft-review",
     name: "Draft PR Pre-Review",
     condition: "isDraft = true",
@@ -94,7 +103,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.isDraft === 1,
   },
   {
-    number: 4,
+    number: 5,
     key: "review-request",
     name: "Request Code Reviews",
     condition: "isDraft = false AND prState = open AND approvedReviewCount < 2",
@@ -103,7 +112,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.isDraft === 0 && t.prState === "open" && (t.approvedReviewCount ?? 0) < 2,
   },
   {
-    number: 5,
+    number: 6,
     key: "merge-conflicts",
     name: "Merge Conflicts",
     condition: "hasConflicts = true",
@@ -112,7 +121,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.hasConflicts === 1,
   },
   {
-    number: 6,
+    number: 7,
     key: "deploy-staging",
     name: "Deploy to Staging",
     condition: "prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
@@ -127,7 +136,7 @@ const CHORES: ChoreDefinition[] = [
       !isOnAnyDeploymentBranch(t, repo),
   },
   {
-    number: 7,
+    number: 8,
     key: "dev-qa",
     name: "Dev QA",
     condition: "status = Code Review AND deployedOnBranches.length > 0",
@@ -138,7 +147,7 @@ const CHORES: ChoreDefinition[] = [
       parseDeploymentBranches(t.deployedOnBranches).length > 0,
   },
   {
-    number: 8,
+    number: 9,
     key: "continue-work",
     name: "Continue In Progress",
     condition: "status = In Progress",
@@ -147,7 +156,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.status === "In Progress",
   },
   {
-    number: 9,
+    number: 10,
     key: "start-task",
     name: "Start New Task",
     condition: "status IN (To Do, Backlog, Ready to refine)",
