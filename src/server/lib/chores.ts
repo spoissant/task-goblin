@@ -30,6 +30,7 @@ export interface ChoreTask {
   id: number;
   title: string;
   jiraKey: string | null;
+  sprint: string | null;
   prNumber: number | null;
   headBranch: string | null;
   baseBranch: string | null;
@@ -295,6 +296,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
           id: task.id,
           title: task.title,
           jiraKey: task.jiraKey ?? null,
+          sprint: task.sprint ?? null,
           prNumber: task.prNumber ?? null,
           headBranch: task.headBranch ?? null,
           baseBranch: task.baseBranch ?? null,
