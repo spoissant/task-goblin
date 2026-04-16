@@ -38,6 +38,28 @@ function formatRelativeTime(dateString: string): string {
   return rtf.format(diffSeconds, "second");
 }
 
+type SizeCategory = "small" | "medium" | "large";
+
+function categorizePR(pr: ReviewRequest): SizeCategory {
+  const files = pr.changedFiles ?? Infinity;
+  const lines = (pr.additions ?? 0) + (pr.deletions ?? 0);
+  if (files <= 5 && lines <= 200) return "small";
+  if (files <= 15 && lines <= 800) return "medium";
+  return "large";
+}
+
+const SIZE_LABELS: Record<SizeCategory, string> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+};
+
+const SIZE_DESCRIPTIONS: Record<SizeCategory, string> = {
+  small: "< 10 min",
+  medium: "< 30 min",
+  large: "30+ min",
+};
+
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
@@ -52,6 +74,15 @@ export function ReviewsPage() {
     }
     return map;
   }, [reposData]);
+
+  const groups = useMemo(() => {
+    if (!data?.items) return null;
+    const grouped: Record<SizeCategory, ReviewRequest[]> = { small: [], medium: [], large: [] };
+    for (const item of data.items) {
+      grouped[categorizePR(item)].push(item);
+    }
+    return grouped;
+  }, [data]);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -90,25 +121,45 @@ export function ReviewsPage() {
         <EmptyState icon={GitPullRequestArrow} message="No PRs awaiting your review" />
       )}
 
-      {data && data.items.length > 0 && (
+      {groups && data && data.items.length > 0 && (
         <TooltipProvider>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[80px]">PR</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead className="w-[150px]">Repo</TableHead>
-                <TableHead className="w-[120px]">Author</TableHead>
-                <TableHead className="w-[120px]">Created</TableHead>
-                <TableHead className="w-[80px]">Reviews</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.items.map((request) => (
-                <ReviewRequestRow key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`} request={request} repoBySlug={repoBySlug} />
-              ))}
-            </TableBody>
-          </Table>
+          <div className="space-y-8">
+            {(["small", "medium", "large"] as SizeCategory[]).map((size) => {
+              const prs = groups[size];
+              if (!prs.length) return null;
+              return (
+                <div key={size}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h2 className="text-base font-semibold">{SIZE_LABELS[size]}</h2>
+                    <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
+                    <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[80px]">PR</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="w-[150px]">Repo</TableHead>
+                        <TableHead className="w-[120px]">Author</TableHead>
+                        <TableHead className="w-[120px]">Created</TableHead>
+                        <TableHead className="w-[100px]">Changes</TableHead>
+                        <TableHead className="w-[80px]">Reviews</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {prs.map((request) => (
+                        <ReviewRequestRow
+                          key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`}
+                          request={request}
+                          repoBySlug={repoBySlug}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })}
+          </div>
         </TooltipProvider>
       )}
     </div>
@@ -169,6 +220,21 @@ function ReviewRequestRow({ request, repoBySlug }: ReviewRequestRowProps) {
       {/* Created */}
       <TableCell className="text-sm text-muted-foreground" title={new Date(request.createdAt).toLocaleString()}>
         {formatRelativeTime(request.createdAt)}
+      </TableCell>
+
+      {/* Changes */}
+      <TableCell>
+        {request.changedFiles == null ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs font-mono">
+            <Badge variant="outline" className="text-xs px-1.5">{request.changedFiles}</Badge>
+            <div className="flex flex-col leading-tight text-right">
+              <span className="text-green-600">+{request.additions ?? 0}</span>
+              <span className="text-red-600">-{request.deletions ?? 0}</span>
+            </div>
+          </div>
+        )}
       </TableCell>
 
       {/* Reviews */}

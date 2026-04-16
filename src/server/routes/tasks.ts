@@ -67,11 +67,16 @@ export const taskRoutes: Routes = {
       }
 
       if (title) {
-        conditions.push(or(
+        const orConditions = [
           like(tasks.title, `%${title}%`),
           like(tasks.jiraKey, `%${title}%`),
           like(tasks.headBranch, `%${title}%`),
-        ));
+        ];
+        const parsed = Number(title);
+        if (Number.isInteger(parsed) && parsed > 0) {
+          orConditions.push(eq(tasks.id, parsed));
+        }
+        conditions.push(or(...orConditions));
       }
 
       // Filter by checks status (passing / failing)
@@ -367,11 +372,16 @@ export const taskRoutes: Routes = {
         conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled')`);
       }
       if (title) {
-        conditions.push(or(
+        const orConditions = [
           like(tasks.title, `%${title}%`),
           like(tasks.jiraKey, `%${title}%`),
           like(tasks.headBranch, `%${title}%`),
-        ));
+        ];
+        const parsed = Number(title);
+        if (Number.isInteger(parsed) && parsed > 0) {
+          orConditions.push(eq(tasks.id, parsed));
+        }
+        conditions.push(or(...orConditions));
       }
       const whereCondition = and(...conditions);
 

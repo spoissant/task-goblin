@@ -259,6 +259,9 @@ export interface ReviewRequest {
   isDraft: boolean;
   approvedCount: number;
   createdAt: string;
+  changedFiles: number | null;
+  additions: number | null;
+  deletions: number | null;
 }
 
 // Helper type guard

@@ -126,46 +126,54 @@ export const githubRoutes: Routes = {
 
         const items: ReviewRequest[] = [];
 
-        for (const item of searchResult.data.items) {
-          // Extract owner/repo from repository_url
-          const repoUrlParts = item.repository_url.split("/");
-          const owner = repoUrlParts[repoUrlParts.length - 2];
-          const repo = repoUrlParts[repoUrlParts.length - 1];
-          const prNumber = item.number;
+        const results = await Promise.all(
+          searchResult.data.items.map(async (item) => {
+            // Extract owner/repo from repository_url
+            const repoUrlParts = item.repository_url.split("/");
+            const owner = repoUrlParts[repoUrlParts.length - 2];
+            const repo = repoUrlParts[repoUrlParts.length - 1];
+            const prNumber = item.number;
 
-          // Fetch reviews to count approvals
-          const reviewsResult = await client.pulls.listReviews({
-            owner,
-            repo,
-            pull_number: prNumber,
-          });
+            // Fetch reviews and PR details in parallel
+            const [reviewsResult, prDetails] = await Promise.all([
+              client.pulls.listReviews({ owner, repo, pull_number: prNumber }),
+              client.pulls.get({ owner, repo, pull_number: prNumber }),
+            ]);
 
-          // Count unique approving reviewers (latest state per user)
-          const reviewerStates = new Map<string, string>();
-          for (const review of reviewsResult.data) {
-            if (review.user?.login && review.state) {
-              reviewerStates.set(review.user.login, review.state);
+            // Count unique approving reviewers (latest state per user)
+            const reviewerStates = new Map<string, string>();
+            for (const review of reviewsResult.data) {
+              if (review.user?.login && review.state) {
+                reviewerStates.set(review.user.login, review.state);
+              }
             }
-          }
-          const approvedCount = Array.from(reviewerStates.values())
-            .filter((state) => state === "APPROVED").length;
+            const approvedCount = Array.from(reviewerStates.values())
+              .filter((state) => state === "APPROVED").length;
 
-          const userState = reviewerStates.get(config.username);
-          if (userState === "APPROVED") continue;
+            const userState = reviewerStates.get(config.username);
+            if (userState === "APPROVED") return null;
 
-          const isDraft = item.draft ?? false;
+            const isDraft = item.draft ?? false;
 
-          items.push({
-            prNumber,
-            title: item.title,
-            url: item.html_url,
-            repo: { owner, repo },
-            author: item.user?.login ?? "unknown",
-            state: isDraft ? "draft" : "open",
-            isDraft,
-            approvedCount,
-            createdAt: item.created_at,
-          });
+            return {
+              prNumber,
+              title: item.title,
+              url: item.html_url,
+              repo: { owner, repo },
+              author: item.user?.login ?? "unknown",
+              state: isDraft ? "draft" : "open",
+              isDraft,
+              approvedCount,
+              createdAt: item.created_at,
+              changedFiles: prDetails.data.changed_files ?? null,
+              additions: prDetails.data.additions ?? null,
+              deletions: prDetails.data.deletions ?? null,
+            } satisfies ReviewRequest;
+          })
+        );
+
+        for (const item of results) {
+          if (item !== null) items.push(item);
         }
 
         return json({ items, total: items.length });
