@@ -370,11 +370,6 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
   return sql`CASE ${sql.join(cases, sql` `)} END`;
 }
 
-// ============================================
-// SYNCHRONOUS VERSIONS (for backwards compatibility)
-// These use hardcoded defaults
-// ============================================
-
 /**
  * Legacy: Valid statuses for manually-created tasks
  * @deprecated Use getSelectableStatuses() instead
@@ -438,24 +433,4 @@ export function getNotCompletedCondition() {
   return sql`NOT (${getCompletedCondition()})`;
 }
 
-// SQL CASE expression for status ordering (lower = higher priority)
-export const statusOrderExpr = sql`CASE
-  WHEN LOWER(${tasks.status}) = 'done' THEN 0
-  WHEN LOWER(${tasks.status}) = 'cancelled' THEN 1
-  WHEN LOWER(${tasks.status}) = 'rejected' THEN 2
-  WHEN LOWER(${tasks.status}) = 'closed' THEN 3
-  WHEN LOWER(${tasks.status}) IN ('ready to prod', 'ready_to_prod') THEN 4
-  WHEN LOWER(${tasks.status}) IN ('ready to merge', 'ready_to_merge') THEN 5
-  WHEN LOWER(${tasks.status}) IN ('qa', 'design qa', 'design_qa') THEN 6
-  WHEN LOWER(${tasks.status}) IN ('ready for test', 'ready_for_test') THEN 7
-  WHEN LOWER(${tasks.status}) IN ('code review', 'code_review') THEN 8
-  WHEN LOWER(${tasks.status}) IN ('in progress', 'in_progress') THEN 9
-  WHEN LOWER(${tasks.status}) IN ('to do', 'todo') THEN 10
-  WHEN LOWER(${tasks.status}) = 'accepted' THEN 11
-  WHEN LOWER(${tasks.status}) = 'backlog' THEN 12
-  WHEN LOWER(${tasks.status}) IN ('on hold', 'on_hold') THEN 13
-  WHEN LOWER(${tasks.status}) IN ('triage needed', 'triage_needed') THEN 14
-  WHEN LOWER(${tasks.status}) = 'blocked' THEN 15
-  ELSE 16
-END`;
 

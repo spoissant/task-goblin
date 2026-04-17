@@ -11,7 +11,7 @@ import {
   jiraStatusNotInCondition,
   getCompletedCondition,
   getNotCompletedCondition,
-  statusOrderExpr,
+  getStatusOrderExprAsync,
   isStatusSelectable,
   getSelectableStatuses,
 } from "../lib/task-status";
@@ -120,7 +120,7 @@ export const taskRoutes: Routes = {
         query = query.where(and(...conditions)) as typeof query;
       }
 
-      query = query.orderBy(statusOrderExpr) as typeof query;
+      query = query.orderBy(await getStatusOrderExprAsync()) as typeof query;
 
       // Apply pagination
       query = query.limit(limit).offset(offset) as typeof query;
@@ -390,7 +390,7 @@ export const taskRoutes: Routes = {
         .select()
         .from(tasks)
         .where(whereCondition)
-        .orderBy(statusOrderExpr)
+        .orderBy(await getStatusOrderExprAsync())
         .limit(limit)
         .offset(offset);
 
@@ -430,7 +430,7 @@ export const taskRoutes: Routes = {
             )
           )
         )
-        .orderBy(statusOrderExpr);
+        .orderBy(await getStatusOrderExprAsync());
 
       const repoMap = await buildRepoMap(taskList);
 
@@ -457,7 +457,7 @@ export const taskRoutes: Routes = {
             jiraStatusNotInCondition()
           )
         )
-        .orderBy(statusOrderExpr);
+        .orderBy(await getStatusOrderExprAsync());
 
       return json({ items, total: items.length });
     },
@@ -480,7 +480,7 @@ export const taskRoutes: Routes = {
             )
           )
         )
-        .orderBy(statusOrderExpr);
+        .orderBy(await getStatusOrderExprAsync());
 
       const repoMap = await buildRepoMap(taskList);
 
