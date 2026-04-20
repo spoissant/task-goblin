@@ -48,6 +48,19 @@ function parseChoreSkips(value: string | null): Record<string, boolean> {
   }
 }
 
+const RESERVATION_TTL_MS = 30 * 60 * 1000;
+
+function isTaskReserved(workingOn: string | null): boolean {
+  if (!workingOn) return false;
+  try {
+    const parsed = JSON.parse(workingOn) as { at?: string };
+    if (!parsed.at) return false;
+    return Date.now() - Date.parse(parsed.at) < RESERVATION_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   if (!repo) return false;
   const repoBranches = parseDeploymentBranches(repo.deploymentBranches);
@@ -277,10 +290,12 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   // Attach repos and sort each batch: highPriority DESC → displayOrder DESC (closer to merge first) → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
   for (const [key, rows] of batchRows) {
-    const withRepo: TaskWithRepo[] = rows.map((task) => ({
-      task,
-      repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
-    }));
+    const withRepo: TaskWithRepo[] = rows
+      .filter((task) => !isTaskReserved(task.workingOn ?? null))
+      .map((task) => ({
+        task,
+        repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
+      }));
     withRepo.sort((a, b) => {
       const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
       if (hpDiff !== 0) return hpDiff;
@@ -329,6 +344,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     .filter((r) => {
       if (minChore !== undefined && (r.todo.choreRank ?? 0) < minChore) return false;
       if (maxChore !== undefined && (r.todo.choreRank ?? 0) > maxChore) return false;
+      if (isTaskReserved(r.task.workingOn ?? null)) return false;
       const skips = parseChoreSkips(r.task.choreSkips);
       if (skips[`custom-chore-${r.todo.id}`]) return false;
       return true;

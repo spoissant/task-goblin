@@ -43,6 +43,7 @@ export const tasks = sqliteTable("tasks", {
 
   // Automation flags (not synced from Jira/GitHub)
   choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, ...}
+  workingOn: text("working_on"), // JSON: {"choreKey": "request-reviews", "at": "2026-04-20T14:00:00Z"} or null
 }, (table) => [
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);

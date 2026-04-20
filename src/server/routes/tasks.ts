@@ -300,6 +300,7 @@ export const taskRoutes: Routes = {
       if ("status" in body) updates.status = body.status;
       if ("highPriority" in body) updates.highPriority = body.highPriority ? 1 : 0;
       if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
+      if ("workingOn" in body) updates.workingOn = body.workingOn;
 
       const result = await db
         .update(tasks)
@@ -323,6 +324,59 @@ export const taskRoutes: Routes = {
       await db.delete(tasks).where(eq(tasks.id, id));
 
       return noContent();
+    },
+  },
+
+  // Reserve a task for a chore (atomic check-and-set, 30-min TTL)
+  "/api/v1/tasks/:id/reserve": {
+    async POST(req, params) {
+      const id = parseId(params.id);
+      const body = await getBody(req);
+      const choreKey = body.choreKey as string | undefined;
+      if (!choreKey) throw new ValidationError("choreKey is required");
+
+      const TTL_MS = 30 * 60 * 1000;
+      const expiredBefore = new Date(Date.now() - TTL_MS).toISOString();
+
+      const result = await db
+        .update(tasks)
+        .set({ workingOn: JSON.stringify({ choreKey, at: new Date().toISOString() }), updatedAt: now() })
+        .where(
+          and(
+            eq(tasks.id, id),
+            or(
+              isNull(tasks.workingOn),
+              sql`JSON_EXTRACT(${tasks.workingOn}, '$.at') < ${expiredBefore}`
+            )
+          )
+        )
+        .returning();
+
+      if (result.length === 0) {
+        const existing = await getTaskOrThrow(id);
+        return Response.json(
+          { error: { code: "ALREADY_RESERVED", message: "Task is already reserved", workingOn: existing.workingOn } },
+          { status: 409 }
+        );
+      }
+
+      return json(result[0]);
+    },
+  },
+
+  // Release a task reservation
+  "/api/v1/tasks/:id/release": {
+    async POST(_req, params) {
+      const id = parseId(params.id);
+      await getTaskOrThrow(id);
+
+      const result = await db
+        .update(tasks)
+        .set({ workingOn: null, updatedAt: now() })
+        .where(eq(tasks.id, id))
+        .returning();
+
+      return json(result[0]);
     },
   },
 

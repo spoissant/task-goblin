@@ -163,9 +163,10 @@ export function registerTaskTools(server: McpServer) {
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
         choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
+        workingOn: z.string().nullable().optional().describe("JSON reservation e.g. '{\"choreKey\": \"request-reviews\", \"at\": \"2026-04-20T14:00:00Z\"}' or null to clear"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, choreSkips }) => {
+    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, choreSkips, workingOn }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
 
@@ -174,6 +175,7 @@ export function registerTaskTools(server: McpServer) {
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status;
         if (choreSkips !== undefined) updates.choreSkips = choreSkips;
+        if (workingOn !== undefined) updates.workingOn = workingOn;
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
@@ -181,6 +183,47 @@ export function registerTaskTools(server: McpServer) {
 
         const fullTask = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // reserve_task
+  server.registerTool(
+    "reserve_task",
+    {
+      description: "Atomically reserve a task for a chore. Fails (isError) if already reserved within the 30-min TTL. Call before starting a chore skill in /next.",
+      inputSchema: {
+        taskId: z.number().describe("Task ID to reserve"),
+        choreKey: z.string().describe("Chore key being worked on, e.g. 'request-reviews'"),
+      },
+    },
+    async ({ taskId, choreKey }) => {
+      try {
+        const result = await post(`/api/v1/tasks/${taskId}/reserve`, { choreKey });
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // release_task
+  server.registerTool(
+    "release_task",
+    {
+      description: "Release a task reservation after a chore completes or fails. Call after the chore skill returns in /next.",
+      inputSchema: {
+        taskId: z.number().describe("Task ID to release"),
+      },
+    },
+    async ({ taskId }) => {
+      try {
+        const result = await post(`/api/v1/tasks/${taskId}/release`, {});
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

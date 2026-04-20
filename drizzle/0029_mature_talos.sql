@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `working_on` text;
