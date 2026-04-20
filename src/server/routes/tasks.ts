@@ -1,20 +1,28 @@
 import { eq, and, sql, ne, isNull, isNotNull, or, like } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, repositories, noteTasks, notes } from "../../db/schema";
-import { buildRepoMap } from "../lib/queries";
+import { buildRepoMap, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
 import {
-  jiraStatusNotInCondition,
   getCompletedCondition,
   getNotCompletedCondition,
   getStatusOrderExprAsync,
-  isStatusSelectable,
-  getSelectableStatuses,
+  isStatusValid,
+  getAllStatuses,
 } from "../lib/task-status";
+
+async function validateManualStatus(status: string) {
+  if (!(await isStatusValid(status))) {
+    const statuses = await getAllStatuses();
+    throw new ValidationError(
+      `Manual task status must be one of: ${statuses.map((s) => s.name).join(", ")}`
+    );
+  }
+}
 import type { Routes } from "../router";
 
 export const taskRoutes: Routes = {
@@ -36,7 +44,7 @@ export const taskRoutes: Routes = {
 
       // Exclude completed tasks by default
       if (excludeCompleted) {
-        conditions.push(getNotCompletedCondition());
+        conditions.push(await getNotCompletedCondition());
       }
 
       if (status) {
@@ -185,15 +193,8 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      // Validate status against selectable statuses
       if (body.status) {
-        const isValid = await isStatusSelectable(body.status);
-        if (!isValid) {
-          const selectableStatuses = await getSelectableStatuses();
-          throw new ValidationError(
-            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
-          );
-        }
+        await validateManualStatus(body.status);
       }
 
       const timestamp = now();
@@ -215,13 +216,7 @@ export const taskRoutes: Routes = {
   "/api/v1/tasks/:id": {
     async GET(req, params) {
       const id = parseId(params.id);
-      const result = await db.select().from(tasks).where(eq(tasks.id, id));
-
-      if (result.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
-
-      const task = result[0];
+      const task = await getTaskOrThrow(id);
 
       // Get related entities
       const taskTodos = await db
@@ -265,28 +260,18 @@ export const taskRoutes: Routes = {
         throw new ValidationError("title is required");
       }
 
-      // Validate status against selectable statuses
       if (body.status) {
-        const isValid = await isStatusSelectable(body.status);
-        if (!isValid) {
-          const selectableStatuses = await getSelectableStatuses();
-          throw new ValidationError(
-            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
-          );
-        }
+        await validateManualStatus(body.status);
       }
 
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
+      const existing = await getTaskOrThrow(id);
 
       const result = await db
         .update(tasks)
         .set({
           title: body.title,
           description: body.description ?? null,
-          status: body.status || existing[0].status,
+          status: body.status || existing.status,
           updatedAt: now(),
         })
         .where(eq(tasks.id, id))
@@ -299,25 +284,13 @@ export const taskRoutes: Routes = {
       const id = parseId(params.id);
       const body = await getBody(req);
 
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
+      const existing = await getTaskOrThrow(id);
 
-      // Validate status against selectable statuses
       if (body.status) {
-        // Reject status changes for Jira-linked tasks
-        if (existing[0].jiraKey) {
+        if (existing.jiraKey) {
           throw new ValidationError("Cannot change status of Jira-linked task");
         }
-
-        const isValid = await isStatusSelectable(body.status);
-        if (!isValid) {
-          const selectableStatuses = await getSelectableStatuses();
-          throw new ValidationError(
-            `Manual task status must be one of: ${selectableStatuses.map(s => s.name).join(", ")}`
-          );
-        }
+        await validateManualStatus(body.status);
       }
 
       const updates: Record<string, unknown> = { updatedAt: now() };
@@ -340,10 +313,7 @@ export const taskRoutes: Routes = {
     async DELETE(req, params) {
       const id = parseId(params.id);
 
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
+      await getTaskOrThrow(id);
 
       // Cascade delete: todos
       await db
@@ -367,7 +337,7 @@ export const taskRoutes: Routes = {
       const showDone = url.searchParams.get("showDone") === "true";
       const title = url.searchParams.get("title");
 
-      const conditions = [getCompletedCondition()];
+      const conditions = [await getCompletedCondition()];
       if (!showDone) {
         conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled')`);
       }
@@ -421,7 +391,7 @@ export const taskRoutes: Routes = {
         .from(tasks)
         .where(
           and(
-            getNotCompletedCondition(),
+            await getNotCompletedCondition(),
             or(
               // Manual tasks
               and(isNull(tasks.jiraKey), isNull(tasks.prNumber)),
@@ -453,8 +423,7 @@ export const taskRoutes: Routes = {
           and(
             isNotNull(tasks.jiraKey),
             isNull(tasks.prNumber),
-            // Exclude Jira-completed statuses
-            jiraStatusNotInCondition()
+            await getNotCompletedCondition()
           )
         )
         .orderBy(await getStatusOrderExprAsync());

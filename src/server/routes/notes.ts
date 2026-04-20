@@ -2,10 +2,11 @@ import { eq, like, or, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { notes, noteTasks, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
+import { getNoteOrThrow } from "../lib/queries";
 import type { Routes } from "../router";
 
 export const noteRoutes: Routes = {
@@ -16,35 +17,18 @@ export const noteRoutes: Routes = {
       const limit = parseInt(url.searchParams.get("limit") || "50", 10);
       const offset = parseInt(url.searchParams.get("offset") || "0", 10);
 
+      const whereClause = q
+        ? or(like(notes.title, `%${q}%`), like(notes.content, `%${q}%`))
+        : undefined;
+
       let query = db.select().from(notes);
+      if (whereClause) query = query.where(whereClause) as typeof query;
+      query = query.orderBy(desc(notes.updatedAt)).limit(limit).offset(offset) as typeof query;
 
-      if (q) {
-        const pattern = `%${q}%`;
-        query = query.where(
-          or(like(notes.title, pattern), like(notes.content, pattern))
-        ) as typeof query;
-      }
+      let countQuery = db.select({ count: sql<number>`COUNT(*)` }).from(notes);
+      if (whereClause) countQuery = countQuery.where(whereClause) as typeof countQuery;
 
-      query = query
-        .orderBy(desc(notes.updatedAt))
-        .limit(limit)
-        .offset(offset) as typeof query;
-
-      const items = await query;
-
-      // Get total count
-      let countQuery = db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(notes);
-
-      if (q) {
-        const pattern = `%${q}%`;
-        countQuery = countQuery.where(
-          or(like(notes.title, pattern), like(notes.content, pattern))
-        ) as typeof countQuery;
-      }
-
-      const countResult = await countQuery;
+      const [items, countResult] = await Promise.all([query, countQuery]);
       const total = countResult[0]?.count ?? 0;
 
       return json({ items, total, limit, offset });
@@ -88,14 +72,7 @@ export const noteRoutes: Routes = {
   "/api/v1/notes/:id": {
     async GET(_req, params) {
       const id = parseId(params.id);
-
-      const noteResult = await db.select().from(notes).where(eq(notes.id, id));
-
-      if (noteResult.length === 0) {
-        throw new NotFoundError("Note", id);
-      }
-
-      const note = noteResult[0];
+      const note = await getNoteOrThrow(id);
 
       // Get linked tasks
       const linkedTasks = await db
@@ -115,10 +92,7 @@ export const noteRoutes: Routes = {
       const id = parseId(params.id);
       const body = await getBody(req);
 
-      const existing = await db.select().from(notes).where(eq(notes.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Note", id);
-      }
+      await getNoteOrThrow(id);
 
       const updates: Record<string, unknown> = { updatedAt: now() };
       if ("title" in body) updates.title = body.title;
@@ -136,10 +110,7 @@ export const noteRoutes: Routes = {
     async DELETE(_req, params) {
       const id = parseId(params.id);
 
-      const existing = await db.select().from(notes).where(eq(notes.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Note", id);
-      }
+      await getNoteOrThrow(id);
 
       // Cascade delete handled by FK constraint, but explicitly delete junctions for clarity
       await db.delete(noteTasks).where(eq(noteTasks.noteId, id));
@@ -176,10 +147,7 @@ export const noteRoutes: Routes = {
       const id = parseId(params.id);
       const body = await getBody(req);
 
-      const existing = await db.select().from(notes).where(eq(notes.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Note", id);
-      }
+      await getNoteOrThrow(id);
 
       if (!Array.isArray(body.taskIds)) {
         throw new ValidationError("taskIds must be an array");

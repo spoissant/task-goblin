@@ -215,7 +215,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     repoId = found[0].id;
   }
 
-  const notCompleted = getNotCompletedCondition();
+  const notCompleted = await getNotCompletedCondition();
 
   async function fetchAllActive(): Promise<TaskRow[]> {
     const conditions = [notCompleted];
@@ -239,25 +239,40 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
   }
 
-  // Batch-fetch all unique category sets in parallel
+  // Fetch hardcoded chore candidates and custom chore todos in parallel
   const batchRows = new Map<string | null, TaskRow[]>();
-  await Promise.all(
-    [...neededKeys].map(async (key) => {
-      let rows: TaskRow[];
-      if (key === null) {
-        rows = await fetchAllActive();
-      } else {
-        const categoryNames: string[] = JSON.parse(key);
-        const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
-        rows = await fetchByStatuses(statuses);
-      }
-      batchRows.set(key, rows);
-    })
-  );
+
+  const [customTodoRows] = await Promise.all([
+    db
+      .select({ todo: todos, task: tasks })
+      .from(todos)
+      .innerJoin(tasks, eq(todos.taskId, tasks.id))
+      .where(
+        and(
+          eq(todos.isCustomChore, 1),
+          isNull(todos.done),
+          ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : [])
+        )
+      ),
+    Promise.all(
+      [...neededKeys].map(async (key) => {
+        let rows: TaskRow[];
+        if (key === null) {
+          rows = await fetchAllActive();
+        } else {
+          const categoryNames: string[] = JSON.parse(key);
+          const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
+          rows = await fetchByStatuses(statuses);
+        }
+        batchRows.set(key, rows);
+      })
+    ),
+  ]);
 
   // Build a single repoMap across all fetched tasks
   const allRows = [...batchRows.values()].flat();
-  const repoMap = await buildRepoMap(allRows);
+  const customTaskRows = customTodoRows.map((r) => r.task);
+  const repoMap = await buildRepoMap([...allRows, ...customTaskRows]);
 
   // Attach repos and sort each batch: highPriority DESC → displayOrder DESC (closer to merge first) → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
@@ -308,25 +323,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     }
   }
 
-  // Fetch pending custom chore todos, joined to their task
-  const customTodoRows = await db
-    .select({
-      todo: todos,
-      task: tasks,
-    })
-    .from(todos)
-    .innerJoin(tasks, eq(todos.taskId, tasks.id))
-    .where(
-      and(
-        eq(todos.isCustomChore, 1),
-        isNull(todos.done),
-        ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : [])
-      )
-    );
-
-  // Build repoMap for custom chore tasks
-  const customTaskRows = customTodoRows.map((r) => r.task);
-  const customRepoMap = await buildRepoMap(customTaskRows);
+  const todoById = new Map(customTodoRows.map((r) => [r.todo.id, r.todo]));
 
   const customEntries: ChoreEntry[] = customTodoRows
     .filter((r) => {
@@ -337,7 +334,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       return true;
     })
     .map((r) => {
-      const repo = r.task.repositoryId ? (customRepoMap.get(r.task.repositoryId) ?? null) : null;
+      const repo = r.task.repositoryId ? (repoMap.get(r.task.repositoryId) ?? null) : null;
       return {
         number: r.todo.choreRank ?? 0,
         key: `custom-chore-${r.todo.id}`,
@@ -359,11 +356,13 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     })
     // Sort custom chores by (position ASC, id ASC) within same rank
     .sort((a, b) => {
-      const aRow = customTodoRows.find((r) => `custom-chore-${r.todo.id}` === a.key)!;
-      const bRow = customTodoRows.find((r) => `custom-chore-${r.todo.id}` === b.key)!;
-      const posDiff = (aRow.todo.position ?? 999999) - (bRow.todo.position ?? 999999);
+      const aId = parseInt(a.key.replace("custom-chore-", ""), 10);
+      const bId = parseInt(b.key.replace("custom-chore-", ""), 10);
+      const aRow = todoById.get(aId)!;
+      const bRow = todoById.get(bId)!;
+      const posDiff = (aRow.position ?? 999999) - (bRow.position ?? 999999);
       if (posDiff !== 0) return posDiff;
-      return aRow.todo.id - bRow.todo.id;
+      return aId - bId;
     });
 
   // Merge and sort: number ASC, then custom before hardcoded (isCustom DESC), existing tiebreakers preserved

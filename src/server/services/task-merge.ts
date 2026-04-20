@@ -2,11 +2,12 @@ import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos } from "../../db/schema";
 import { json } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
-import { jiraStatusNotInCondition } from "../lib/task-status";
+import { getNotCompletedCondition } from "../lib/task-status";
+import { getTaskOrThrow } from "../lib/queries";
 import type { Routes } from "../router";
 
 export interface AutoMatchPair {
@@ -28,7 +29,7 @@ export async function findAutoMatches(): Promise<AutoMatchPair[]> {
       and(
         isNotNull(tasks.jiraKey),
         isNull(tasks.prNumber),
-        jiraStatusNotInCondition()
+        await getNotCompletedCondition()
       )
     );
 
@@ -79,18 +80,10 @@ export async function mergeSingleTask(
   targetId: number,
   sourceId: number
 ): Promise<typeof tasks.$inferSelect> {
-  const targetTask = await db.select().from(tasks).where(eq(tasks.id, targetId));
-  if (targetTask.length === 0) {
-    throw new NotFoundError("Task", targetId);
-  }
-
-  const sourceTask = await db.select().from(tasks).where(eq(tasks.id, sourceId));
-  if (sourceTask.length === 0) {
-    throw new NotFoundError("Task", sourceId);
-  }
-
-  const target = targetTask[0];
-  const source = sourceTask[0];
+  const [target, source] = await Promise.all([
+    getTaskOrThrow(targetId),
+    getTaskOrThrow(sourceId),
+  ]);
 
   // Determine which has Jira and which has PR
   const jiraTask = target.jiraKey ? target : source.jiraKey ? source : null;
@@ -198,12 +191,7 @@ export const taskMergeRoutes: Routes = {
     async POST(_req, params) {
       const id = parseId(params.id);
 
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Task", id);
-      }
-
-      const task = existing[0];
+      const task = await getTaskOrThrow(id);
 
       // Must be a merged task (both jiraKey and prNumber)
       if (!task.jiraKey || !task.prNumber) {

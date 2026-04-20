@@ -262,8 +262,6 @@ export async function getAllStatuses(): Promise<StatusCategory[]> {
   return getStatusCategories();
 }
 
-// For backwards compatibility
-export const getSelectableStatuses = getAllStatuses;
 
 /**
  * Validate if a status is valid for manual tasks
@@ -274,13 +272,11 @@ export async function isStatusValid(status: string): Promise<boolean> {
   return categories.some((c) => normalizeStatus(c.name) === s);
 }
 
-// For backwards compatibility
-export const isStatusSelectable = isStatusValid;
 
 /**
  * Get SQL condition for completed tasks based on dynamic config
  */
-export async function getCompletedConditionAsync(): Promise<ReturnType<typeof or>> {
+export async function getCompletedCondition(): Promise<ReturnType<typeof or>> {
   const completedStatuses = await getCompletedStatusNames();
 
   // Generate parameterized SQL for status IN check (case-insensitive)
@@ -323,8 +319,8 @@ export async function getCompletedConditionAsync(): Promise<ReturnType<typeof or
 /**
  * Get SQL condition for non-completed tasks (inverse of completed)
  */
-export async function getNotCompletedConditionAsync(): Promise<ReturnType<typeof sql>> {
-  const completedCondition = await getCompletedConditionAsync();
+export async function getNotCompletedCondition(): Promise<ReturnType<typeof sql>> {
+  const completedCondition = await getCompletedCondition();
   return sql`NOT (${completedCondition})`;
 }
 
@@ -368,69 +364,6 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
   cases.push(sql`ELSE ${defaultOrder}`);
 
   return sql`CASE ${sql.join(cases, sql` `)} END`;
-}
-
-/**
- * Legacy: Valid statuses for manually-created tasks
- * @deprecated Use getSelectableStatuses() instead
- */
-export const MANUAL_TASK_STATUSES = ["To Do", "In Progress", "Code Review", "QA", "Done", "Blocked", "Ready to Merge"];
-
-// Jira statuses that indicate completion (case-insensitive, stored lowercase)
-export const JIRA_COMPLETED_STATUSES = [
-  "ready to prod",
-  "completed",
-  "done",
-  "closed",
-  "cancelled",
-  "rejected",
-  "define preventive measures",
-];
-
-// Helper to generate parameterized SQL for status IN check (case-insensitive)
-function jiraStatusInCondition() {
-  return sql`LOWER(${tasks.status}) IN (${sql.join(JIRA_COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
-}
-
-// Helper to generate parameterized SQL for status NOT IN check (case-insensitive)
-export function jiraStatusNotInCondition() {
-  return sql`LOWER(${tasks.status}) NOT IN (${sql.join(JIRA_COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
-}
-
-// SQL condition for checking if a task is completed based on its type
-export function getCompletedCondition() {
-  return or(
-    // Jira-only completed: jiraKey set, no prNumber, status in completed list
-    and(
-      isNotNull(tasks.jiraKey),
-      isNull(tasks.prNumber),
-      jiraStatusInCondition()
-    ),
-    // PR-only completed: prNumber set, no jiraKey, prState = merged or closed
-    and(
-      isNotNull(tasks.prNumber),
-      isNull(tasks.jiraKey),
-      or(eq(tasks.prState, "merged"), eq(tasks.prState, "closed"))
-    ),
-    // Both completed: jiraKey AND prNumber set, both conditions met
-    and(
-      isNotNull(tasks.jiraKey),
-      isNotNull(tasks.prNumber),
-      jiraStatusInCondition(),
-      eq(tasks.prState, "merged")
-    ),
-    // Manual completed: no jiraKey, no prNumber, status = done
-    and(
-      isNull(tasks.jiraKey),
-      isNull(tasks.prNumber),
-      sql`LOWER(${tasks.status}) = 'done'`
-    )
-  );
-}
-
-// SQL condition for non-completed tasks (inverse of completed)
-export function getNotCompletedCondition() {
-  return sql`NOT (${getCompletedCondition()})`;
 }
 
 

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
 // 1. Task - Unified table for manual tasks, Jira items, and PRs
 export const tasks = sqliteTable("tasks", {
@@ -43,7 +43,9 @@ export const tasks = sqliteTable("tasks", {
 
   // Automation flags (not synced from Jira/GitHub)
   choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, ...}
-});
+}, (table) => [
+  index("idx_tasks_repository_id").on(table.repositoryId),
+]);
 
 // 2. Todo - Checklist items linked only to tasks
 export const todos = sqliteTable("todos", {
@@ -57,7 +59,9 @@ export const todos = sqliteTable("todos", {
   isCustomChore: integer("is_custom_chore").default(0), // 1 = custom chore, 0 = regular todo
   choreRank: integer("chore_rank"), // chore definition number this runs before (e.g. 5 = runs before chore #5)
   chorePrompt: text("chore_prompt"), // custom action text
-});
+}, (table) => [
+  index("idx_todos_task_id").on(table.taskId),
+]);
 
 // 3. Repository - GitHub repo configs
 export const repositories = sqliteTable("repositories", {
@@ -122,5 +126,8 @@ export const noteTasks = sqliteTable("note_tasks", {
   taskId: integer("task_id")
     .notNull()
     .references(() => tasks.id, { onDelete: "cascade" }),
-});
+}, (table) => [
+  index("idx_note_tasks_note_id").on(table.noteId),
+  index("idx_note_tasks_task_id").on(table.taskId),
+]);
 
