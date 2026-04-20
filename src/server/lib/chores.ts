@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks, repositories, todos } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
@@ -24,6 +24,7 @@ export interface ChoreEntry {
   name: string;
   prompt: string;
   task: ChoreTask;
+  isCustom?: boolean;
 }
 
 export interface ChoreTask {
@@ -276,7 +277,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     candidateCache.set(key, withRepo);
   }
 
-  const entries: ChoreEntry[] = [];
+  const hardcodedEntries: ChoreEntry[] = [];
 
   for (const chore of filteredChores) {
     const cacheKey = chore.categories ? JSON.stringify(chore.categories) : null;
@@ -287,7 +288,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       if (skips[chore.key]) continue;
       if (!chore.match(task, repo)) continue;
 
-      entries.push({
+      hardcodedEntries.push({
         number: chore.number,
         key: chore.key,
         name: chore.name,
@@ -307,5 +308,73 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     }
   }
 
-  return entries;
+  // Fetch pending custom chore todos, joined to their task
+  const customTodoRows = await db
+    .select({
+      todo: todos,
+      task: tasks,
+    })
+    .from(todos)
+    .innerJoin(tasks, eq(todos.taskId, tasks.id))
+    .where(
+      and(
+        eq(todos.isCustomChore, 1),
+        isNull(todos.done),
+        ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : [])
+      )
+    );
+
+  // Build repoMap for custom chore tasks
+  const customTaskRows = customTodoRows.map((r) => r.task);
+  const customRepoMap = await buildRepoMap(customTaskRows);
+
+  const customEntries: ChoreEntry[] = customTodoRows
+    .filter((r) => {
+      if (minChore !== undefined && (r.todo.choreRank ?? 0) < minChore) return false;
+      if (maxChore !== undefined && (r.todo.choreRank ?? 0) > maxChore) return false;
+      const skips = parseChoreSkips(r.task.choreSkips);
+      if (skips[`custom-chore-${r.todo.id}`]) return false;
+      return true;
+    })
+    .map((r) => {
+      const repo = r.task.repositoryId ? (customRepoMap.get(r.task.repositoryId) ?? null) : null;
+      return {
+        number: r.todo.choreRank ?? 0,
+        key: `custom-chore-${r.todo.id}`,
+        name: r.todo.content,
+        prompt: r.todo.chorePrompt ?? "",
+        isCustom: true,
+        task: {
+          id: r.task.id,
+          title: r.task.title,
+          jiraKey: r.task.jiraKey ?? null,
+          sprint: r.task.sprint ?? null,
+          prNumber: r.task.prNumber ?? null,
+          headBranch: r.task.headBranch ?? null,
+          baseBranch: r.task.baseBranch ?? null,
+          status: r.task.status,
+          repository: repo ? { owner: repo.owner, repo: repo.repo } : null,
+        },
+      };
+    })
+    // Sort custom chores by (position ASC, id ASC) within same rank
+    .sort((a, b) => {
+      const aRow = customTodoRows.find((r) => `custom-chore-${r.todo.id}` === a.key)!;
+      const bRow = customTodoRows.find((r) => `custom-chore-${r.todo.id}` === b.key)!;
+      const posDiff = (aRow.todo.position ?? 999999) - (bRow.todo.position ?? 999999);
+      if (posDiff !== 0) return posDiff;
+      return aRow.todo.id - bRow.todo.id;
+    });
+
+  // Merge and sort: number ASC, then custom before hardcoded (isCustom DESC), existing tiebreakers preserved
+  const allEntries = [...hardcodedEntries, ...customEntries];
+  allEntries.sort((a, b) => {
+    if (a.number !== b.number) return a.number - b.number;
+    // Within same number: custom runs first
+    const aCustom = a.isCustom ? 1 : 0;
+    const bCustom = b.isCustom ? 1 : 0;
+    return bCustom - aCustom;
+  });
+
+  return allEntries;
 }

@@ -83,6 +83,9 @@ export interface Todo {
   position: number | null;
   createdAt: string;
   updatedAt: string;
+  isCustomChore: number | null; // 1 = custom chore, 0/null = regular todo
+  choreRank: number | null; // chore definition number this runs before
+  chorePrompt: string | null; // custom action text
 }
 
 export interface TodoWithTask extends Todo {

@@ -15,6 +15,8 @@ export const todoRoutes: Routes = {
       const taskId = url.searchParams.get("taskId");
       const done = url.searchParams.get("done");
 
+      const isCustomChore = url.searchParams.get("isCustomChore");
+
       const conditions = [];
       if (taskId) {
         conditions.push(eq(todos.taskId, parseId(taskId, "taskId")));
@@ -23,6 +25,11 @@ export const todoRoutes: Routes = {
         conditions.push(isNotNull(todos.done));
       } else if (done === "false") {
         conditions.push(isNull(todos.done));
+      }
+      if (isCustomChore === "true") {
+        conditions.push(eq(todos.isCustomChore, 1));
+      } else if (isCustomChore === "false") {
+        conditions.push(eq(todos.isCustomChore, 0));
       }
 
       const items = await db.query.todos.findMany({
@@ -39,6 +46,15 @@ export const todoRoutes: Routes = {
 
       if (!body.content || typeof body.content !== "string") {
         throw new ValidationError("content is required");
+      }
+
+      const isCustomChore = body.isCustomChore === true || body.isCustomChore === 1;
+      if (isCustomChore) {
+        if (!body.taskId) throw new ValidationError("taskId is required for custom chores");
+        if (typeof body.choreRank !== "number") throw new ValidationError("choreRank is required for custom chores");
+        if (!body.chorePrompt || typeof body.chorePrompt !== "string") {
+          throw new ValidationError("chorePrompt is required for custom chores");
+        }
       }
 
       const placement = body.placement === "start" ? "start" : "end";
@@ -73,6 +89,9 @@ export const todoRoutes: Routes = {
           position: newPosition,
           createdAt: timestamp,
           updatedAt: timestamp,
+          isCustomChore: isCustomChore ? 1 : 0,
+          choreRank: isCustomChore ? body.choreRank : null,
+          chorePrompt: isCustomChore ? body.chorePrompt : null,
         })
         .returning();
 
@@ -105,6 +124,7 @@ export const todoRoutes: Routes = {
         throw new NotFoundError("Todo", id);
       }
 
+      const isCustomChore = body.isCustomChore === true || body.isCustomChore === 1;
       const result = await db
         .update(todos)
         .set({
@@ -112,6 +132,9 @@ export const todoRoutes: Routes = {
           done: body.done ?? null,
           taskId: body.taskId ?? null,
           updatedAt: now(),
+          isCustomChore: isCustomChore ? 1 : 0,
+          choreRank: isCustomChore ? (body.choreRank ?? null) : null,
+          chorePrompt: isCustomChore ? (body.chorePrompt ?? null) : null,
         })
         .where(eq(todos.id, id))
         .returning();
@@ -133,6 +156,9 @@ export const todoRoutes: Routes = {
       if ("content" in body) updates.content = body.content;
       if ("done" in body) updates.done = body.done;
       if ("taskId" in body) updates.taskId = body.taskId;
+      if ("isCustomChore" in body) updates.isCustomChore = (body.isCustomChore === true || body.isCustomChore === 1) ? 1 : 0;
+      if ("choreRank" in body) updates.choreRank = body.choreRank;
+      if ("chorePrompt" in body) updates.chorePrompt = body.chorePrompt;
 
       const result = await db
         .update(todos)

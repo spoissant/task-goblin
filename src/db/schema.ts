@@ -54,6 +54,9 @@ export const todos = sqliteTable("todos", {
   position: integer("position"), // global ordering for all todos
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  isCustomChore: integer("is_custom_chore").default(0), // 1 = custom chore, 0 = regular todo
+  choreRank: integer("chore_rank"), // chore definition number this runs before (e.g. 5 = runs before chore #5)
+  chorePrompt: text("chore_prompt"), // custom action text
 });
 
 // 3. Repository - GitHub repo configs
