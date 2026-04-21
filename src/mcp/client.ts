@@ -7,19 +7,15 @@ import type {
   ListResponse,
   SyncResult,
   SplitResult,
-  Note,
-  NoteWithTasks,
-  LinkedNote,
 } from "@/shared/types";
 
 export { ApiError };
 
 // Re-export types for MCP tools
-export type { Task, TaskWithRepository, Todo, Repository, ListResponse, SyncResult, SplitResult, Note, NoteWithTasks };
+export type { Task, TaskWithRepository, Todo, Repository, ListResponse, SyncResult, SplitResult };
 
 export interface TaskWithRelations extends TaskWithRepository {
   todos: Todo[];
-  notes: LinkedNote[];
 }
 
 const BASE_URL = process.env.API_URL || "http://localhost:3456";

@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
   task: [["tasks"]],
   todo: [["todos"], ["tasks"]],
-  note: [["notes"], ["tasks"]],
   setting: [["settings"], ["statusCategories"]],
 };
 

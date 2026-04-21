@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerTaskTools } from "./tools/tasks.js";
 import { registerTodoTools } from "./tools/todos.js";
-import { registerNoteTools } from "./tools/notes.js";
 import { registerChoreTools } from "./tools/chores.js";
 import { registerTaskPrompts } from "./prompts/tasks.js";
 
@@ -14,7 +13,6 @@ const server = new McpServer({
 // Register all tools
 registerTaskTools(server);
 registerTodoTools(server);
-registerNoteTools(server);
 registerChoreTools(server);
 
 // Register prompts

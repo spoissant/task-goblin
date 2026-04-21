@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, worktrees, repositories, notes } from "../../db/schema";
+import { tasks, worktrees, repositories } from "../../db/schema";
 import { NotFoundError } from "./errors";
 
 /**
@@ -41,12 +41,6 @@ export async function buildRepoMap(
 export async function getTaskOrThrow(id: number): Promise<typeof tasks.$inferSelect> {
   const result = await db.select().from(tasks).where(eq(tasks.id, id));
   if (result.length === 0) throw new NotFoundError("Task", id);
-  return result[0];
-}
-
-export async function getNoteOrThrow(id: number): Promise<typeof notes.$inferSelect> {
-  const result = await db.select().from(notes).where(eq(notes.id, id));
-  if (result.length === 0) throw new NotFoundError("Note", id);
   return result[0];
 }
 

@@ -1,6 +1,6 @@
 import { eq, and, sql, ne, isNull, isNotNull, or, like } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, repositories, noteTasks, notes } from "../../db/schema";
+import { tasks, todos, repositories } from "../../db/schema";
 import { buildRepoMap, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
@@ -234,21 +234,10 @@ export const taskRoutes: Routes = {
         repository = repoResult[0] || null;
       }
 
-      // Get linked notes for this task
-      const linkedNotes = await db
-        .select({
-          id: notes.id,
-          title: notes.title,
-        })
-        .from(noteTasks)
-        .innerJoin(notes, eq(noteTasks.noteId, notes.id))
-        .where(eq(noteTasks.taskId, id));
-
       return json({
         ...task,
         todos: taskTodos,
         repository,
-        notes: linkedNotes,
       });
     },
 

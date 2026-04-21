@@ -51,17 +51,10 @@ export interface Task {
   choreSkips: string | null; // JSON: {"fix-pr-checks": true, ...}
 }
 
-// Linked note summary (id + title only)
-export interface LinkedNote {
-  id: number;
-  title: string;
-}
-
 // Task detail with relations
 export interface TaskDetail extends Task {
   todos: Todo[];
   repository: Repository | null;
-  notes: LinkedNote[];
 }
 
 // Task with repository for curation view
@@ -228,27 +221,6 @@ export interface MatchResult {
 export interface SplitResult {
   jiraTask: Task;
   prTask: Task;
-}
-
-// Note - standalone markdown document for investigation notes, failed attempts, decisions
-export interface Note {
-  id: number;
-  title: string;
-  content: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Note with linked tasks
-export interface NoteWithTasks extends Note {
-  tasks: { id: number; title: string; jiraKey: string | null }[];
-}
-
-// Note-Task junction record
-export interface NoteTask {
-  id: number;
-  noteId: number;
-  taskId: number;
 }
 
 // Review request - PR where user is requested as reviewer

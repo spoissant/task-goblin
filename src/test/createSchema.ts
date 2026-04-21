@@ -67,8 +67,6 @@ export function generateTestSchema(): string {
     schema.tasks,
     schema.todos,
     schema.statusCategories,
-    schema.notes,
-    schema.noteTasks,
   ];
 
   return tables.map((table) => generateCreateTable(table)).join("\n\n");

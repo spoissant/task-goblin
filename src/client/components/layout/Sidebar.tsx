@@ -2,7 +2,6 @@ import { NavLink } from "react-router";
 import { cn } from "@/client/lib/utils";
 import {
   CheckCircle,
-  StickyNote,
   Settings,
   ListChecks,
   ChevronLeft,
@@ -20,7 +19,6 @@ const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
-  { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

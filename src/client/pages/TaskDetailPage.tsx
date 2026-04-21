@@ -7,7 +7,6 @@ import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useDeployBranch } from "@/client/lib/queries/deploy";
 import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
-import { LinkedNotesViewer } from "@/client/components/tasks/LinkedNotesViewer";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { ChoreSkipsEditor } from "@/client/components/tasks/ChoreSkipsEditor";
 import { TodoList } from "@/client/components/todos/TodoList";
@@ -225,13 +224,6 @@ export function TaskDetailPage() {
       />
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
-
-      <LinkedNotesViewer
-        taskId={taskId}
-        taskTitle={task.title}
-        jiraKey={task.jiraKey}
-        notes={task.notes}
-      />
 
       {/* Merge Conflict Dialog */}
       <ModalDialog

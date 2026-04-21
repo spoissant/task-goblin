@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS note_tasks;
+DROP TABLE IF EXISTS notes;
