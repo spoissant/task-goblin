@@ -32,17 +32,22 @@ export function registerChoreTools(server: McpServer) {
         repository: z
           .string()
           .optional()
-          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend')"),
+          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend'). Omit to include all repos."),
         minChore: z.number().int().optional().describe("Only return chores with number >= this"),
         maxChore: z.number().int().optional().describe("Only return chores with number <= this"),
+        sprintView: z
+          .boolean()
+          .optional()
+          .describe("When true, only return chores for tasks that have a sprint assigned. When false or omitted, return all tasks."),
       },
     },
-    async ({ repository, minChore, maxChore }) => {
+    async ({ repository, minChore, maxChore, sprintView }) => {
       try {
         const params = new URLSearchParams();
         if (repository) params.set("repository", repository);
         if (minChore !== undefined) params.set("minChore", String(minChore));
         if (maxChore !== undefined) params.set("maxChore", String(maxChore));
+        if (sprintView !== undefined) params.set("sprintView", String(sprintView));
         const query = params.toString();
         const data = await get<{ items: unknown[] }>(`/api/v1/chores${query ? `?${query}` : ""}`);
         return { content: [{ type: "text", text: JSON.stringify(data) }] };
@@ -63,17 +68,22 @@ export function registerChoreTools(server: McpServer) {
         repository: z
           .string()
           .optional()
-          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend')"),
+          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend'). Omit to include all repos."),
         minChore: z.number().int().optional().describe("Only consider chores with number >= this"),
         maxChore: z.number().int().optional().describe("Only consider chores with number <= this"),
+        sprintView: z
+          .boolean()
+          .optional()
+          .describe("When true, only consider tasks that have a sprint assigned. When false or omitted, consider all tasks."),
       },
     },
-    async ({ repository, minChore, maxChore }) => {
+    async ({ repository, minChore, maxChore, sprintView }) => {
       try {
         const params = new URLSearchParams();
         if (repository) params.set("repository", repository);
         if (minChore !== undefined) params.set("minChore", String(minChore));
         if (maxChore !== undefined) params.set("maxChore", String(maxChore));
+        if (sprintView !== undefined) params.set("sprintView", String(sprintView));
         const query = params.toString();
         const data = await get<unknown>(`/api/v1/chores/next${query ? `?${query}` : ""}`);
         if (data === null) {

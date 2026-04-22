@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type { SyncResult, MatchResult, Task, Repository, SyncBranchResult } from "../types";
 import { taskKeys } from "./tasks";
+import { choreKeys } from "./chores";
 
 
 export type SyncStep = "jira" | "github" | "matching";
@@ -17,6 +18,7 @@ export function useSyncMatch() {
     mutationFn: () => api.post<MatchResult>("/sync/match"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
   });
 }
@@ -36,6 +38,7 @@ export function useSyncJira(options?: SyncOptions) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);
@@ -58,6 +61,7 @@ export function useSyncGitHub(options?: SyncOptions) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);
@@ -104,6 +108,7 @@ export function useSyncAll(options?: SyncOptions) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);

@@ -26,6 +26,9 @@ function parseParams(url: URL): GetChoresOptions {
     opts.repository = repository;
   }
 
+  const sprintView = url.searchParams.get("sprintView");
+  if (sprintView !== null) opts.sprintView = sprintView === "true";
+
   return opts;
 }
 

@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories, todos } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
@@ -189,10 +189,11 @@ export interface GetChoresOptions {
   minChore?: number;
   maxChore?: number;
   repository?: string; // "owner/repo"
+  sprintView?: boolean;
 }
 
 export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry[]> {
-  const { minChore, maxChore, repository } = opts;
+  const { minChore, maxChore, repository, sprintView } = opts;
 
   const filteredChores = CHORES.filter((c) => {
     if (minChore !== undefined && c.number < minChore) return false;
@@ -233,6 +234,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   async function fetchAllActive(): Promise<TaskRow[]> {
     const conditions = [notCompleted];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
+    if (sprintView) conditions.push(isNotNull(tasks.sprint));
     return db.select().from(tasks).where(and(...conditions));
   }
 
@@ -243,6 +245,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       sql`${tasks.status} IN (${sql.join(statuses.map((s) => sql`${s}`), sql`, `)})`,
     ];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
+    if (sprintView) conditions.push(isNotNull(tasks.sprint));
     return db.select().from(tasks).where(and(...conditions));
   }
 
@@ -264,7 +267,8 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
         and(
           eq(todos.isCustomChore, 1),
           isNull(todos.done),
-          ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : [])
+          ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : []),
+          ...(sprintView ? [isNotNull(tasks.sprint)] : [])
         )
       ),
     Promise.all(
@@ -287,7 +291,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   const customTaskRows = customTodoRows.map((r) => r.task);
   const repoMap = await buildRepoMap([...allRows, ...customTaskRows]);
 
-  // Attach repos and sort each batch: highPriority DESC → displayOrder DESC (closer to merge first) → id ASC
+  // Attach repos and sort each batch: displayOrder ASC (closer to done first) → highPriority DESC → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
   for (const [key, rows] of batchRows) {
     const withRepo: TaskWithRepo[] = rows
@@ -297,11 +301,11 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
         repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
       }));
     withRepo.sort((a, b) => {
+      const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
+      const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
       const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
       if (hpDiff !== 0) return hpDiff;
-      const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? -1;
-      const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? -1;
-      if (aOrder !== bOrder) return bOrder - aOrder;
       return a.task.id - b.task.id;
     });
     candidateCache.set(key, withRepo);
