@@ -11,7 +11,24 @@ import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira
 import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
-import type { ReviewRequest } from "@/shared/types";
+import type { ReviewRequest, FileChanges } from "@/shared/types";
+
+function categorizeFile(filename: string): "frontend" | "backend" | "other" {
+  const lower = filename.toLowerCase();
+
+  if (/\.(tsx|jsx|vue)$/.test(lower)) return "frontend";
+  if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
+  if (/\.(rb|rake|gemspec)$/.test(lower)) return "backend";
+  if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
+
+  const frontendPaths = ["frontend/", "app/javascript/", "client/", "packages/"];
+  const backendPaths = ["app/models/", "app/controllers/", "app/services/", "app/workers/", "app/mailers/", "app/helpers/", "lib/", "db/", "config/", "spec/", "test/"];
+
+  if (frontendPaths.some((p) => lower.startsWith(p))) return "frontend";
+  if (backendPaths.some((p) => lower.startsWith(p))) return "backend";
+
+  return "other";
+}
 
 export const githubRoutes: Routes = {
   "/api/v1/sync/jira": {
@@ -134,10 +151,11 @@ export const githubRoutes: Routes = {
             const repo = repoUrlParts[repoUrlParts.length - 1];
             const prNumber = item.number;
 
-            // Fetch reviews and PR details in parallel
-            const [reviewsResult, prDetails] = await Promise.all([
+            // Fetch reviews, PR details, and file list in parallel
+            const [reviewsResult, prDetails, filesResult] = await Promise.all([
               client.pulls.listReviews({ owner, repo, pull_number: prNumber }),
               client.pulls.get({ owner, repo, pull_number: prNumber }),
+              client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 }),
             ]);
 
             // Count unique approving reviewers (latest state per user)
@@ -155,6 +173,15 @@ export const githubRoutes: Routes = {
 
             const isDraft = item.draft ?? false;
 
+            const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
+            const changesByCategory = { frontend: empty(), backend: empty(), other: empty() };
+            for (const file of filesResult.data) {
+              const cat = categorizeFile(file.filename);
+              changesByCategory[cat].files++;
+              changesByCategory[cat].additions += file.additions;
+              changesByCategory[cat].deletions += file.deletions;
+            }
+
             return {
               prNumber,
               title: item.title,
@@ -168,6 +195,7 @@ export const githubRoutes: Routes = {
               changedFiles: prDetails.data.changed_files ?? null,
               additions: prDetails.data.additions ?? null,
               deletions: prDetails.data.deletions ?? null,
+              changesByCategory,
             } satisfies ReviewRequest;
           })
         );

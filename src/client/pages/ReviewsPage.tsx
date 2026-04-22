@@ -224,15 +224,33 @@ function ReviewRequestRow({ request, repoBySlug }: ReviewRequestRowProps) {
 
       {/* Changes */}
       <TableCell>
-        {request.changedFiles == null ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <div className="flex items-center gap-1.5 text-xs font-mono">
-            <Badge variant="outline" className="text-xs px-1.5">{request.changedFiles}</Badge>
-            <div className="flex flex-col leading-tight text-right">
-              <span className="text-green-600">+{request.additions ?? 0}</span>
-              <span className="text-red-600">-{request.deletions ?? 0}</span>
+        {request.changesByCategory == null ? (
+          request.changedFiles == null ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs font-mono">
+              <Badge variant="outline" className="text-xs px-1.5">{request.changedFiles}</Badge>
+              <div className="flex flex-col leading-tight text-right">
+                <span className="text-green-600">+{request.additions ?? 0}</span>
+                <span className="text-red-600">-{request.deletions ?? 0}</span>
+              </div>
             </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-0.5 text-xs font-mono">
+            {(["frontend", "backend", "other"] as const).map((cat) => {
+              const c = request.changesByCategory![cat];
+              if (c.files === 0) return null;
+              const label = cat === "frontend" ? "FE" : cat === "backend" ? "BE" : "OT";
+              return (
+                <div key={cat} className="flex items-center gap-1">
+                  <span className="text-muted-foreground w-5">{label}</span>
+                  <Badge variant="outline" className="text-xs px-1 py-0">{c.files}</Badge>
+                  <span className="text-green-600">+{c.additions}</span>
+                  <span className="text-red-600">-{c.deletions}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </TableCell>

@@ -224,6 +224,12 @@ export interface SplitResult {
 }
 
 // Review request - PR where user is requested as reviewer
+export interface FileChanges {
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
 export interface ReviewRequest {
   prNumber: number;
   title: string;
@@ -237,6 +243,7 @@ export interface ReviewRequest {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
+  changesByCategory: { frontend: FileChanges; backend: FileChanges; other: FileChanges } | null;
 }
 
 // Helper type guard
