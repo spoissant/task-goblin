@@ -112,7 +112,7 @@ export function TasksPage() {
       {nextChore && (
         <button
           onClick={handleCopyChorePrompt}
-          className="w-full mb-4 flex items-center gap-3 px-4 py-2.5 rounded-md border bg-card text-left hover:bg-accent transition-colors group"
+          className="w-full mb-4 flex items-center gap-3 px-4 py-2.5 rounded-md border bg-card text-left hover:bg-accent transition-colors group cursor-pointer"
         >
           <span className="shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             #{nextChore.number}
