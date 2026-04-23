@@ -79,6 +79,7 @@ export function ReviewsPage() {
     if (!data?.items) return null;
     const grouped: Record<SizeCategory, ReviewRequest[]> = { small: [], medium: [], large: [] };
     for (const item of data.items) {
+      if (item.isDraft) continue;
       grouped[categorizePR(item)].push(item);
     }
     return grouped;
