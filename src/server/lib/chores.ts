@@ -129,10 +129,11 @@ const CHORES: ChoreDefinition[] = [
     number: 7,
     key: "deploy-test-env",
     name: "Deploy to Test Env",
-    condition: "prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
+    condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
     prompt: "/chore-deploy-to-test-env {{taskId}}",
     categories: null,
     match: (t, repo) =>
+      parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
       t.prState === "open" &&
       t.checksStatus === "passing" &&
       (t.unresolvedCommentCount ?? 0) === 0 &&
