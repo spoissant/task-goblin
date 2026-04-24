@@ -6,7 +6,7 @@ import type { StatusCategory } from "@/client/lib/types";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
+import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { toast } from "sonner";
 import {
   Table,
@@ -137,7 +137,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
               );
             })}
             <TableHead className="w-[80px]">Todos</TableHead>
-            <TableHead className="w-[90px]">Next</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -208,6 +207,7 @@ function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodo
     jiraHost,
     prUrl,
     linkToTask: true,
+    nextChore,
   };
 
   const isDark = document.documentElement.classList.contains("dark");
@@ -290,26 +290,6 @@ function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodo
         </button>
       </TableCell>
 
-      {/* Next chore */}
-      <TableCell>
-        {nextChore && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={() => {
-                  navigator.clipboard.writeText(nextChore.prompt);
-                  toast.success("Copied: " + nextChore.prompt);
-                }}
-              >
-                Chore #{nextChore.number}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{nextChore.number} - {nextChore.name}</TooltipContent>
-          </Tooltip>
-        )}
-      </TableCell>
 
     </TableRow>
   );

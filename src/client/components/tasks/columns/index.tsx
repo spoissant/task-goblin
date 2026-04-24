@@ -1,6 +1,8 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Flame, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
+import type { ChoreEntry } from "@/client/lib/queries/chores";
 import {
   TypeCell,
   SprintCell,
@@ -56,6 +58,7 @@ export interface ColumnContext {
   jiraHost?: string | null;
   prUrl?: string | null;
   linkToTask?: boolean; // Whether title should link to task detail
+  nextChore?: ChoreEntry;
 }
 
 // Shared Column Definitions
@@ -167,6 +170,32 @@ export const COLUMNS = {
     width: "50px",
     render: (task, ctx) => <CommentsCell task={task} prUrl={ctx.prUrl} />,
   },
+  next: {
+    key: "next",
+    header: "Next",
+    width: "90px",
+    render: (_task, ctx) => {
+      const chore = ctx.nextChore;
+      if (!chore) return null;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => {
+                navigator.clipboard.writeText(chore.prompt);
+                toast.success("Copied: " + chore.prompt);
+              }}
+            >
+              Chore #{chore.number}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{chore.number} - {chore.name}</TooltipContent>
+        </Tooltip>
+      );
+    },
+  },
 } as const satisfies Record<string, ColumnDef>;
 
 // Type helper to access columns with full ColumnDef interface
@@ -183,6 +212,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "highPriority",
   "status",
   "title",
+  "next",
   "repo",
   "branch",
   "pr",

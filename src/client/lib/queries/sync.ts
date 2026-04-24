@@ -19,6 +19,7 @@ export function useSyncMatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.next() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
   });
 }
@@ -39,6 +40,7 @@ export function useSyncJira(options?: SyncOptions) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.next() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);
@@ -62,6 +64,7 @@ export function useSyncGitHub(options?: SyncOptions) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.next() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);
@@ -109,6 +112,7 @@ export function useSyncAll(options?: SyncOptions) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.next() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
     onSettled: () => {
       options?.onStepChange?.(null);
@@ -157,6 +161,8 @@ export function useSyncTask() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
   });
 }
@@ -196,6 +202,8 @@ export function useSyncVisibleTasks() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
+      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
   });
 }
