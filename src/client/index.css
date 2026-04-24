@@ -130,28 +130,20 @@
   to   { background-position: 22.63px 0; }
 }
 
-.task-highlight {
-  position: relative;
-  overflow: hidden;
-}
-
-.task-highlight::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
+.task-highlight > td {
+  background-image: repeating-linear-gradient(
     45deg,
     rgba(163, 230, 53, 0.35),
     rgba(163, 230, 53, 0.35) 8px,
     transparent 8px,
     transparent 16px
   );
+  background-attachment: fixed;
   animation: stripe-scroll 2s linear infinite;
-  pointer-events: none;
 }
 
-.dark .task-highlight::after {
-  background: repeating-linear-gradient(
+.dark .task-highlight > td {
+  background-image: repeating-linear-gradient(
     45deg,
     rgba(163, 230, 53, 0.22),
     rgba(163, 230, 53, 0.22) 8px,
