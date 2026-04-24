@@ -21,6 +21,7 @@ import { TodosDialog } from "./TodosDialog";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
+import { useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 
 // Map Tailwind bg class to rgba for faint row tinting
 const STATUS_ROW_COLORS: Record<string, { light: string; dark: string }> = {
@@ -57,6 +58,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
   const { data: statusSettings } = useStatusSettingsQuery();
+  const { data: choresData } = useChoresQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
 
   // Extract jiraHost from settings
@@ -72,6 +74,17 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
     }
     return map;
   }, [reposData?.items]);
+
+  // Build a map of taskId -> highest-priority ChoreEntry (list is already ordered)
+  const choreMap = useMemo(() => {
+    const map = new Map<number, ChoreEntry>();
+    if (choresData?.items) {
+      for (const chore of choresData.items) {
+        if (!map.has(chore.task.id)) map.set(chore.task.id, chore);
+      }
+    }
+    return map;
+  }, [choresData?.items]);
 
   const allTasks = data?.items ?? [];
   const tasks = hideLowPriority ? allTasks.filter((t) => t.sprint || t.highPriority) : allTasks;
@@ -124,6 +137,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
               );
             })}
             <TableHead className="w-[80px]">Todos</TableHead>
+            <TableHead className="w-[90px]">Next</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -134,6 +148,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
               jiraHost={jiraHost}
               statusCategories={statusSettings?.categories}
+              nextChore={choreMap.get(task.id)}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               isHighlighted={highlightedTaskId === task.id}
@@ -167,13 +182,14 @@ interface TaskRowProps {
   repo?: Repository;
   jiraHost: string | null;
   statusCategories?: StatusCategory[];
+  nextChore?: ChoreEntry;
   onOpenTodos: () => void;
   isSelected: boolean;
   isHighlighted?: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, statusCategories, onOpenTodos, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -272,6 +288,27 @@ function TaskRow({ task, repo, jiraHost, statusCategories, onOpenTodos, isSelect
           <ListTodo className="h-3.5 w-3.5" />
           {task.pendingTodos.length}
         </button>
+      </TableCell>
+
+      {/* Next chore */}
+      <TableCell>
+        {nextChore && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  navigator.clipboard.writeText(nextChore.prompt);
+                  toast.success("Copied: " + nextChore.prompt);
+                }}
+              >
+                Chore #{nextChore.number}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{nextChore.number} - {nextChore.name}</TooltipContent>
+          </Tooltip>
+        )}
       </TableCell>
 
     </TableRow>
