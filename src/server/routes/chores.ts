@@ -29,6 +29,13 @@ function parseParams(url: URL): GetChoresOptions {
   const sprintView = url.searchParams.get("sprintView");
   if (sprintView !== null) opts.sprintView = sprintView === "true";
 
+  const taskIdParam = url.searchParams.get("taskId");
+  if (taskIdParam !== null) {
+    const n = parseInt(taskIdParam, 10);
+    if (isNaN(n) || n < 1) throw new ValidationError("taskId must be a positive integer");
+    opts.taskId = n;
+  }
+
   return opts;
 }
 

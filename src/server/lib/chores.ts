@@ -190,10 +190,11 @@ export interface GetChoresOptions {
   maxChore?: number;
   repository?: string; // "owner/repo"
   sprintView?: boolean;
+  taskId?: number;
 }
 
 export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry[]> {
-  const { minChore, maxChore, repository, sprintView } = opts;
+  const { minChore, maxChore, repository, sprintView, taskId } = opts;
 
   const filteredChores = CHORES.filter((c) => {
     if (minChore !== undefined && c.number < minChore) return false;
@@ -235,6 +236,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     const conditions = [notCompleted];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
     if (sprintView) conditions.push(isNotNull(tasks.sprint));
+    if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
     return db.select().from(tasks).where(and(...conditions));
   }
 
@@ -246,6 +248,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     ];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
     if (sprintView) conditions.push(isNotNull(tasks.sprint));
+    if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
     return db.select().from(tasks).where(and(...conditions));
   }
 
@@ -268,7 +271,8 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
           eq(todos.isCustomChore, 1),
           isNull(todos.done),
           ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : []),
-          ...(sprintView ? [isNotNull(tasks.sprint)] : [])
+          ...(sprintView ? [isNotNull(tasks.sprint)] : []),
+          ...(taskId !== undefined ? [eq(tasks.id, taskId)] : [])
         )
       ),
     Promise.all(

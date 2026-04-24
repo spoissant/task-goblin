@@ -39,15 +39,17 @@ export function registerChoreTools(server: McpServer) {
           .boolean()
           .optional()
           .describe("When true, only return chores for tasks that have a sprint assigned. When false or omitted, return all tasks."),
+        taskId: z.number().int().optional().describe("Filter to chores for a specific task ID only."),
       },
     },
-    async ({ repository, minChore, maxChore, sprintView }) => {
+    async ({ repository, minChore, maxChore, sprintView, taskId }) => {
       try {
         const params = new URLSearchParams();
         if (repository) params.set("repository", repository);
         if (minChore !== undefined) params.set("minChore", String(minChore));
         if (maxChore !== undefined) params.set("maxChore", String(maxChore));
         if (sprintView !== undefined) params.set("sprintView", String(sprintView));
+        if (taskId !== undefined) params.set("taskId", String(taskId));
         const query = params.toString();
         const data = await get<{ items: unknown[] }>(`/api/v1/chores${query ? `?${query}` : ""}`);
         return { content: [{ type: "text", text: JSON.stringify(data) }] };
@@ -75,15 +77,17 @@ export function registerChoreTools(server: McpServer) {
           .boolean()
           .optional()
           .describe("When true, only consider tasks that have a sprint assigned. When false or omitted, consider all tasks."),
+        taskId: z.number().int().optional().describe("Filter to chores for a specific task ID only."),
       },
     },
-    async ({ repository, minChore, maxChore, sprintView }) => {
+    async ({ repository, minChore, maxChore, sprintView, taskId }) => {
       try {
         const params = new URLSearchParams();
         if (repository) params.set("repository", repository);
         if (minChore !== undefined) params.set("minChore", String(minChore));
         if (maxChore !== undefined) params.set("maxChore", String(maxChore));
         if (sprintView !== undefined) params.set("sprintView", String(sprintView));
+        if (taskId !== undefined) params.set("taskId", String(taskId));
         const query = params.toString();
         const data = await get<unknown>(`/api/v1/chores/next${query ? `?${query}` : ""}`);
         if (data === null) {
