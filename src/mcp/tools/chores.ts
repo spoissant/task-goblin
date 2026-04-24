@@ -27,7 +27,7 @@ export function registerChoreTools(server: McpServer) {
     "list_chores",
     {
       description:
-        "List all actionable chores across tasks — one entry per chore+task pair, ordered by chore number (priority) then task priority. Chores 1-8 are post-implementation housekeeping (assign Jira ticket, fix PR checks, address PR comments, code review, request reviews, fix merge conflicts, deploy to test env, dev QA video). Chore 9 is in-progress work. Chore 10 is tasks not yet started.",
+        "List all actionable chores across tasks — one entry per chore+task pair, ordered by task priority first (tall strategy: finish one task before starting another), then chore number within the same task. Chores 1-8 are post-implementation housekeeping (assign Jira ticket, fix PR checks, address PR comments, code review, request reviews, fix merge conflicts, deploy to test env, dev QA video). Chore 9 is in-progress work. Chore 10 is tasks not yet started.",
       inputSchema: {
         repository: z
           .string()
@@ -65,7 +65,7 @@ export function registerChoreTools(server: McpServer) {
     "next_chore",
     {
       description:
-        "Return the single highest-priority actionable chore+task. Same ordering as list_chores but returns only the first match. Returns null if nothing is actionable.",
+        "Return the single highest-priority actionable chore+task. Same ordering as list_chores (task priority first, then chore number) but returns only the first match. Returns null if nothing is actionable.",
       inputSchema: {
         repository: z
           .string()

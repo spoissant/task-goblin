@@ -36,6 +36,7 @@ export interface ChoreTask {
   headBranch: string | null;
   baseBranch: string | null;
   status: string;
+  highPriority: number | null;
   repository: { owner: string; repo: string } | null;
 }
 
@@ -340,6 +341,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
           headBranch: task.headBranch ?? null,
           baseBranch: task.baseBranch ?? null,
           status: task.status,
+          highPriority: task.highPriority ?? null,
           repository: repo ? { owner: repo.owner, repo: repo.repo } : null,
         },
       });
@@ -374,6 +376,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
           headBranch: r.task.headBranch ?? null,
           baseBranch: r.task.baseBranch ?? null,
           status: r.task.status,
+          highPriority: r.task.highPriority ?? null,
           repository: repo ? { owner: repo.owner, repo: repo.repo } : null,
         },
       };
@@ -389,11 +392,17 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       return aId - bId;
     });
 
-  // Merge and sort: number ASC, then custom before hardcoded (isCustom DESC), existing tiebreakers preserved
+  // Merge and sort: task priority first (tall strategy — finish one task before starting another),
+  // then chore number ASC within the same task, then custom before hardcoded.
   const allEntries = [...hardcodedEntries, ...customEntries];
   allEntries.sort((a, b) => {
+    const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
+    const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
+    if (hpDiff !== 0) return hpDiff;
+    if (a.task.id !== b.task.id) return a.task.id - b.task.id;
     if (a.number !== b.number) return a.number - b.number;
-    // Within same number: custom runs first
     const aCustom = a.isCustom ? 1 : 0;
     const bCustom = b.isCustom ? 1 : 0;
     return bCustom - aCustom;
