@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Task, TaskDetail, TaskWithRepository, TaskWithTodos, ListResponse, PaginatedResponse, SplitResult } from "../types";
+import { choreKeys } from "./chores";
 
 export const taskKeys = {
   all: ["tasks"] as const,
@@ -91,6 +92,7 @@ export function useUpdateTask() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: choreKeys.all });
     },
   });
 }
