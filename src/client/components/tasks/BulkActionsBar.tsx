@@ -1,31 +1,16 @@
 import { Button } from "@/client/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
-import { X, Upload } from "lucide-react";
+import { X, Clipboard } from "lucide-react";
 
 interface BulkActionsBarProps {
   selectedCount: number;
-  deploymentBranches: string[];
-  targetBranch: string;
-  onTargetBranchChange: (branch: string) => void;
-  onDeploy: () => void;
+  onCopyDeployPrompt: () => void;
   onClearSelection: () => void;
-  isDeploying: boolean;
 }
 
 export function BulkActionsBar({
   selectedCount,
-  deploymentBranches,
-  targetBranch,
-  onTargetBranchChange,
-  onDeploy,
+  onCopyDeployPrompt,
   onClearSelection,
-  isDeploying,
 }: BulkActionsBarProps) {
   return (
     <div className="h-9 flex items-center justify-between">
@@ -37,33 +22,10 @@ export function BulkActionsBar({
         </Button>
       </div>
       <div className="flex items-center gap-2">
-        {deploymentBranches.length > 0 && (
-          <>
-            <Select value={targetBranch} onValueChange={onTargetBranchChange}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent>
-                {deploymentBranches.map((branch) => (
-                  <SelectItem key={branch} value={branch}>
-                    {branch}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={onDeploy}
-              disabled={!targetBranch || isDeploying}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              {isDeploying
-                ? "Deploying..."
-                : targetBranch
-                  ? `Deploy to ${targetBranch}`
-                  : "Deploy"}
-            </Button>
-          </>
-        )}
+        <Button onClick={onCopyDeployPrompt}>
+          <Clipboard className="h-4 w-4 mr-2" />
+          Copy deploy prompt
+        </Button>
       </div>
     </div>
   );
