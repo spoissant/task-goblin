@@ -82,6 +82,15 @@ const CHORES: ChoreDefinition[] = [
   },
   {
     number: 2,
+    key: "continue-work",
+    name: "Continue In Progress",
+    condition: "status category = In Progress",
+    prompt: "/chore-continue-work {{taskId}}",
+    categories: ["In Progress"],
+    match: () => true,
+  },
+  {
+    number: 3,
     key: "address-pr-comments",
     name: "Address PR Comments",
     condition: "unresolvedCommentCount > 0",
@@ -90,7 +99,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => (t.unresolvedCommentCount ?? 0) > 0,
   },
   {
-    number: 3,
+    number: 4,
     key: "fix-pr-checks",
     name: "Fix PR checks",
     condition: "checksStatus = failing",
@@ -99,7 +108,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.checksStatus === "failing",
   },
   {
-    number: 4,
+    number: 5,
     key: "code-review-pr",
     name: "Code review my PR",
     condition: "status category = Code Review AND isDraft = true",
@@ -108,7 +117,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.isDraft === 1,
   },
   {
-    number: 5,
+    number: 6,
     key: "request-reviews",
     name: "Request Code Reviews",
     condition: "isDraft = false AND prState = open AND approvedReviewCount < 2",
@@ -117,7 +126,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.isDraft === 0 && t.prState === "open" && (t.approvedReviewCount ?? 0) < 2,
   },
   {
-    number: 6,
+    number: 7,
     key: "fix-merge-conflicts",
     name: "Fix Merge Conflicts",
     condition: "hasConflicts = true",
@@ -126,7 +135,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t) => t.hasConflicts === 1,
   },
   {
-    number: 7,
+    number: 8,
     key: "deploy-test-env",
     name: "Deploy to Test Env",
     condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
@@ -142,22 +151,13 @@ const CHORES: ChoreDefinition[] = [
       !isOnAnyDeploymentBranch(t, repo),
   },
   {
-    number: 8,
+    number: 9,
     key: "dev-qa-video",
     name: "Requires Dev QA Video",
     condition: "status category = Code Review AND deployedOnBranches.length > 0",
     prompt: "/chore-dev-qa-video {{taskId}}",
     categories: ["Code Review"],
     match: (t) => parseDeploymentBranches(t.deployedOnBranches).length > 0,
-  },
-  {
-    number: 9,
-    key: "continue-work",
-    name: "Continue In Progress",
-    condition: "status category = In Progress",
-    prompt: "/chore-continue-work {{taskId}}",
-    categories: ["In Progress"],
-    match: () => true,
   },
   {
     number: 10,
