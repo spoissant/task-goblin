@@ -33,7 +33,8 @@ export const tasks = sqliteTable("tasks", {
   checksDetails: text("checks_details"), // JSON array of check details
   approvedReviewCount: integer("approved_review_count"),
   prSyncedAt: text("pr_synced_at"),
-  onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on
+  onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on (detected via commit history)
+  labelOnlyDeploymentBranches: text("label_only_deployment_branches"), // JSON array of deployment branches detected via PR labels (full set, used for badge coloring)
   deployedOnBranches: text("deployed_on_branches"), // JSON array of deployment branches where this PR's code is actually deployed
   unresolvedCommentCount: integer("unresolved_comment_count").default(0),
   hasConflicts: integer("has_conflicts").default(0),

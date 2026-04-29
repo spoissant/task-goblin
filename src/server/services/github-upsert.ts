@@ -53,6 +53,7 @@ async function updateTaskByJiraKey(
       unresolvedCommentCount: data.unresolvedCommentCount,
       hasConflicts: data.hasConflicts,
       onDeploymentBranches: data.onDeploymentBranches,
+      labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
       deployedOnBranches: data.deployedOnBranches,
       changedFiles: data.changedFiles,
       additions: data.additions,
@@ -170,7 +171,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
 
   // No existing entry, create new PR-only task (orphaned)
   const timestamp = now();
-  const result = await db
+  await db
     .insert(tasks)
     .values({
       title: data.title,
@@ -189,6 +190,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       unresolvedCommentCount: data.unresolvedCommentCount,
       hasConflicts: data.hasConflicts,
       onDeploymentBranches: data.onDeploymentBranches,
+      labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
       deployedOnBranches: data.deployedOnBranches,
       changedFiles: data.changedFiles,
       additions: data.additions,
@@ -196,8 +198,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       prSyncedAt: data.prSyncedAt,
       createdAt: timestamp,
       updatedAt: timestamp,
-    })
-    .returning({ id: tasks.id });
+    });
 
   return "new";
 }

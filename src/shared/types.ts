@@ -41,7 +41,8 @@ export interface Task {
   checksDetails: string | null;
   approvedReviewCount: number | null;
   prSyncedAt: string | null;
-  onDeploymentBranches: string | null; // JSON array of deployment branches PR is on
+  onDeploymentBranches: string | null; // JSON array of deployment branches PR is on (detected via commit history)
+  labelOnlyDeploymentBranches: string | null; // JSON array of deployment branches detected via PR labels (full set, for badge coloring)
   deployedOnBranches: string | null; // JSON array of deployment branches where this PR's code is actually deployed
   unresolvedCommentCount: number | null;
   hasConflicts: number | null;

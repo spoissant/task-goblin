@@ -25,6 +25,7 @@ export interface PrTaskData {
   prSyncedAt: string;
   updatedAt: string;
   onDeploymentBranches: string | null;
+  labelOnlyDeploymentBranches: string | null;
   deployedOnBranches: string | null;
 }
 
@@ -48,7 +49,8 @@ export function mapPrToTaskData(
   checksResult: ChecksResult = { checksStatus: null, checksDetails: null },
   onDeploymentBranches: string[] = [],
   unresolvedCommentCount = 0,
-  deployedOnBranches: string[] = []
+  deployedOnBranches: string[] = [],
+  labelOnlyDeploymentBranches: string[] = []
 ): PrTaskData {
   // Map state: GitHub has open/closed + merged boolean, we use open/closed/merged
   const prState = pr.merged ? "merged" : pr.state;
@@ -74,6 +76,7 @@ export function mapPrToTaskData(
     prSyncedAt: timestamp,
     updatedAt: timestamp,
     onDeploymentBranches: onDeploymentBranches.length > 0 ? JSON.stringify(onDeploymentBranches) : null,
+    labelOnlyDeploymentBranches: labelOnlyDeploymentBranches.length > 0 ? JSON.stringify(labelOnlyDeploymentBranches) : null,
     deployedOnBranches: deployedOnBranches.length > 0 ? JSON.stringify(deployedOnBranches) : null,
   };
 }

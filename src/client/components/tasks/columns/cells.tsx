@@ -188,7 +188,7 @@ export function StatusCell({ task }: { task: Task }) {
 }
 
 export function MergedInCell({ task }: { task: Task }) {
-  return <DeploymentBadges branches={task.onDeploymentBranches} deployedBranches={task.deployedOnBranches} />;
+  return <DeploymentBadges branches={task.onDeploymentBranches} labelOnlyBranches={task.labelOnlyDeploymentBranches} deployedBranches={task.deployedOnBranches} />;
 }
 
 export function ChecksCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {

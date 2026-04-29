@@ -116,7 +116,7 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
             const deployedVersions = deployedVersionsByRepo.get(repo.id) ?? new Map<string, string>();
 
             // Fetch approved review count, check runs, deployment branches, deployed versions, and unresolved comments in parallel
-            const [approvedCount, checksResult, onDeploymentBranches, deployedOnBranches, unresolvedCount] = await Promise.all([
+            const [approvedCount, checksResult, onDeploymentBranchesFromCommits, deployedOnBranches, unresolvedCount] = await Promise.all([
               fetchApprovedReviewCount(client, owner, repoName, item.number),
               fullPr.head?.sha
                 ? fetchCheckRunsStatus(client, owner, repoName, fullPr.head.sha)
@@ -130,7 +130,15 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
               fetchUnresolvedCommentCount(client, owner, repoName, item.number),
             ]);
 
-            const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount, deployedOnBranches);
+            // Also detect from PR labels (e.g. "merged in staging") — more robust when
+            // env branch was rebased after merge, rewriting commit SHAs
+            const prLabelNames = fullPr.labels?.map((l) => l.name) ?? [];
+            // All label-detected branches (full set — used to color badge green vs gray)
+            const labelDetectedBranches = deploymentBranches.filter((branch) =>
+              prLabelNames.includes(`merged in ${branch}`)
+            );
+
+            const taskData = mapPrToTaskData(fullPr, repo.id, approvedCount, checksResult, onDeploymentBranchesFromCommits, unresolvedCount, deployedOnBranches, labelDetectedBranches);
             return upsertPrTask(taskData);
           })
         );
@@ -293,7 +301,7 @@ export async function syncGitHubPullRequestByNumber(
       : new Map<string, string>();
 
     // Fetch approved review count, check runs, deployment branches, deployed versions, and unresolved comments in parallel
-    const [approvedCount, checksResult, onDeploymentBranches, deployedOnBranches, unresolvedCount] = await Promise.all([
+    const [approvedCount, checksResult, onDeploymentBranchesFromCommits, deployedOnBranches, unresolvedCount] = await Promise.all([
       fetchApprovedReviewCount(client, owner, repo, prNumber),
       pr.head?.sha
         ? fetchCheckRunsStatus(client, owner, repo, pr.head.sha)
@@ -307,7 +315,14 @@ export async function syncGitHubPullRequestByNumber(
       fetchUnresolvedCommentCount(client, owner, repo, prNumber),
     ]);
 
-    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranches, unresolvedCount, deployedOnBranches);
+    // Also detect from PR labels — more robust when env branch was rebased after merge
+    const prLabelNames = pr.labels?.map((l) => l.name) ?? [];
+    // All label-detected branches (full set — used to color badge green vs gray)
+    const labelDetectedBranches = isOpen
+      ? deploymentBranches.filter((branch) => prLabelNames.includes(`merged in ${branch}`))
+      : [];
+
+    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranchesFromCommits, unresolvedCount, deployedOnBranches, labelDetectedBranches);
     const status = await upsertPrTask(taskData);
     return { status };
   } catch (err: unknown) {
