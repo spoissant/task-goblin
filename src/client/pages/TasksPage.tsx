@@ -4,7 +4,7 @@ import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
-import { useNextChoreQuery } from "@/client/lib/queries";
+import { useNextChoreQuery, type ChoreDefinition } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -26,9 +26,9 @@ export function TasksPage() {
 
   const { data: nextChore } = useNextChoreQuery(hideLowPriority);
 
-  const handleCopyDeployPrompt = () => {
+  const handleCopyChorePromptForSelection = (chore: ChoreDefinition) => {
     const ids = Array.from(selectedIds).join(" ");
-    const prompt = `/chore-deploy-to-test-env ${ids}`;
+    const prompt = chore.prompt.replace("{{taskId}}", ids).replace("{{jiraKey}}", "");
     navigator.clipboard.writeText(prompt).then(() => {
       toast.success("Copied to clipboard");
     });
@@ -66,9 +66,9 @@ export function TasksPage() {
         {selectedIds.size > 0 ? (
           <div className="flex-1">
             <BulkActionsBar
-              selectedCount={selectedIds.size}
-              onCopyDeployPrompt={handleCopyDeployPrompt}
+              selectedIds={Array.from(selectedIds)}
               onClearSelection={() => setSelectedIds(new Set())}
+              onCopyChorePrompt={handleCopyChorePromptForSelection}
             />
           </div>
         ) : (

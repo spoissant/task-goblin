@@ -3,9 +3,11 @@ import { api } from "../api";
 
 export interface ChoreDefinition {
   number: number;
+  key: string;
   name: string;
   condition: string;
   prompt: string;
+  supportsBulk: boolean;
 }
 
 export interface ChoreTask {

@@ -16,6 +16,7 @@ interface ChoreDefinition {
   prompt: string; // template: {{taskId}}, {{jiraKey}}
   categories: string[] | null; // null = all active tasks; array = category names from DB
   match: (task: TaskRow, repo: RepoRow | null) => boolean;
+  supportsBulk?: boolean; // can be invoked with multiple task IDs at once
 }
 
 export interface ChoreEntry {
@@ -141,6 +142,7 @@ const CHORES: ChoreDefinition[] = [
     condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
     prompt: "/chore-deploy-to-test-env {{taskId}}",
     categories: null,
+    supportsBulk: true,
     match: (t, repo) =>
       parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
       t.prState === "open" &&
@@ -171,11 +173,13 @@ const CHORES: ChoreDefinition[] = [
 ];
 
 export function getChoreDefinitions() {
-  return CHORES.map(({ number, name, condition, prompt }) => ({
+  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk }) => ({
     number,
+    key,
     name,
     condition,
     prompt,
+    supportsBulk: supportsBulk ?? false,
   }));
 }
 
