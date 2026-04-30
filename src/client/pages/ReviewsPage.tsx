@@ -82,6 +82,11 @@ export function ReviewsPage() {
       if (item.isDraft) continue;
       grouped[categorizePR(item)].push(item);
     }
+    for (const size of Object.keys(grouped) as SizeCategory[]) {
+      grouped[size].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+    }
     return grouped;
   }, [data]);
 
