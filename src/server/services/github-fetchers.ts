@@ -174,12 +174,17 @@ export async function fetchDeployedVersions(
       const timeout = setTimeout(() => controller.abort(), 5000);
       try {
         const res = await fetch(url, { method: "HEAD", signal: controller.signal });
-        const version = res.headers.get("x-app-version");
-        if (version) {
-          const match = version.match(/-([a-f0-9]{7,40})\.\w+$/);
-          if (match) {
-            result.set(branch, match[1]);
-          }
+        // Prefer full 40-char SHA from the link header's static asset URL
+        // (e.g. https://static.hvbrt.com/v-<sha>/...) — GitHub's compareCommits
+        // rejects abbreviated SHAs.
+        const linkHeader = res.headers.get("link");
+        const fullSha = linkHeader?.match(/\/v-([a-f0-9]{40})\//)?.[1];
+        if (fullSha) {
+          result.set(branch, fullSha);
+        } else {
+          const version = res.headers.get("x-app-version");
+          const shortSha = version?.match(/-([a-f0-9]{7,40})\.\w+$/)?.[1];
+          if (shortSha) result.set(branch, shortSha);
         }
       } catch {
         // Skip on error
