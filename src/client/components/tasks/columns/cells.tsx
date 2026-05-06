@@ -283,7 +283,7 @@ export function OnIceCell({ task }: { task: Task }) {
       <Snowflake
         className={`h-4 w-4 transition-colors ${
           isOnIce
-            ? "text-sky-400 fill-sky-400/30"
+            ? "text-sky-400 fill-sky-400/30 ice-glow"
             : "text-muted-foreground/30"
         }`}
       />
