@@ -48,17 +48,17 @@ export const taskRoutes: Routes = {
       }
 
       if (status) {
-        conditions.push(eq(tasks.status, status));
+        conditions.push(sql`LOWER(${tasks.status}) = ${status.toLowerCase()}`);
       }
 
       // Filter by multiple statuses (comma-separated, e.g. "Code Review,QA,Ready to Merge")
       const statusesParam = url.searchParams.get("statuses");
       if (statusesParam) {
-        const statusList = statusesParam.split(",").map((s) => s.trim()).filter(Boolean);
+        const statusList = statusesParam.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
         if (statusList.length === 1) {
-          conditions.push(eq(tasks.status, statusList[0]));
+          conditions.push(sql`LOWER(${tasks.status}) = ${statusList[0]}`);
         } else if (statusList.length > 1) {
-          conditions.push(sql`${tasks.status} IN (${sql.join(statusList.map((s) => sql`${s}`), sql`, `)})`);
+          conditions.push(sql`LOWER(${tasks.status}) IN (${sql.join(statusList.map((s) => sql`${s}`), sql`, `)})`);
         }
       }
 

@@ -249,9 +249,10 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
 
   async function fetchByStatuses(statuses: string[]): Promise<TaskRow[]> {
     if (statuses.length === 0) return [];
+    const lowered = statuses.map((s) => s.toLowerCase());
     const conditions = [
       notCompleted,
-      sql`${tasks.status} IN (${sql.join(statuses.map((s) => sql`${s}`), sql`, `)})`,
+      sql`LOWER(${tasks.status}) IN (${sql.join(lowered.map((s) => sql`${s}`), sql`, `)})`,
     ];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
     if (sprintView) conditions.push(isNotNull(tasks.sprint));
