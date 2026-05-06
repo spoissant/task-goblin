@@ -85,10 +85,10 @@ const CHORES: ChoreDefinition[] = [
     number: 2,
     key: "continue-work",
     name: "Continue In Progress",
-    condition: "status category = In Progress",
+    condition: "status category = In Progress AND checksStatus != pending",
     prompt: "/chore-continue-work {{taskId}}",
     categories: ["In Progress"],
-    match: () => true,
+    match: (t) => t.checksStatus !== "pending",
   },
   {
     number: 3,
