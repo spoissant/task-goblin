@@ -288,6 +288,8 @@ export const taskRoutes: Routes = {
       if ("description" in body) updates.description = body.description;
       if ("status" in body) updates.status = body.status;
       if ("highPriority" in body) updates.highPriority = body.highPriority ? 1 : 0;
+      if ("onIce" in body) updates.onIce = body.onIce ? 1 : 0;
+      if ("onIceReason" in body) updates.onIceReason = body.onIceReason ?? null;
       if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
       if ("workingOn" in body) updates.workingOn = body.workingOn;
 

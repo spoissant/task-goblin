@@ -20,6 +20,8 @@ export const tasks = sqliteTable("tasks", {
 
   // Manual flags (not synced from Jira/GitHub)
   highPriority: integer("high_priority").default(0),
+  onIce: integer("on_ice").default(0),
+  onIceReason: text("on_ice_reason"),
 
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: integer("pr_number"),

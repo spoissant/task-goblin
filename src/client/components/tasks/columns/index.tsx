@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { Flame, MessageSquare } from "lucide-react";
+import { Flame, MessageSquare, Snowflake } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
@@ -19,6 +19,7 @@ import {
   ReviewsCell,
   CommentsCell,
   HighPriorityCell,
+  OnIceCell,
   getJiraUrl,
   getPrUrl,
 } from "./cells";
@@ -40,6 +41,7 @@ export {
   ReviewsCell,
   CommentsCell,
   HighPriorityCell,
+  OnIceCell,
   getJiraUrl,
   getPrUrl,
 };
@@ -75,6 +77,19 @@ export const COLUMNS = {
     ),
     width: "40px",
     render: (task) => <HighPriorityCell task={task} />,
+  },
+  onIce: {
+    key: "onIce",
+    header: (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Snowflake className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent>On Ice (blocked)</TooltipContent>
+      </Tooltip>
+    ),
+    width: "40px",
+    render: (task) => <OnIceCell task={task} />,
   },
   type: {
     key: "type",
@@ -210,6 +225,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "epic",
   "key",
   "highPriority",
+  "onIce",
   "status",
   "title",
   "next",

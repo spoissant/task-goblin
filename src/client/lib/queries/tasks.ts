@@ -87,7 +87,7 @@ export function useUpdateTask() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; title?: string; description?: string; status?: string; highPriority?: boolean; choreSkips?: string }) =>
+    mutationFn: ({ id, ...data }: { id: number; title?: string; description?: string; status?: string; highPriority?: boolean; onIce?: boolean; onIceReason?: string | null; choreSkips?: string }) =>
       api.patch<Task>(`/tasks/${id}`, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });

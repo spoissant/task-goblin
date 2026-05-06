@@ -18,6 +18,7 @@ export function TasksPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
+  const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
@@ -100,6 +101,16 @@ export function TasksPage() {
                 Sprint view
               </Label>
             </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Checkbox
+                id="hide-on-ice"
+                checked={hideOnIce}
+                onCheckedChange={(checked) => setHideOnIce(checked === true)}
+              />
+              <Label htmlFor="hide-on-ice" className="text-sm cursor-pointer whitespace-nowrap">
+                Hide on ice
+              </Label>
+            </div>
           </>
         )}
         <RefreshButton />
@@ -117,6 +128,7 @@ export function TasksPage() {
         titleFilter={debouncedQuery}
         highlightedTaskId={nextChore?.task.id ?? null}
         hideLowPriority={hideLowPriority}
+        hideOnIce={hideOnIce}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
@@ -5,10 +6,21 @@ import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { Flame } from "lucide-react";
+import { Flame, Snowflake } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/client/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
+import { Button } from "@/client/components/ui/button";
+import { Textarea } from "@/client/components/ui/textarea";
+import { Linkify } from "@/client/components/ui/Linkify";
 
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-600 text-white hover:bg-red-600",
@@ -231,6 +243,91 @@ export function CommentsCell({ task, prUrl }: { task: Task; prUrl?: string | nul
       count={task.unresolvedCommentCount}
       prUrl={prUrl}
     />
+  );
+}
+
+export function OnIceCell({ task }: { task: Task }) {
+  const updateTask = useUpdateTask();
+  const isOnIce = !!task.onIce;
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState(task.onIceReason ?? "");
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) setReason(task.onIceReason ?? "");
+    setOpen(next);
+  };
+
+  const handleFreeze = () => {
+    updateTask.mutate(
+      { id: task.id, onIce: true, onIceReason: reason.trim() || null },
+      { onSuccess: () => setOpen(false) }
+    );
+  };
+
+  const handleThaw = () => {
+    updateTask.mutate(
+      { id: task.id, onIce: false, onIceReason: null },
+      { onSuccess: () => setOpen(false) }
+    );
+  };
+
+  const button = (
+    <button
+      type="button"
+      className="cursor-pointer hover:opacity-80"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleOpenChange(true);
+      }}
+    >
+      <Snowflake
+        className={`h-4 w-4 transition-colors ${
+          isOnIce
+            ? "text-sky-400 fill-sky-400/30"
+            : "text-muted-foreground/30"
+        }`}
+      />
+    </button>
+  );
+
+  return (
+    <>
+      {isOnIce && task.onIceReason ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipContent className="max-w-xs whitespace-pre-wrap">
+            <Linkify>{task.onIceReason}</Linkify>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>{isOnIce ? "On ice" : "Put task on ice"}</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why is this task on ice? (links allowed)"
+            rows={5}
+            autoFocus
+          />
+          <DialogFooter>
+            {isOnIce && (
+              <Button variant="outline" onClick={handleThaw} disabled={updateTask.isPending}>
+                Thaw
+              </Button>
+            )}
+            <Button onClick={handleFreeze} disabled={updateTask.isPending}>
+              {isOnIce ? "Save" : "Freeze"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

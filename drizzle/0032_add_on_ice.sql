@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN on_ice INTEGER DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN on_ice_reason TEXT;

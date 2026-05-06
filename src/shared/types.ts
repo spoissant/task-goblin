@@ -28,6 +28,8 @@ export interface Task {
 
   // Manual flags
   highPriority: number | null;
+  onIce: number | null;
+  onIceReason: string | null;
 
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: number | null;

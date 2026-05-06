@@ -238,9 +238,10 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   }
 
   const notCompleted = await getNotCompletedCondition();
+  const notOnIce = sql`COALESCE(${tasks.onIce}, 0) = 0`;
 
   async function fetchAllActive(): Promise<TaskRow[]> {
-    const conditions = [notCompleted];
+    const conditions = [notCompleted, notOnIce];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
     if (sprintView) conditions.push(isNotNull(tasks.sprint));
     if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
@@ -252,6 +253,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     const lowered = statuses.map((s) => s.toLowerCase());
     const conditions = [
       notCompleted,
+      notOnIce,
       sql`LOWER(${tasks.status}) IN (${sql.join(lowered.map((s) => sql`${s}`), sql`, `)})`,
     ];
     if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
@@ -278,6 +280,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
         and(
           eq(todos.isCustomChore, 1),
           isNull(todos.done),
+          notOnIce,
           ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : []),
           ...(sprintView ? [isNotNull(tasks.sprint)] : []),
           ...(taskId !== undefined ? [eq(tasks.id, taskId)] : [])
