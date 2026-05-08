@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
@@ -7,6 +7,7 @@ import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
 import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
 import {
   Table,
@@ -17,7 +18,13 @@ import {
   TableRow,
 } from "@/client/components/ui/table";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import { RefreshCw, GitPullRequestArrow } from "lucide-react";
+import {
+  RefreshCw,
+  GitPullRequestArrow,
+  SignalLow,
+  SignalMedium,
+  SignalHigh,
+} from "lucide-react";
 import type { ReviewRequest, Repository } from "@/client/lib/types";
 
 function formatRelativeTime(dateString: string): string {
@@ -60,10 +67,45 @@ const SIZE_DESCRIPTIONS: Record<SizeCategory, string> = {
   large: "30+ min",
 };
 
+const SIZE_ICONS: Record<SizeCategory, typeof SignalLow> = {
+  small: SignalLow,
+  medium: SignalMedium,
+  large: SignalHigh,
+};
+
+const SIZE_ICON_COLORS: Record<SizeCategory, string> = {
+  small: "text-emerald-600",
+  medium: "text-amber-600",
+  large: "text-red-600",
+};
+
+type ViewMode = "grouped" | "flat";
+const VIEW_STORAGE_KEY = "reviewsPage.view";
+
+function SizeBadge({ size }: { size: SizeCategory }) {
+  const Icon = SIZE_ICONS[size];
+  return (
+    <span className="inline-flex items-center gap-1 text-xs">
+      <Icon className={`h-4 w-4 ${SIZE_ICON_COLORS[size]}`} />
+      <span>{SIZE_LABELS[size]}</span>
+    </span>
+  );
+}
+
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
   const { data: reposData } = useRepositoriesQuery();
+
+  const [view, setView] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "grouped";
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return stored === "flat" ? "flat" : "grouped";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  }, [view]);
 
   const repoBySlug = useMemo(() => {
     const map = new Map<string, Repository>();
@@ -75,11 +117,15 @@ export function ReviewsPage() {
     return map;
   }, [reposData]);
 
-  const groups = useMemo(() => {
+  const visibleItems = useMemo(() => {
     if (!data?.items) return null;
+    return data.items.filter((item) => !item.isDraft);
+  }, [data]);
+
+  const groups = useMemo(() => {
+    if (!visibleItems) return null;
     const grouped: Record<SizeCategory, ReviewRequest[]> = { small: [], medium: [], large: [] };
-    for (const item of data.items) {
-      if (item.isDraft) continue;
+    for (const item of visibleItems) {
       grouped[categorizePR(item)].push(item);
     }
     for (const size of Object.keys(grouped) as SizeCategory[]) {
@@ -88,7 +134,14 @@ export function ReviewsPage() {
       );
     }
     return grouped;
-  }, [data]);
+  }, [visibleItems]);
+
+  const flatItems = useMemo(() => {
+    if (!visibleItems) return null;
+    return [...visibleItems].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [visibleItems]);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -127,57 +180,87 @@ export function ReviewsPage() {
         <EmptyState icon={GitPullRequestArrow} message="No PRs awaiting your review" />
       )}
 
-      {groups && data && data.items.length > 0 && (
+      {data && data.items.length > 0 && (
         <TooltipProvider>
-          <div className="space-y-8">
-            {(["small", "medium", "large"] as SizeCategory[]).map((size) => {
-              const prs = groups[size];
-              if (!prs.length) return null;
-              return (
-                <div key={size}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <h2 className="text-base font-semibold">{SIZE_LABELS[size]}</h2>
-                    <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
-                    <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mb-4">
+            <TabsList>
+              <TabsTrigger value="grouped">Grouped by Size</TabsTrigger>
+              <TabsTrigger value="flat">Oldest First</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {view === "grouped" && groups && (
+            <div className="space-y-8">
+              {(["small", "medium", "large"] as SizeCategory[]).map((size) => {
+                const prs = groups[size];
+                if (!prs.length) return null;
+                const Icon = SIZE_ICONS[size];
+                return (
+                  <div key={size}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Icon className={`h-4 w-4 ${SIZE_ICON_COLORS[size]}`} />
+                      <h2 className="text-base font-semibold">{SIZE_LABELS[size]}</h2>
+                      <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
+                      <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
+                    </div>
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} />
                   </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[80px]">PR</TableHead>
-                        <TableHead>Title</TableHead>
-                        <TableHead className="w-[150px]">Repo</TableHead>
-                        <TableHead className="w-[120px]">Author</TableHead>
-                        <TableHead className="w-[120px]">Created</TableHead>
-                        <TableHead className="w-[100px]">Changes</TableHead>
-                        <TableHead className="w-[80px]">Reviews</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {prs.map((request) => (
-                        <ReviewRequestRow
-                          key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`}
-                          request={request}
-                          repoBySlug={repoBySlug}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
+
+          {view === "flat" && flatItems && (
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} />
+          )}
         </TooltipProvider>
       )}
     </div>
   );
 }
 
+interface ReviewTableProps {
+  items: ReviewRequest[];
+  repoBySlug: Map<string, Repository>;
+  showSize: boolean;
+}
+
+function ReviewTable({ items, repoBySlug, showSize }: ReviewTableProps) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[80px]">PR</TableHead>
+          <TableHead>Title</TableHead>
+          <TableHead className="w-[150px]">Repo</TableHead>
+          <TableHead className="w-[120px]">Author</TableHead>
+          <TableHead className="w-[120px]">Created</TableHead>
+          {showSize && <TableHead className="w-[110px]">Size</TableHead>}
+          <TableHead className="w-[100px]">Changes</TableHead>
+          <TableHead className="w-[80px]">Reviews</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((request) => (
+          <ReviewRequestRow
+            key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`}
+            request={request}
+            repoBySlug={repoBySlug}
+            showSize={showSize}
+          />
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 interface ReviewRequestRowProps {
   request: ReviewRequest;
   repoBySlug: Map<string, Repository>;
+  showSize: boolean;
 }
 
-function ReviewRequestRow({ request, repoBySlug }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, showSize }: ReviewRequestRowProps) {
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
     <TableRow>
@@ -227,6 +310,13 @@ function ReviewRequestRow({ request, repoBySlug }: ReviewRequestRowProps) {
       <TableCell className="text-sm text-muted-foreground" title={new Date(request.createdAt).toLocaleString()}>
         {formatRelativeTime(request.createdAt)}
       </TableCell>
+
+      {/* Size */}
+      {showSize && (
+        <TableCell>
+          <SizeBadge size={categorizePR(request)} />
+        </TableCell>
+      )}
 
       {/* Changes */}
       <TableCell>
