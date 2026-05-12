@@ -6,10 +6,11 @@ import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { Flame, Snowflake } from "lucide-react";
+import { ChevronDown, Flame, Snowflake } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
+import { useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/client/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/client/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Button } from "@/client/components/ui/button";
 import { Textarea } from "@/client/components/ui/textarea";
@@ -328,6 +335,63 @@ export function OnIceCell({ task }: { task: Task }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function resolveChorePrompt(template: string, task: Task): string {
+  return template
+    .replace("{{taskId}}", String(task.id))
+    .replace("{{jiraKey}}", task.jiraKey ?? "");
+}
+
+export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEntry }) {
+  const { data: defsData } = useChoreDefinitionsQuery();
+  const definitions = defsData?.items ?? [];
+
+  const copyPrompt = (prompt: string) => {
+    navigator.clipboard.writeText(prompt);
+    toast.success("Copied: " + prompt);
+  };
+
+  return (
+    <div className="inline-flex items-stretch rounded overflow-hidden bg-muted text-muted-foreground">
+      {nextChore ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="px-1.5 py-0.5 text-xs font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground"
+              onClick={() => copyPrompt(nextChore.prompt)}
+            >
+              Chore #{nextChore.number}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{nextChore.number} - {nextChore.name}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="All chores"
+            className="px-1 py-0.5 cursor-pointer hover:bg-accent hover:text-accent-foreground border-l border-background/40"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-96 overflow-y-auto">
+          {definitions.map((def) => (
+            <DropdownMenuItem
+              key={def.number}
+              onClick={() => copyPrompt(resolveChorePrompt(def.prompt, task))}
+            >
+              <span className="text-muted-foreground mr-2">#{def.number}</span>
+              {def.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 

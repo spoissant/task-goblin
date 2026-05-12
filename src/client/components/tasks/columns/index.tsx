@@ -1,6 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Flame, MessageSquare, Snowflake } from "lucide-react";
-import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
 import {
@@ -20,6 +19,7 @@ import {
   CommentsCell,
   HighPriorityCell,
   OnIceCell,
+  NextCell,
   getJiraUrl,
   getPrUrl,
 } from "./cells";
@@ -42,6 +42,7 @@ export {
   CommentsCell,
   HighPriorityCell,
   OnIceCell,
+  NextCell,
   getJiraUrl,
   getPrUrl,
 };
@@ -188,28 +189,8 @@ export const COLUMNS = {
   next: {
     key: "next",
     header: "Next",
-    width: "90px",
-    render: (_task, ctx) => {
-      const chore = ctx.nextChore;
-      if (!chore) return null;
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => {
-                navigator.clipboard.writeText(chore.prompt);
-                toast.success("Copied: " + chore.prompt);
-              }}
-            >
-              Chore #{chore.number}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{chore.number} - {chore.name}</TooltipContent>
-        </Tooltip>
-      );
-    },
+    width: "110px",
+    render: (task, ctx) => <NextCell task={task} nextChore={ctx.nextChore} />,
   },
 } as const satisfies Record<string, ColumnDef>;
 
