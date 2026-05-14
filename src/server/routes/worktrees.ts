@@ -51,7 +51,6 @@ export const worktreeRoutes: Routes = {
         .values({
           repositoryId,
           path: body.path,
-          color: body.color ?? null,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -62,37 +61,6 @@ export const worktreeRoutes: Routes = {
   },
 
   "/api/v1/worktrees/:id": {
-    async PATCH(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-
-      const existing = await db
-        .select()
-        .from(worktrees)
-        .where(eq(worktrees.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Worktree", id);
-      }
-
-      const updates: Record<string, unknown> = {
-        updatedAt: now(),
-      };
-      if (body.path !== undefined) updates.path = body.path;
-      if (body.color !== undefined) updates.color = body.color;
-
-      if (!updates.path && !updates.color) {
-        throw new ValidationError("path or color is required");
-      }
-
-      const result = await db
-        .update(worktrees)
-        .set(updates)
-        .where(eq(worktrees.id, id))
-        .returning();
-
-      return json(result[0]);
-    },
-
     async DELETE(req, params) {
       const id = parseId(params.id);
 

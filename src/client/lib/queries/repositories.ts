@@ -61,18 +61,6 @@ export function useCreateWorktree() {
   });
 }
 
-export function useUpdateWorktree() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; path?: string; color?: string | null }) =>
-      api.patch<Worktree>(`/worktrees/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-    },
-  });
-}
-
 export function useDeleteWorktree() {
   const queryClient = useQueryClient();
 

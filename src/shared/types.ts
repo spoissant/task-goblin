@@ -119,7 +119,6 @@ export interface Worktree {
   id: number;
   repositoryId: number;
   path: string;
-  color: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -164,7 +163,6 @@ export interface Settings {
 export interface JiraConfig {
   jira_host: string | null;
   jira_email: string | null;
-  jira_project: string | null;
   jira_jql: string | null;
   jira_sprint_field?: string | null;
 }

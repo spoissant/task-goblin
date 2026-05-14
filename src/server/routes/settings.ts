@@ -122,7 +122,7 @@ export const settingsRoutes: Routes = {
   // Jira config bundle
   "/api/v1/settings/jira/config": {
     async GET() {
-      const jiraKeys = ["jira_host", "jira_email", "jira_project", "jira_jql", "jira_sprint_field"];
+      const jiraKeys = ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"];
       const items = await db.select().from(settings);
 
       const config: Record<string, string | null> = {};
@@ -138,7 +138,7 @@ export const settingsRoutes: Routes = {
     async PUT(req) {
       const body = await getBody(req);
 
-      const validKeys = ["jira_host", "jira_email", "jira_project", "jira_jql", "jira_sprint_field"];
+      const validKeys = ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"];
       const updates: { key: string; value: string | null }[] = [];
 
       for (const key of validKeys) {

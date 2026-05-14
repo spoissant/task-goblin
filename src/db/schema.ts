@@ -84,7 +84,6 @@ export const worktrees = sqliteTable("worktrees", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   repositoryId: integer("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
   path: text("path").notNull(),
-  color: text("color"), // Tailwind color name for visual identification
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

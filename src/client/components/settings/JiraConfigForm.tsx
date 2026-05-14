@@ -15,7 +15,6 @@ export function JiraConfigForm() {
   const [formData, setFormData] = useState({
     jira_host: "",
     jira_email: "",
-    jira_project: "",
     jira_jql: "",
     jira_sprint_field: "customfield_10003",
   });
@@ -25,7 +24,6 @@ export function JiraConfigForm() {
       setFormData({
         jira_host: config.jira_host || "",
         jira_email: config.jira_email || "",
-        jira_project: config.jira_project || "",
         jira_jql: config.jira_jql || "",
         jira_sprint_field: config.jira_sprint_field || "customfield_10003",
       });
@@ -74,16 +72,6 @@ export function JiraConfigForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="jira_project">Jira Project Key</Label>
-            <Input
-              id="jira_project"
-              value={formData.jira_project}
-              onChange={(e) => setFormData({ ...formData, jira_project: e.target.value })}
-              placeholder="PROJ"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="jira_jql">Custom JQL (optional)</Label>
             <Textarea
               id="jira_jql"
@@ -93,7 +81,7 @@ export function JiraConfigForm() {
               rows={2}
             />
             <p className="text-xs text-muted-foreground">
-              Leave empty to use default: project = [PROJECT] AND assignee = currentUser()
+              Leave empty to use default: assignee = [email] AND statusCategory != Done AND type != Epic
             </p>
           </div>
 
