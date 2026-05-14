@@ -10,7 +10,7 @@ import { parseId, validatePagination } from "../lib/validation";
 import {
   getCompletedCondition,
   getNotCompletedCondition,
-  getStatusOrderExprAsync,
+  getTaskOrderExprsAsync,
   isStatusValid,
   getAllStatuses,
 } from "../lib/task-status";
@@ -128,7 +128,7 @@ export const taskRoutes: Routes = {
         query = query.where(and(...conditions)) as typeof query;
       }
 
-      query = query.orderBy(await getStatusOrderExprAsync()) as typeof query;
+      query = query.orderBy(...(await getTaskOrderExprsAsync())) as typeof query;
 
       // Apply pagination
       query = query.limit(limit).offset(offset) as typeof query;
@@ -405,7 +405,7 @@ export const taskRoutes: Routes = {
         .select()
         .from(tasks)
         .where(whereCondition)
-        .orderBy(await getStatusOrderExprAsync())
+        .orderBy(...(await getTaskOrderExprsAsync()))
         .limit(limit)
         .offset(offset);
 
@@ -445,7 +445,7 @@ export const taskRoutes: Routes = {
             )
           )
         )
-        .orderBy(await getStatusOrderExprAsync());
+        .orderBy(...(await getTaskOrderExprsAsync()));
 
       const repoMap = await buildRepoMap(taskList);
 
@@ -471,7 +471,7 @@ export const taskRoutes: Routes = {
             await getNotCompletedCondition()
           )
         )
-        .orderBy(await getStatusOrderExprAsync());
+        .orderBy(...(await getTaskOrderExprsAsync()));
 
       return json({ items, total: items.length });
     },
@@ -494,7 +494,7 @@ export const taskRoutes: Routes = {
             )
           )
         )
-        .orderBy(await getStatusOrderExprAsync());
+        .orderBy(...(await getTaskOrderExprsAsync()));
 
       const repoMap = await buildRepoMap(taskList);
 

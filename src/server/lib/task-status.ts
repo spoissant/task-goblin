@@ -366,4 +366,17 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
   return sql`CASE ${sql.join(cases, sql` `)} END`;
 }
 
+/**
+ * Full task ordering: on-ice tasks last, high-priority tasks first,
+ * then by status display order. Spread into drizzle's `.orderBy(...)`.
+ */
+export async function getTaskOrderExprsAsync(): Promise<ReturnType<typeof sql>[]> {
+  const statusOrder = await getStatusOrderExprAsync();
+  return [
+    sql`COALESCE(${tasks.onIce}, 0) ASC`,
+    sql`COALESCE(${tasks.highPriority}, 0) DESC`,
+    statusOrder,
+  ];
+}
+
 
