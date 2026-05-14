@@ -1,18 +1,8 @@
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { useUpdateTask } from "@/client/lib/queries";
+import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { toast } from "sonner";
-
-const CHORE_LABELS: Record<string, string> = {
-  "assign-jira-ticket": "Assign Jira Ticket",
-  "fix-pr-checks": "Fix PR checks",
-  "address-pr-comments": "Address PR Comments",
-  "code-review-pr": "Code review my PR",
-  "request-reviews": "Request Code Reviews",
-  "fix-merge-conflicts": "Fix Merge Conflicts",
-  "deploy-test-env": "Deploy to Test Env",
-  "dev-qa-video": "Requires Dev QA Video",
-};
 
 interface ChoreSkipsEditorProps {
   taskId: number;
@@ -21,6 +11,7 @@ interface ChoreSkipsEditorProps {
 
 export function ChoreSkipsEditor({ taskId, choreSkips }: ChoreSkipsEditorProps) {
   const updateTask = useUpdateTask();
+  const { data } = useChoreDefinitionsQuery();
   const skips: Record<string, boolean> = choreSkips ? JSON.parse(choreSkips) : {};
 
   const handleToggle = (choreKey: string, checked: boolean) => {
@@ -39,22 +30,24 @@ export function ChoreSkipsEditor({ taskId, choreSkips }: ChoreSkipsEditorProps) 
     );
   };
 
+  const definitions = data?.items ? [...data.items].sort((a, b) => a.number - b.number) : [];
+
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         Skip Goblin Chores
       </p>
       <div className="flex flex-wrap gap-4">
-        {Object.entries(CHORE_LABELS).map(([key, label]) => (
-          <div key={key} className="flex items-center gap-2">
+        {definitions.map((def) => (
+          <div key={def.key} className="flex items-center gap-2">
             <Checkbox
-              id={`chore-skip-${key}`}
-              checked={!!skips[key]}
-              onCheckedChange={(checked) => handleToggle(key, !!checked)}
+              id={`chore-skip-${def.key}`}
+              checked={!!skips[def.key]}
+              onCheckedChange={(checked) => handleToggle(def.key, !!checked)}
               disabled={updateTask.isPending}
             />
-            <Label htmlFor={`chore-skip-${key}`} className="text-sm cursor-pointer">
-              {label}
+            <Label htmlFor={`chore-skip-${def.key}`} className="text-sm cursor-pointer">
+              #{def.number} - {def.name}
             </Label>
           </div>
         ))}
