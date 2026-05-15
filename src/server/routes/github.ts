@@ -16,7 +16,7 @@ import type { ReviewRequest, FileChanges } from "@/shared/types";
 function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   const lower = filename.toLowerCase();
 
-  if (/\.(ts|tsx|jsx|vue)$/.test(lower)) return "frontend";
+  if (/\.(js|jsx|ts|tsx|vue)$/.test(lower)) return "frontend";
   if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
   if (/\.(rb|rake|gemspec)$/.test(lower)) return "backend";
   if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
