@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
+import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
@@ -92,10 +93,23 @@ function SizeBadge({ size }: { size: SizeCategory }) {
   );
 }
 
+function parseTeamMembers(value: string | null | undefined): Set<string> {
+  if (!value) return new Set();
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === "string").map((v) => v.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
   const { data: reposData } = useRepositoriesQuery();
+  const { data: settings } = useSettingsQuery();
+  const teamMembers = useMemo(() => parseTeamMembers(settings?.team_members), [settings?.team_members]);
 
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "grouped";
@@ -203,7 +217,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} teamMembers={teamMembers} />
                   </div>
                 );
               })}
@@ -211,7 +225,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} teamMembers={teamMembers} />
           )}
         </TooltipProvider>
       )}
@@ -223,9 +237,10 @@ interface ReviewTableProps {
   items: ReviewRequest[];
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
+  teamMembers: Set<string>;
 }
 
-function ReviewTable({ items, repoBySlug, showSize }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, showSize, teamMembers }: ReviewTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -247,6 +262,7 @@ function ReviewTable({ items, repoBySlug, showSize }: ReviewTableProps) {
             request={request}
             repoBySlug={repoBySlug}
             showSize={showSize}
+            isTeammate={teamMembers.has(request.author.toLowerCase())}
           />
         ))}
       </TableBody>
@@ -258,12 +274,19 @@ interface ReviewRequestRowProps {
   request: ReviewRequest;
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
+  isTeammate: boolean;
 }
 
-function ReviewRequestRow({ request, repoBySlug, showSize }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate }: ReviewRequestRowProps) {
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
-    <TableRow>
+    <TableRow
+      className={
+        isTeammate
+          ? "bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 [&>td:first-child]:relative [&>td:first-child]:before:content-[''] [&>td:first-child]:before:absolute [&>td:first-child]:before:inset-y-0 [&>td:first-child]:before:left-0 [&>td:first-child]:before:w-1 [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500"
+          : undefined
+      }
+    >
       {/* PR Number */}
       <TableCell>
         <a
@@ -303,7 +326,19 @@ function ReviewRequestRow({ request, repoBySlug, showSize }: ReviewRequestRowPro
 
       {/* Author */}
       <TableCell className="text-sm">
-        {request.author}
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex w-10 shrink-0">
+            {isTeammate && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-amber-400 bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100 dark:border-amber-500"
+              >
+                Team
+              </Badge>
+            )}
+          </span>
+          <span>{request.author}</span>
+        </div>
       </TableCell>
 
       {/* Created */}
