@@ -16,12 +16,12 @@ import type { ReviewRequest, FileChanges } from "@/shared/types";
 function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   const lower = filename.toLowerCase();
 
-  if (/\.(tsx|jsx|vue)$/.test(lower)) return "frontend";
+  if (/\.(ts|tsx|jsx|vue)$/.test(lower)) return "frontend";
   if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
   if (/\.(rb|rake|gemspec)$/.test(lower)) return "backend";
   if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
 
-  const frontendPaths = ["frontend/", "app/javascript/", "client/", "packages/"];
+  const frontendPaths = ["frontend/", "front/", "app/javascript/", "client/", "packages/"];
   const backendPaths = ["app/models/", "app/controllers/", "app/services/", "app/workers/", "app/mailers/", "app/helpers/", "lib/", "db/", "config/", "spec/", "test/"];
 
   if (frontendPaths.some((p) => lower.startsWith(p))) return "frontend";
