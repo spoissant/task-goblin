@@ -367,15 +367,16 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
 }
 
 /**
- * Full task ordering: on-ice tasks last, high-priority tasks first,
- * then by status display order. Spread into drizzle's `.orderBy(...)`.
+ * Full task ordering: by status display order first, then within each status
+ * group high-priority tasks come first and on-ice tasks last.
+ * Spread into drizzle's `.orderBy(...)`.
  */
 export async function getTaskOrderExprsAsync(): Promise<ReturnType<typeof sql>[]> {
   const statusOrder = await getStatusOrderExprAsync();
   return [
+    statusOrder,
     sql`COALESCE(${tasks.onIce}, 0) ASC`,
     sql`COALESCE(${tasks.highPriority}, 0) DESC`,
-    statusOrder,
   ];
 }
 
