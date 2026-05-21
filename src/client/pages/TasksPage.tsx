@@ -4,6 +4,7 @@ import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
+import { ChoreLegend } from "@/client/components/layout/ChoreLegend";
 import { type ChoreDefinition } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -103,6 +104,7 @@ export function TasksPage() {
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
+      <ChoreLegend />
     </div>
   );
 }

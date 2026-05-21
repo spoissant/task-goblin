@@ -15,6 +15,7 @@ interface ChoreDefinition {
   condition: string;
   prompt: string; // template: {{taskId}}, {{jiraKey}}
   categories: string[] | null; // null = all active tasks; array = category names from DB
+  excludeCategories?: string[]; // category names whose tasks must never match this chore
   match: (task: TaskRow, repo: RepoRow | null) => boolean;
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
 }
@@ -110,21 +111,21 @@ const CHORES: ChoreDefinition[] = [
   },
   {
     number: 5,
-    key: "continue-work",
-    name: "Continue In Progress",
-    condition: "status category = In Progress AND checksStatus != pending",
-    prompt: "/chore-continue-work {{taskId}}",
-    categories: ["In Progress"],
-    match: (t) => t.checksStatus !== "pending",
-  },
-  {
-    number: 6,
     key: "fix-pr-checks",
     name: "Fix PR checks",
     condition: "checksStatus = failing",
     prompt: "/chore-fix-pr-checks {{taskId}}",
     categories: null,
     match: (t) => t.checksStatus === "failing",
+  },
+  {
+    number: 6,
+    key: "continue-work",
+    name: "Continue In Progress",
+    condition: "status category = In Progress AND checksStatus != pending",
+    prompt: "/chore-continue-work {{taskId}}",
+    categories: ["In Progress"],
+    match: (t) => t.checksStatus !== "pending",
   },
   {
     number: 7,
@@ -149,9 +150,10 @@ const CHORES: ChoreDefinition[] = [
     number: 9,
     key: "deploy-test-env",
     name: "Deploy to Test Env",
-    condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch",
+    condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch AND status category != Ready to Merge",
     prompt: "/chore-deploy-to-test-env {{taskId}}",
     categories: null,
+    excludeCategories: ["Ready to Merge"],
     supportsBulk: true,
     match: (t, repo) =>
       parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
@@ -332,9 +334,16 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     const cacheKey = chore.categories ? JSON.stringify(chore.categories) : null;
     const candidates = candidateCache.get(cacheKey) ?? [];
 
+    const excludedStatuses = new Set<string>(
+      (chore.excludeCategories ?? []).flatMap(
+        (name) => categoryToStatuses.get(name)?.map((s) => s.toLowerCase()) ?? []
+      )
+    );
+
     for (const { task, repo } of candidates) {
       const skips = parseChoreSkips(task.choreSkips);
       if (skips[chore.key]) continue;
+      if (excludedStatuses.has(task.status.toLowerCase())) continue;
       if (!chore.match(task, repo)) continue;
 
       hardcodedEntries.push({
