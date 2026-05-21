@@ -49,12 +49,11 @@ interface TaskTableProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   titleFilter?: string;
-  highlightedTaskId?: number | null;
   hideLowPriority?: boolean;
   hideOnIce?: boolean;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlightedTaskId, hideLowPriority, hideOnIce }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -155,7 +154,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, highlig
               nextChore={choreMap.get(task.id)}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
-              isHighlighted={highlightedTaskId === task.id}
               onSelectionChange={onSelectionChange ? (selected) => {
                 const newSelection = new Set(selectedIds);
                 if (selected) {
@@ -189,11 +187,10 @@ interface TaskRowProps {
   nextChore?: ChoreEntry;
   onOpenTodos: () => void;
   isSelected: boolean;
-  isHighlighted?: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, isHighlighted, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -222,10 +219,7 @@ function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodo
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
-      className={[
-        isHighlighted && "task-highlight",
-        isSelected && "task-selected",
-      ].filter(Boolean).join(" ") || undefined}
+      className={isSelected ? "task-selected" : undefined}
       style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
       {/* Checkbox */}
