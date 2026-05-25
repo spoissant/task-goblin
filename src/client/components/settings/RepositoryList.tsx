@@ -36,6 +36,7 @@ export function RepositoryList() {
   const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
   const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
   const [slackChannelInputs, setSlackChannelInputs] = useState<Record<number, string>>({});
+  const [aliasInputs, setAliasInputs] = useState<Record<number, string>>({});
   // URL inputs keyed by `${repoId}-${branch}`
   const [deploymentUrlInputs, setDeploymentUrlInputs] = useState<Record<string, string>>({});
 
@@ -188,6 +189,7 @@ export function RepositoryList() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Repository</TableHead>
+                  <TableHead>Alias</TableHead>
                   <TableHead>Badge Color</TableHead>
                   <TableHead>Worktrees</TableHead>
                   <TableHead>Deployment Branches</TableHead>
@@ -201,6 +203,25 @@ export function RepositoryList() {
                   <TableRow key={repo.id}>
                     <TableCell className="font-mono">
                       {repo.owner}/{repo.repo}
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-6 w-24 text-xs font-mono"
+                        placeholder="short name"
+                        value={aliasInputs[repo.id] ?? (repo.alias || "")}
+                        onChange={(e) => setAliasInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                        onBlur={() => {
+                          const val = aliasInputs[repo.id];
+                          if (val === undefined) return;
+                          updateRepo.mutate(
+                            { id: repo.id, alias: val.trim() || null },
+                            { onError: () => toast.error("Failed to update alias") }
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <BadgeColorSelect

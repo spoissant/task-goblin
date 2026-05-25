@@ -36,8 +36,12 @@ export function RepoBadge({ repo }: RepoBadgeProps) {
   const colorClasses = BADGE_COLORS[colorName] || BADGE_COLORS[DEFAULT_COLOR];
 
   return (
-    <Badge variant="outline" className={`text-xs border-transparent ${colorClasses}`}>
-      {repo.repo}
+    <Badge
+      variant="outline"
+      className={`text-xs border-transparent ${colorClasses}`}
+      title={repo.alias ? `${repo.owner}/${repo.repo}` : undefined}
+    >
+      {repo.alias || repo.repo}
     </Badge>
   );
 }

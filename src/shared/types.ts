@@ -101,6 +101,7 @@ export interface Repository {
   id: number;
   owner: string;
   repo: string;
+  alias: string | null;
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names

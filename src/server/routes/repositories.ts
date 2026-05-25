@@ -55,6 +55,7 @@ export const repositoryRoutes: Routes = {
         .values({
           owner: body.owner,
           repo: body.repo,
+          alias: typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null,
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
           badgeColor: body.badgeColor ?? null,
           deploymentBranches,
@@ -121,6 +122,9 @@ export const repositoryRoutes: Routes = {
         .set({
           owner: body.owner,
           repo: body.repo,
+          alias: body.alias !== undefined
+            ? (typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null)
+            : existing[0].alias,
           enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
           badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
           deploymentBranches,
@@ -147,6 +151,9 @@ export const repositoryRoutes: Routes = {
       const updates: Record<string, unknown> = {};
       if (body.owner !== undefined) updates.owner = body.owner;
       if (body.repo !== undefined) updates.repo = body.repo;
+      if (body.alias !== undefined) {
+        updates.alias = typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null;
+      }
       if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
       if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
       if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel || null;

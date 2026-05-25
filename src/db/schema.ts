@@ -72,6 +72,7 @@ export const repositories = sqliteTable("repositories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   owner: text("owner").notNull(), // GitHub org/user
   repo: text("repo").notNull(), // repo name
+  alias: text("alias"), // optional short label used in UI instead of full repo name
   enabled: integer("enabled").notNull().default(1), // SQLite bool
   badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
