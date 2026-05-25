@@ -258,14 +258,13 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
   return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }
 
-export async function syncGitHubPullRequestByNumber(
+export async function fetchPrTaskData(
   owner: string,
   repo: string,
   prNumber: number
-): Promise<{ status: "new" | "updated" | "unchanged" }> {
+) {
   const client = getGitHubClient();
 
-  // Find repository
   const repoResult = await db
     .select()
     .from(repositories)
@@ -287,20 +286,16 @@ export async function syncGitHubPullRequestByNumber(
       pull_number: prNumber,
     });
 
-    // Parse deployment branches for this repo
     const deploymentBranches: string[] = repository.deploymentBranches
       ? JSON.parse(repository.deploymentBranches)
       : [];
 
-    // Detect deployment branches only for open PRs
     const isOpen = pr.state === "open" && !pr.merged;
 
-    // Pre-fetch deployed versions for this repo if configured
     const deployedVersions = repository.deploymentUrls
       ? await fetchDeployedVersions(JSON.parse(repository.deploymentUrls) as Record<string, string>)
       : new Map<string, string>();
 
-    // Fetch approved review count, check runs, deployment branches, deployed versions, and unresolved comments in parallel
     const [approvedCount, checksResult, onDeploymentBranchesFromCommits, deployedOnBranches, unresolvedCount] = await Promise.all([
       fetchApprovedReviewCount(client, owner, repo, prNumber),
       pr.head?.sha
@@ -315,16 +310,12 @@ export async function syncGitHubPullRequestByNumber(
       fetchUnresolvedCommentCount(client, owner, repo, prNumber),
     ]);
 
-    // Also detect from PR labels — more robust when env branch was rebased after merge
     const prLabelNames = pr.labels?.map((l) => l.name) ?? [];
-    // All label-detected branches (full set — used to color badge green vs gray)
     const labelDetectedBranches = isOpen
       ? deploymentBranches.filter((branch) => prLabelNames.includes(`merged in ${branch}`))
       : [];
 
-    const taskData = mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranchesFromCommits, unresolvedCount, deployedOnBranches, labelDetectedBranches);
-    const status = await upsertPrTask(taskData);
-    return { status };
+    return mapPrToTaskData(pr, repository.id, approvedCount, checksResult, onDeploymentBranchesFromCommits, unresolvedCount, deployedOnBranches, labelDetectedBranches);
   } catch (err: unknown) {
     if (err instanceof GitHubConfigError) {
       throw err;
@@ -352,4 +343,14 @@ export async function syncGitHubPullRequestByNumber(
 
     throw new GitHubApiError(`Failed to fetch PR #${prNumber} from GitHub`, "GITHUB_API_ERROR");
   }
+}
+
+export async function syncGitHubPullRequestByNumber(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<{ status: "new" | "updated" | "unchanged" }> {
+  const taskData = await fetchPrTaskData(owner, repo, prNumber);
+  const status = await upsertPrTask(taskData);
+  return { status };
 }

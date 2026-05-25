@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/
 import { Button } from "@/client/components/ui/button";
 import { Textarea } from "@/client/components/ui/textarea";
 import { Linkify } from "@/client/components/ui/Linkify";
+import { AssignPrDialog } from "../AssignPrDialog";
 
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-600 text-white hover:bg-red-600",
@@ -166,8 +167,31 @@ export function BranchCell({ task }: { task: Task }) {
 }
 
 export function PrCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
+  const [assignOpen, setAssignOpen] = useState(false);
+
   if (!task.prNumber) {
-    return <span className="text-muted-foreground">—</span>;
+    return (
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            setAssignOpen(true);
+          }}
+        >
+          Assign
+        </Button>
+        {assignOpen && (
+          <AssignPrDialog
+            taskId={task.id}
+            open={assignOpen}
+            onOpenChange={setAssignOpen}
+          />
+        )}
+      </>
+    );
   }
   const content = (
     <>

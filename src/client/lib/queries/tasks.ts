@@ -108,6 +108,19 @@ export function useDeleteTask() {
   });
 }
 
+// Manually assign a PR URL to an existing task
+export function useAssignPr() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, url }: { id: number; url: string }) =>
+      api.post<Task>(`/tasks/${id}/assign-pr`, { url }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
 // Merge two orphan tasks (jira + pr)
 export function useMergeTasks() {
   const queryClient = useQueryClient();

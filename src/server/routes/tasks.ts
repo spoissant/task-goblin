@@ -3,7 +3,9 @@ import { db } from "../../db";
 import { tasks, todos, repositories } from "../../db/schema";
 import { buildRepoMap, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors";
+import { fetchPrTaskData, GitHubApiError } from "../services/github-sync";
+import { GitHubConfigError } from "../lib/github-client";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
@@ -368,6 +370,100 @@ export const taskRoutes: Routes = {
         .returning();
 
       return json(result[0]);
+    },
+  },
+
+  // Manually attach a PR (by GitHub URL) to an existing task
+  "/api/v1/tasks/:id/assign-pr": {
+    async POST(req, params) {
+      const id = parseId(params.id);
+      const body = await getBody(req);
+      const url = typeof body.url === "string" ? body.url.trim() : "";
+
+      if (!url) {
+        throw new ValidationError("url is required");
+      }
+
+      const match = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/);
+      if (!match) {
+        throw new ValidationError(
+          "Invalid PR URL. Expected format: https://github.com/<owner>/<repo>/pull/<number>"
+        );
+      }
+
+      const [, owner, repo, numberStr] = match;
+      const prNumber = parseInt(numberStr, 10);
+
+      const existing = await getTaskOrThrow(id);
+      if (existing.prNumber) {
+        throw new ValidationError("Task already has a PR assigned");
+      }
+
+      try {
+        const data = await fetchPrTaskData(owner, repo, prNumber);
+
+        // Reject if another task already has this PR
+        const conflict = await db
+          .select({ id: tasks.id, title: tasks.title })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.repositoryId, data.repositoryId),
+              eq(tasks.prNumber, data.prNumber),
+              ne(tasks.id, id)
+            )
+          )
+          .limit(1);
+
+        if (conflict.length > 0) {
+          throw new AppError(
+            `PR #${prNumber} is already linked to task #${conflict[0].id}: ${conflict[0].title}`,
+            409,
+            "PR_ALREADY_LINKED"
+          );
+        }
+
+        const result = await db
+          .update(tasks)
+          .set({
+            prNumber: data.prNumber,
+            repositoryId: data.repositoryId,
+            prState: data.prState,
+            prAuthor: data.prAuthor,
+            headBranch: data.headBranch,
+            baseBranch: data.baseBranch,
+            isDraft: data.isDraft,
+            checksStatus: data.checksStatus,
+            checksDetails: data.checksDetails,
+            approvedReviewCount: data.approvedReviewCount,
+            unresolvedCommentCount: data.unresolvedCommentCount,
+            hasConflicts: data.hasConflicts,
+            onDeploymentBranches: data.onDeploymentBranches,
+            labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
+            deployedOnBranches: data.deployedOnBranches,
+            changedFiles: data.changedFiles,
+            additions: data.additions,
+            deletions: data.deletions,
+            prSyncedAt: data.prSyncedAt,
+            updatedAt: now(),
+          })
+          .where(eq(tasks.id, id))
+          .returning();
+
+        return json(result[0]);
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof GitHubApiError) {
+          const statusCode =
+            err.code === "GITHUB_AUTH_FAILED" ? 401 :
+            err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
+            err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
     },
   },
 
