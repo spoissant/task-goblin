@@ -27,6 +27,8 @@ import {
   SignalHigh,
 } from "lucide-react";
 import type { ReviewRequest, Repository } from "@/client/lib/types";
+import { categorizePrSize } from "@/shared/pr-size";
+import type { PrSize } from "@/shared/types";
 
 function formatRelativeTime(dateString: string): string {
   const now = Date.now();
@@ -46,14 +48,10 @@ function formatRelativeTime(dateString: string): string {
   return rtf.format(diffSeconds, "second");
 }
 
-type SizeCategory = "small" | "medium" | "large";
+type SizeCategory = PrSize;
 
 function categorizePR(pr: ReviewRequest): SizeCategory {
-  const files = pr.changedFiles ?? Infinity;
-  const lines = (pr.additions ?? 0) + (pr.deletions ?? 0);
-  if (files <= 5 && lines <= 200) return "small";
-  if (files <= 15 && lines <= 800) return "medium";
-  return "large";
+  return categorizePrSize(pr.changedFiles, pr.additions, pr.deletions);
 }
 
 const SIZE_LABELS: Record<SizeCategory, string> = {

@@ -247,6 +247,22 @@ export interface ReviewRequest {
   changesByCategory: { frontend: FileChanges; backend: FileChanges; other: FileChanges } | null;
 }
 
+export interface FileChangesWithPercent extends FileChanges {
+  percent: number;
+}
+
+export type PrSize = "small" | "medium" | "large";
+
+export interface PrChangesByCategory {
+  totalFiles: number;
+  totalAdditions: number;
+  totalDeletions: number;
+  size: PrSize;
+  frontend: FileChangesWithPercent;
+  backend: FileChangesWithPercent;
+  other: FileChangesWithPercent;
+}
+
 // Helper type guard
 export function isMergedTask(task: Task): boolean {
   return task.jiraKey !== null && task.prNumber !== null;

@@ -11,12 +11,13 @@ import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira
 import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
-import type { ReviewRequest, FileChanges } from "@/shared/types";
+import type { ReviewRequest, FileChanges, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
+import { categorizePrSize } from "@/shared/pr-size";
 
 function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   const lower = filename.toLowerCase();
 
-  if (/\.(js|jsx|ts|tsx|vue)$/.test(lower)) return "frontend";
+  if (/\.(js|jsx|ts|tsx|vue|haml)$/.test(lower)) return "frontend";
   if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
   if (/\.(rb|rake|gemspec)$/.test(lower)) return "backend";
   if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
@@ -28,6 +29,34 @@ function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   if (backendPaths.some((p) => lower.startsWith(p))) return "backend";
 
   return "other";
+}
+
+// Largest-remainder rounding so percentages sum to 100 (when totalFiles > 0).
+function computePercents(buckets: { frontend: FileChanges; backend: FileChanges; other: FileChanges }, totalFiles: number): { frontend: number; backend: number; other: number } {
+  if (totalFiles === 0) return { frontend: 0, backend: 0, other: 0 };
+
+  const raw = {
+    frontend: (buckets.frontend.files / totalFiles) * 100,
+    backend: (buckets.backend.files / totalFiles) * 100,
+    other: (buckets.other.files / totalFiles) * 100,
+  };
+  const floored = {
+    frontend: Math.floor(raw.frontend),
+    backend: Math.floor(raw.backend),
+    other: Math.floor(raw.other),
+  };
+  let remaining = 100 - (floored.frontend + floored.backend + floored.other);
+  // Sort by largest fractional remainder, distribute the remaining 1-percent units.
+  const remainders = (Object.entries(raw) as Array<[keyof typeof raw, number]>)
+    .map(([k, v]) => [k, v - Math.floor(v)] as const)
+    .sort((a, b) => b[1] - a[1]);
+  const result = { ...floored };
+  for (const [key] of remainders) {
+    if (remaining <= 0) break;
+    result[key] += 1;
+    remaining -= 1;
+  }
+  return result;
 }
 
 export const githubRoutes: Routes = {
@@ -205,6 +234,57 @@ export const githubRoutes: Routes = {
         }
 
         return json({ items, total: items.length });
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        throw err;
+      }
+    },
+  },
+
+  "/api/v1/github/pull-requests/:owner/:repo/:number/changes-by-category": {
+    async GET(_req, params) {
+      const { owner, repo, number } = params;
+      const prNumber = parseInt(number, 10);
+      if (Number.isNaN(prNumber)) {
+        throw new AppError("Invalid PR number", 400, "INVALID_PR_NUMBER");
+      }
+
+      try {
+        const client = getGitHubClient();
+        const filesResult = await client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 });
+
+        const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
+        const buckets = { frontend: empty(), backend: empty(), other: empty() };
+        let totalAdditions = 0;
+        let totalDeletions = 0;
+
+        for (const file of filesResult.data) {
+          const cat = categorizeFile(file.filename);
+          buckets[cat].files += 1;
+          buckets[cat].additions += file.additions;
+          buckets[cat].deletions += file.deletions;
+          totalAdditions += file.additions;
+          totalDeletions += file.deletions;
+        }
+
+        const totalFiles = buckets.frontend.files + buckets.backend.files + buckets.other.files;
+        const percents = computePercents(buckets, totalFiles);
+
+        const withPercent = (b: FileChanges, percent: number): FileChangesWithPercent => ({ ...b, percent });
+
+        const response: PrChangesByCategory = {
+          totalFiles,
+          totalAdditions,
+          totalDeletions,
+          size: categorizePrSize(totalFiles, totalAdditions, totalDeletions),
+          frontend: withPercent(buckets.frontend, percents.frontend),
+          backend: withPercent(buckets.backend, percents.backend),
+          other: withPercent(buckets.other, percents.other),
+        };
+
+        return json(response);
       } catch (err) {
         if (err instanceof GitHubConfigError) {
           throw new AppError(err.message, 400, err.code);
