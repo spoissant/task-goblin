@@ -19,7 +19,7 @@ function categorizeFile(filename: string): "frontend" | "backend" | "other" {
 
   if (/\.(js|jsx|ts|tsx|vue|haml)$/.test(lower)) return "frontend";
   if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
-  if (/\.(rb|rake|gemspec)$/.test(lower)) return "backend";
+  if (/\.(rb|rake|gemspec|rabl)$/.test(lower)) return "backend";
   if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
 
   const frontendPaths = ["frontend/", "front/", "app/javascript/", "client/", "packages/"];
