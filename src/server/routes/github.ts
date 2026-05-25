@@ -164,16 +164,42 @@ export const githubRoutes: Routes = {
         const config = await getGitHubConfig();
         const client = getGitHubClient();
 
-        // Search for PRs where user is requested as reviewer
-        const searchResult = await client.search.issuesAndPullRequests({
-          q: `is:pr is:open review-requested:${config.username}`,
-          per_page: 100,
-        });
+        // Search for PRs where user is requested directly, plus PRs requested
+        // from any team the user belongs to. Team membership requires read:org
+        // scope on the token; if unavailable we silently fall back to user-only.
+        let teamQueries: string[] = [];
+        try {
+          const teamsResp = await client.teams.listForAuthenticatedUser({ per_page: 100 });
+          teamQueries = teamsResp.data.map(
+            (t) => `is:pr is:open team-review-requested:${t.organization.login}/${t.slug}`
+          );
+        } catch {
+          // ignore — fall back to user-only search
+        }
+
+        const queries = [
+          `is:pr is:open review-requested:${config.username}`,
+          ...teamQueries,
+        ];
+
+        const searchResults = await Promise.all(
+          queries.map((q) => client.search.issuesAndPullRequests({ q, per_page: 100 }))
+        );
+
+        const seen = new Set<string>();
+        const searchItems: typeof searchResults[number]["data"]["items"] = [];
+        for (const result of searchResults) {
+          for (const item of result.data.items) {
+            if (seen.has(item.html_url)) continue;
+            seen.add(item.html_url);
+            searchItems.push(item);
+          }
+        }
 
         const items: ReviewRequest[] = [];
 
         const results = await Promise.all(
-          searchResult.data.items.map(async (item) => {
+          searchItems.map(async (item) => {
             // Extract owner/repo from repository_url
             const repoUrlParts = item.repository_url.split("/");
             const owner = repoUrlParts[repoUrlParts.length - 2];
