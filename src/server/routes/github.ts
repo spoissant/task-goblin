@@ -177,9 +177,12 @@ export const githubRoutes: Routes = {
           // ignore — fall back to user-only search
         }
 
+        // Exclude PRs the user authored — only happens for team requests since
+        // GitHub doesn't request a review from the PR author directly.
+        const excludeAuthor = `-author:${config.username}`;
         const queries = [
           `is:pr is:open review-requested:${config.username}`,
-          ...teamQueries,
+          ...teamQueries.map((q) => `${q} ${excludeAuthor}`),
         ];
 
         const searchResults = await Promise.all(
