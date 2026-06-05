@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
-import { useSettingsQuery } from "@/client/lib/queries/settings";
+import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
@@ -25,6 +25,7 @@ import {
   SignalLow,
   SignalMedium,
   SignalHigh,
+  Flame,
 } from "lucide-react";
 import type { ReviewRequest, Repository } from "@/client/lib/types";
 import { categorizePrSize } from "@/shared/pr-size";
@@ -102,12 +103,44 @@ function parseTeamMembers(value: string | null | undefined): Set<string> {
   }
 }
 
+const HIGH_PRIORITY_KEY = "high_priority_prs";
+
+function parseHighPriority(value: string | null | undefined): Set<string> {
+  if (!value) return new Set();
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function prKey(request: ReviewRequest): string {
+  return `${request.repo.owner}/${request.repo.repo}#${request.prNumber}`;
+}
+
 export function ReviewsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
   const { data: reposData } = useRepositoriesQuery();
   const { data: settings } = useSettingsQuery();
+  const updateSetting = useUpdateSetting();
   const teamMembers = useMemo(() => parseTeamMembers(settings?.team_members), [settings?.team_members]);
+  const highPriorityPrs = useMemo(
+    () => parseHighPriority(settings?.[HIGH_PRIORITY_KEY]),
+    [settings],
+  );
+
+  const toggleHighPriority = (key: string) => {
+    const next = new Set(highPriorityPrs);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    updateSetting.mutate({ key: HIGH_PRIORITY_KEY, value: JSON.stringify([...next]) });
+  };
 
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "grouped";
@@ -215,7 +248,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} teamMembers={teamMembers} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
                   </div>
                 );
               })}
@@ -223,7 +256,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} teamMembers={teamMembers} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
           )}
         </TooltipProvider>
       )}
@@ -236,13 +269,18 @@ interface ReviewTableProps {
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
   teamMembers: Set<string>;
+  highPriorityPrs: Set<string>;
+  onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewTable({ items, repoBySlug, showSize, teamMembers }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, showSize, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="w-[40px]">
+            <Flame className="h-4 w-4" />
+          </TableHead>
           <TableHead className="w-[80px]">PR</TableHead>
           <TableHead>Title</TableHead>
           <TableHead className="w-[150px]">Repo</TableHead>
@@ -256,11 +294,13 @@ function ReviewTable({ items, repoBySlug, showSize, teamMembers }: ReviewTablePr
       <TableBody>
         {items.map((request) => (
           <ReviewRequestRow
-            key={`${request.repo.owner}/${request.repo.repo}#${request.prNumber}`}
+            key={prKey(request)}
             request={request}
             repoBySlug={repoBySlug}
             showSize={showSize}
             isTeammate={teamMembers.has(request.author.toLowerCase())}
+            isHighPriority={highPriorityPrs.has(prKey(request))}
+            onToggleHighPriority={onToggleHighPriority}
           />
         ))}
       </TableBody>
@@ -273,9 +313,11 @@ interface ReviewRequestRowProps {
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
   isTeammate: boolean;
+  isHighPriority: boolean;
+  onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
     <TableRow
@@ -285,6 +327,26 @@ function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate }: ReviewR
           : undefined
       }
     >
+      {/* High Priority */}
+      <TableCell>
+        <button
+          type="button"
+          className="cursor-pointer hover:opacity-80"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleHighPriority(prKey(request));
+          }}
+        >
+          <Flame
+            className={`h-4 w-4 transition-colors ${
+              isHighPriority
+                ? "text-orange-500 fill-orange-500 flame-glow"
+                : "text-muted-foreground/30"
+            }`}
+          />
+        </button>
+      </TableCell>
+
       {/* PR Number */}
       <TableCell>
         <a
@@ -386,7 +448,7 @@ function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate }: ReviewR
 
       {/* Reviews */}
       <TableCell>
-        <ReviewStatusIcon approvedCount={request.approvedCount} prUrl={request.url} />
+        <ReviewStatusIcon approvedCount={request.approvedCount} requiredReviews={request.requiredReviews} prUrl={request.url} />
       </TableCell>
     </TableRow>
   );
