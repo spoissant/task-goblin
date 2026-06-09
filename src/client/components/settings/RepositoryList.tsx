@@ -37,6 +37,7 @@ export function RepositoryList() {
   const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
   const [slackChannelInputs, setSlackChannelInputs] = useState<Record<number, string>>({});
   const [aliasInputs, setAliasInputs] = useState<Record<number, string>>({});
+  const [requiredReviewsInputs, setRequiredReviewsInputs] = useState<Record<number, string>>({});
   // URL inputs keyed by `${repoId}-${branch}`
   const [deploymentUrlInputs, setDeploymentUrlInputs] = useState<Record<string, string>>({});
 
@@ -190,6 +191,7 @@ export function RepositoryList() {
                 <TableRow>
                   <TableHead>Repository</TableHead>
                   <TableHead>Alias</TableHead>
+                  <TableHead>Required Reviews</TableHead>
                   <TableHead>Badge Color</TableHead>
                   <TableHead>Worktrees</TableHead>
                   <TableHead>Deployment Branches</TableHead>
@@ -216,6 +218,27 @@ export function RepositoryList() {
                           updateRepo.mutate(
                             { id: repo.id, alias: val.trim() || null },
                             { onError: () => toast.error("Failed to update alias") }
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min={1}
+                        className="h-6 w-16 text-xs"
+                        value={requiredReviewsInputs[repo.id] ?? String(repo.requiredReviews ?? 2)}
+                        onChange={(e) => setRequiredReviewsInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
+                        onBlur={() => {
+                          const val = requiredReviewsInputs[repo.id];
+                          if (val === undefined) return;
+                          const n = parseInt(val, 10);
+                          updateRepo.mutate(
+                            { id: repo.id, requiredReviews: Number.isInteger(n) && n >= 1 ? n : 2 },
+                            { onError: () => toast.error("Failed to update required reviews") }
                           );
                         }}
                         onKeyDown={(e) => {

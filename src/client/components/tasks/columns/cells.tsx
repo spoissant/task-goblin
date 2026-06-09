@@ -244,10 +244,11 @@ export function ChecksCell({ task, prUrl }: { task: Task; prUrl?: string | null 
   );
 }
 
-export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
+export function ReviewsCell({ task, prUrl }: { task: Task & { repository?: Repository | null }; prUrl?: string | null }) {
   return (
     <ReviewStatusIcon
       approvedCount={task.approvedReviewCount}
+      requiredReviews={task.repository?.requiredReviews ?? 2}
       prUrl={prUrl}
     />
   );

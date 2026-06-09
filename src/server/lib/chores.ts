@@ -140,11 +140,14 @@ const CHORES: ChoreDefinition[] = [
     number: 8,
     key: "request-reviews",
     name: "Request Code Reviews",
-    condition: "isDraft = false AND prState = open AND approvedReviewCount < 2",
+    condition: "isDraft = false AND prState = open AND approvedReviewCount < repo.requiredReviews",
     prompt: "/chore-request-reviews {{taskId}}",
     categories: null,
     supportsBulk: true,
-    match: (t) => t.isDraft === 0 && t.prState === "open" && (t.approvedReviewCount ?? 0) < 2,
+    match: (t, repo) =>
+      t.isDraft === 0 &&
+      t.prState === "open" &&
+      (t.approvedReviewCount ?? 0) < (repo?.requiredReviews ?? 2),
   },
   {
     number: 9,

@@ -480,7 +480,7 @@ export const taskRoutes: Routes = {
 
       const conditions = [await getCompletedCondition()];
       if (!showDone) {
-        conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled')`);
+        conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled', 'closed')`);
       }
       if (title) {
         const orConditions = [

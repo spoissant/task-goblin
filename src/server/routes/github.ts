@@ -1,3 +1,5 @@
+import { db } from "../../db";
+import { repositories } from "../../db/schema";
 import { json } from "../response";
 import { AppError } from "../lib/errors";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
@@ -201,6 +203,12 @@ export const githubRoutes: Routes = {
 
         const items: ReviewRequest[] = [];
 
+        // Per-repo required-reviews threshold, keyed by "owner/repo" (default 2)
+        const repoRows = await db.select().from(repositories);
+        const requiredReviewsByRepo = new Map<string, number>(
+          repoRows.map((r) => [`${r.owner}/${r.repo}`, r.requiredReviews ?? 2])
+        );
+
         const results = await Promise.all(
           searchItems.map(async (item) => {
             // Extract owner/repo from repository_url
@@ -249,6 +257,7 @@ export const githubRoutes: Routes = {
               state: isDraft ? "draft" : "open",
               isDraft,
               approvedCount,
+              requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
               createdAt: item.created_at,
               changedFiles: prDetails.data.changed_files ?? null,
               additions: prDetails.data.additions ?? null,

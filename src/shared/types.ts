@@ -107,6 +107,7 @@ export interface Repository {
   deploymentBranches: string | null; // JSON array of branch names
   deploymentUrls: string | null; // JSON object mapping branch -> environment URL
   slackChannel: string | null; // Slack channel for review requests
+  requiredReviews: number | null; // number of approving reviews required to merge (default 2)
   worktrees?: Worktree[];
 }
 
@@ -241,6 +242,7 @@ export interface ReviewRequest {
   state: "open" | "draft";
   isDraft: boolean;
   approvedCount: number;
+  requiredReviews: number;
   createdAt: string;
   changedFiles: number | null;
   additions: number | null;

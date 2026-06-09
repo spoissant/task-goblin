@@ -78,6 +78,7 @@ export const repositories = sqliteTable("repositories", {
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
   deploymentUrls: text("deployment_urls"), // JSON object mapping branch -> environment URL (e.g., {"staging": "https://staging.hvbrt.com"})
   slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
+  requiredReviews: integer("required_reviews").default(2), // number of approving reviews required to merge
 });
 
 // 3b. Worktree - Local filesystem paths per repository

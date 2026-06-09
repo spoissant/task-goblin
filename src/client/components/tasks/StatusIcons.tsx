@@ -7,15 +7,16 @@ import {
 
 interface ReviewStatusIconProps {
   approvedCount: number | null;
+  requiredReviews?: number;
   prUrl?: string | null;
 }
 
-export function ReviewStatusIcon({ approvedCount, prUrl }: ReviewStatusIconProps) {
+export function ReviewStatusIcon({ approvedCount, requiredReviews = 2, prUrl }: ReviewStatusIconProps) {
   if (approvedCount === null) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const required = 2;
+  const required = requiredReviews;
   const countText = `${approvedCount}/${required}`;
 
   let icon: React.ReactNode;
@@ -24,9 +25,9 @@ export function ReviewStatusIcon({ approvedCount, prUrl }: ReviewStatusIconProps
   if (approvedCount >= required) {
     icon = <CheckCircle className="h-4 w-4 text-green-500" />;
     tooltip = `${approvedCount} approving reviews`;
-  } else if (approvedCount === 1) {
+  } else if (approvedCount > 0) {
     icon = <CheckCircle className="h-4 w-4 text-yellow-500" />;
-    tooltip = "1 approving review (needs 2)";
+    tooltip = `${approvedCount} approving review${approvedCount !== 1 ? "s" : ""} (needs ${required})`;
   } else {
     icon = <XCircle className="h-4 w-4 text-red-500" />;
     tooltip = "No approving reviews";
