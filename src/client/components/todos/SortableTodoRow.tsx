@@ -22,6 +22,7 @@ export interface SortableTodoRowProps {
 export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: SortableTodoRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(todo.content);
+  const [editIsChore, setEditIsChore] = useState(!!todo.isCustomChore);
   const [editChoreRank, setEditChoreRank] = useState(String(todo.choreRank ?? ""));
   const [editChorePrompt, setEditChorePrompt] = useState(todo.chorePrompt ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,30 +51,43 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
     }
   }, [isEditing]);
 
+  const resetEdits = () => {
+    setEditValue(todo.content);
+    setEditIsChore(!!todo.isCustomChore);
+    setEditChoreRank(String(todo.choreRank ?? ""));
+    setEditChorePrompt(todo.chorePrompt ?? "");
+  };
+
   const handleSave = () => {
     const trimmed = editValue.trim();
-    const changed =
-      (trimmed && trimmed !== todo.content) ||
-      (todo.isCustomChore && (editChoreRank !== String(todo.choreRank ?? "") || editChorePrompt !== (todo.chorePrompt ?? "")));
+
+    // A custom chore needs both a rank and a prompt — keep editing open until provided.
+    if (editIsChore && (!editChoreRank || !editChorePrompt.trim())) {
+      toast.error("A custom chore needs a rank and an action prompt");
+      return;
+    }
+
+    const choreChanged =
+      editIsChore !== !!todo.isCustomChore ||
+      (editIsChore && (editChoreRank !== String(todo.choreRank ?? "") || editChorePrompt !== (todo.chorePrompt ?? "")));
+    const changed = (trimmed && trimmed !== todo.content) || choreChanged;
 
     if (changed && trimmed) {
-      const updates: Parameters<typeof updateTodo.mutate>[0] = { id: todo.id, content: trimmed };
-      if (todo.isCustomChore) {
-        updates.choreRank = editChoreRank ? parseInt(editChoreRank, 10) : null;
-        updates.chorePrompt = editChorePrompt.trim() || null;
-      }
+      const updates: Parameters<typeof updateTodo.mutate>[0] = {
+        id: todo.id,
+        content: trimmed,
+        isCustomChore: editIsChore,
+        choreRank: editIsChore && editChoreRank ? parseInt(editChoreRank, 10) : null,
+        chorePrompt: editIsChore ? editChorePrompt.trim() || null : null,
+      };
       updateTodo.mutate(updates, {
         onError: () => {
           toast.error("Failed to update todo");
-          setEditValue(todo.content);
-          setEditChoreRank(String(todo.choreRank ?? ""));
-          setEditChorePrompt(todo.chorePrompt ?? "");
+          resetEdits();
         },
       });
     } else {
-      setEditValue(todo.content);
-      setEditChoreRank(String(todo.choreRank ?? ""));
-      setEditChorePrompt(todo.chorePrompt ?? "");
+      resetEdits();
     }
     setIsEditing(false);
   };
@@ -82,7 +96,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
     if (e.key === "Enter") {
       handleSave();
     } else if (e.key === "Escape") {
-      setEditValue(todo.content);
+      resetEdits();
       setIsEditing(false);
     }
   };
@@ -114,8 +128,8 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
             ref={inputRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onBlur={todo.isCustomChore ? undefined : handleSave}
-            onKeyDown={todo.isCustomChore ? undefined : handleKeyDown}
+            onBlur={editIsChore ? undefined : handleSave}
+            onKeyDown={editIsChore ? undefined : handleKeyDown}
             className="flex-1 h-7 text-sm"
           />
         ) : (
@@ -132,6 +146,17 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded shrink-0">
             chore{choreName ? ` · before #${todo.choreRank} ${choreName}` : ""}
           </span>
+        )}
+        {editable && isEditing && !editIsChore && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs text-amber-600 dark:text-amber-400 shrink-0"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setEditIsChore(true)}
+          >
+            Make chore
+          </Button>
         )}
         {editable && !isEditing && (
           <Button
@@ -152,7 +177,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
-      {editable && isEditing && todo.isCustomChore && (
+      {editable && isEditing && editIsChore && (
         <div className="px-10 pb-2 space-y-2">
           <Select value={editChoreRank} onValueChange={setEditChoreRank}>
             <SelectTrigger className="w-full">
@@ -176,9 +201,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           <div className="flex gap-2">
             <Button size="sm" onClick={handleSave} disabled={updateTodo.isPending}>Save</Button>
             <Button size="sm" variant="ghost" onClick={() => {
-              setEditValue(todo.content);
-              setEditChoreRank(String(todo.choreRank ?? ""));
-              setEditChorePrompt(todo.chorePrompt ?? "");
+              resetEdits();
               setIsEditing(false);
             }}>Cancel</Button>
           </div>
