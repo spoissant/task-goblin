@@ -10,7 +10,7 @@ import { ChevronDown, Flame, Snowflake } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
-import { useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
+import { useChoreDefinitionsQuery, useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/client/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
@@ -372,6 +374,10 @@ function resolveChorePrompt(template: string, task: Task): string {
 export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEntry }) {
   const { data: defsData } = useChoreDefinitionsQuery();
   const definitions = defsData?.items ?? [];
+  const { data: choresData } = useChoresQuery();
+  const customChores = (choresData?.items ?? []).filter(
+    (c) => c.task.id === task.id && c.isCustom
+  );
 
   const copyPrompt = (prompt: string) => {
     navigator.clipboard.writeText(prompt);
@@ -414,6 +420,18 @@ export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEnt
               {def.name}
             </DropdownMenuItem>
           ))}
+          {customChores.length > 0 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-muted-foreground">Custom</DropdownMenuLabel>
+              {customChores.map((chore) => (
+                <DropdownMenuItem key={chore.key} onClick={() => copyPrompt(chore.prompt)}>
+                  <span className="text-muted-foreground mr-2">#{chore.number}</span>
+                  {chore.name}
+                </DropdownMenuItem>
+              ))}
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
