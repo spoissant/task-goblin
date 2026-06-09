@@ -188,7 +188,7 @@ export const COLUMNS = {
   },
   next: {
     key: "next",
-    header: "Next",
+    header: "Chores",
     width: "110px",
     render: (task, ctx) => <NextCell task={task} nextChore={ctx.nextChore} />,
   },

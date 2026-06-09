@@ -30,6 +30,7 @@ import {
 import type { ReviewRequest, Repository } from "@/client/lib/types";
 import { categorizePrSize } from "@/shared/pr-size";
 import type { PrSize } from "@/shared/types";
+import { toast } from "sonner";
 
 function formatRelativeTime(dateString: string): string {
   const now = Date.now();
@@ -283,6 +284,7 @@ function ReviewTable({ items, repoBySlug, showSize, teamMembers, highPriorityPrs
           </TableHead>
           <TableHead className="w-[80px]">PR</TableHead>
           <TableHead>Title</TableHead>
+          <TableHead className="w-[80px]">Chores</TableHead>
           <TableHead className="w-[150px]">Repo</TableHead>
           <TableHead className="w-[120px]">Author</TableHead>
           <TableHead className="w-[120px]">Created</TableHead>
@@ -371,6 +373,23 @@ function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate, isHighPri
         >
           {request.title}
         </a>
+      </TableCell>
+
+      {/* Chores */}
+      <TableCell>
+        <div className="inline-flex items-stretch rounded overflow-hidden bg-muted text-muted-foreground">
+          <button
+            type="button"
+            className="px-1.5 py-0.5 text-xs font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              const prompt = `/chore-code-review-pr ${request.url}`;
+              navigator.clipboard.writeText(prompt);
+              toast.success("Copied: " + prompt);
+            }}
+          >
+            Code Review
+          </button>
+        </div>
       </TableCell>
 
       {/* Repository */}
