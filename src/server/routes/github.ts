@@ -161,31 +161,37 @@ export const githubRoutes: Routes = {
   },
 
   "/api/v1/github/review-requests": {
-    async GET() {
+    async GET(req) {
       try {
         const config = await getGitHubConfig();
         const client = getGitHubClient();
+        const scope = new URL(req.url).searchParams.get("scope") === "mine" ? "mine" : "others";
 
-        // Search for PRs where user is requested directly, plus PRs requested
-        // from any team the user belongs to. Team membership requires read:org
-        // scope on the token; if unavailable we silently fall back to user-only.
-        let teamQueries: string[] = [];
-        try {
-          const teamsResp = await client.teams.listForAuthenticatedUser({ per_page: 100 });
-          teamQueries = teamsResp.data.map(
-            (t) => `is:pr is:open team-review-requested:${t.organization.login}/${t.slug}`
-          );
-        } catch {
-          // ignore — fall back to user-only search
+        let queries: string[];
+        if (scope === "mine") {
+          queries = [`is:pr is:open author:${config.username}`];
+        } else {
+          // Search for PRs where user is requested directly, plus PRs requested
+          // from any team the user belongs to. Team membership requires read:org
+          // scope on the token; if unavailable we silently fall back to user-only.
+          let teamQueries: string[] = [];
+          try {
+            const teamsResp = await client.teams.listForAuthenticatedUser({ per_page: 100 });
+            teamQueries = teamsResp.data.map(
+              (t) => `is:pr is:open team-review-requested:${t.organization.login}/${t.slug}`
+            );
+          } catch {
+            // ignore — fall back to user-only search
+          }
+
+          // Exclude PRs the user authored — only happens for team requests since
+          // GitHub doesn't request a review from the PR author directly.
+          const excludeAuthor = `-author:${config.username}`;
+          queries = [
+            `is:pr is:open review-requested:${config.username}`,
+            ...teamQueries.map((q) => `${q} ${excludeAuthor}`),
+          ];
         }
-
-        // Exclude PRs the user authored — only happens for team requests since
-        // GitHub doesn't request a review from the PR author directly.
-        const excludeAuthor = `-author:${config.username}`;
-        const queries = [
-          `is:pr is:open review-requested:${config.username}`,
-          ...teamQueries.map((q) => `${q} ${excludeAuthor}`),
-        ];
 
         const searchResults = await Promise.all(
           queries.map((q) => client.search.issuesAndPullRequests({ q, per_page: 100 }))
@@ -234,8 +240,9 @@ export const githubRoutes: Routes = {
             const approvedCount = Array.from(reviewerStates.values())
               .filter((state) => state === "APPROVED").length;
 
+            // Hide PRs the user already approved — only relevant for others' PRs.
             const userState = reviewerStates.get(config.username);
-            if (userState === "APPROVED") return null;
+            if (scope === "others" && userState === "APPROVED") return null;
 
             const isDraft = item.draft ?? false;
 

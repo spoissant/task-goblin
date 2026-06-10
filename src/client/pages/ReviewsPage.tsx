@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useReviewRequestsQuery, reviewKeys } from "@/client/lib/queries";
+import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -82,6 +82,7 @@ const SIZE_ICON_COLORS: Record<SizeCategory, string> = {
 
 type ViewMode = "grouped" | "flat";
 const VIEW_STORAGE_KEY = "reviewsPage.view";
+const SCOPE_STORAGE_KEY = "reviewsPage.scope";
 
 function SizeBadge({ size }: { size: SizeCategory }) {
   const Icon = SIZE_ICONS[size];
@@ -123,7 +124,18 @@ function prKey(request: ReviewRequest): string {
 
 export function ReviewsPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error, isFetching } = useReviewRequestsQuery();
+
+  const [scope, setScope] = useState<ReviewScope>(() => {
+    if (typeof window === "undefined") return "others";
+    const stored = window.localStorage.getItem(SCOPE_STORAGE_KEY);
+    return stored === "mine" ? "mine" : "others";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(SCOPE_STORAGE_KEY, scope);
+  }, [scope]);
+
+  const { data, isLoading, error, isFetching } = useReviewRequestsQuery(scope);
   const { data: reposData } = useRepositoriesQuery();
   const { data: settings } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
@@ -165,8 +177,10 @@ export function ReviewsPage() {
 
   const visibleItems = useMemo(() => {
     if (!data?.items) return null;
+    // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
+    if (scope === "mine") return data.items;
     return data.items.filter((item) => !item.isDraft);
-  }, [data]);
+  }, [data, scope]);
 
   const groups = useMemo(() => {
     if (!visibleItems) return null;
@@ -200,7 +214,7 @@ export function ReviewsPage() {
         <div className="flex items-center gap-2">
           {data && (
             <span className="text-sm text-muted-foreground">
-              {data.total} PR{data.total !== 1 ? "s" : ""} awaiting review
+              {data.total} PR{data.total !== 1 ? "s" : ""} {scope === "mine" ? "open" : "awaiting review"}
             </span>
           )}
           <Button variant="outline" onClick={handleRefresh} disabled={isFetching}>
@@ -209,6 +223,13 @@ export function ReviewsPage() {
           </Button>
         </div>
       </div>
+
+      <Tabs value={scope} onValueChange={(v) => setScope(v as ReviewScope)} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="others">Others' PRs</TabsTrigger>
+          <TabsTrigger value="mine">My PRs</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {isLoading && (
         <div className="space-y-2">
@@ -223,7 +244,10 @@ export function ReviewsPage() {
       )}
 
       {data && !data.items.length && (
-        <EmptyState icon={GitPullRequestArrow} message="No PRs awaiting your review" />
+        <EmptyState
+          icon={GitPullRequestArrow}
+          message={scope === "mine" ? "No open PRs" : "No PRs awaiting your review"}
+        />
       )}
 
       {data && data.items.length > 0 && (
