@@ -7,6 +7,7 @@ import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/setting
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
+import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
@@ -274,7 +275,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
                   </div>
                 );
               })}
@@ -282,7 +283,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
           )}
         </TooltipProvider>
       )}
@@ -295,12 +296,13 @@ interface ReviewTableProps {
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
   scope: ReviewScope;
+  jiraHost?: string | null;
   teamMembers: Set<string>;
   highPriorityPrs: Set<string>;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewTable({ items, repoBySlug, showSize, scope, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
   const isMine = scope === "mine";
   return (
     <Table>
@@ -312,6 +314,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, teamMembers, highPrio
             </TableHead>
           )}
           {isMine && <TableHead className="w-[80px]">Task</TableHead>}
+          {isMine && <TableHead className="w-[110px]">Jira</TableHead>}
           <TableHead className="w-[80px]">PR</TableHead>
           <TableHead>Title</TableHead>
           <TableHead className="w-[80px]">Chores</TableHead>
@@ -331,6 +334,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, teamMembers, highPrio
             repoBySlug={repoBySlug}
             showSize={showSize}
             scope={scope}
+            jiraHost={jiraHost}
             isTeammate={teamMembers.has(request.author.toLowerCase())}
             isHighPriority={highPriorityPrs.has(prKey(request))}
             onToggleHighPriority={onToggleHighPriority}
@@ -346,12 +350,13 @@ interface ReviewRequestRowProps {
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
   scope: ReviewScope;
+  jiraHost?: string | null;
   isTeammate: boolean;
   isHighPriority: boolean;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewRequestRow({ request, repoBySlug, showSize, scope, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
   const isMine = scope === "mine";
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
@@ -394,6 +399,31 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, isTeammate, is
             >
               #{request.taskId}
             </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      )}
+
+      {/* Jira */}
+      {isMine && (
+        <TableCell>
+          {request.taskJiraKey ? (
+            (() => {
+              const jiraUrl = getJiraUrl(request.taskJiraKey, jiraHost);
+              return jiraUrl ? (
+                <a
+                  href={jiraUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-blue-600 hover:underline"
+                >
+                  {request.taskJiraKey}
+                </a>
+              ) : (
+                <span className="font-mono text-xs">{request.taskJiraKey}</span>
+              );
+            })()
           ) : (
             <span className="text-muted-foreground">—</span>
           )}

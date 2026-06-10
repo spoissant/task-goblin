@@ -221,14 +221,14 @@ export const githubRoutes: Routes = {
           repoRows.map((r) => [r.id, `${r.owner}/${r.repo}`])
         );
         const taskRows = await db
-          .select({ id: tasks.id, prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
+          .select({ id: tasks.id, jiraKey: tasks.jiraKey, prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
           .from(tasks)
           .where(isNotNull(tasks.prNumber));
-        const taskIdByPr = new Map<string, number>();
+        const taskByPr = new Map<string, { id: number; jiraKey: string | null }>();
         for (const t of taskRows) {
           if (t.repositoryId == null) continue;
           const slug = repoSlugById.get(t.repositoryId);
-          if (slug) taskIdByPr.set(`${slug}#${t.prNumber}`, t.id);
+          if (slug) taskByPr.set(`${slug}#${t.prNumber}`, { id: t.id, jiraKey: t.jiraKey });
         }
 
         const results = await Promise.all(
@@ -286,7 +286,8 @@ export const githubRoutes: Routes = {
               additions: prDetails.data.additions ?? null,
               deletions: prDetails.data.deletions ?? null,
               changesByCategory,
-              taskId: taskIdByPr.get(`${owner}/${repo}#${prNumber}`) ?? null,
+              taskId: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.id ?? null,
+              taskJiraKey: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.jiraKey ?? null,
             } satisfies ReviewRequest;
           })
         );
