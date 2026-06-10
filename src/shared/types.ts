@@ -248,6 +248,7 @@ export interface ReviewRequest {
   additions: number | null;
   deletions: number | null;
   changesByCategory: { frontend: FileChanges; backend: FileChanges; other: FileChanges } | null;
+  taskId: number | null;
 }
 
 export interface FileChangesWithPercent extends FileChanges {

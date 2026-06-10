@@ -1,5 +1,6 @@
+import { isNotNull } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories } from "../../db/schema";
+import { repositories, tasks } from "../../db/schema";
 import { json } from "../response";
 import { AppError } from "../lib/errors";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
@@ -215,6 +216,21 @@ export const githubRoutes: Routes = {
           repoRows.map((r) => [`${r.owner}/${r.repo}`, r.requiredReviews ?? 2])
         );
 
+        // Existing task per PR, keyed by "owner/repo#number"
+        const repoSlugById = new Map<number, string>(
+          repoRows.map((r) => [r.id, `${r.owner}/${r.repo}`])
+        );
+        const taskRows = await db
+          .select({ id: tasks.id, prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
+          .from(tasks)
+          .where(isNotNull(tasks.prNumber));
+        const taskIdByPr = new Map<string, number>();
+        for (const t of taskRows) {
+          if (t.repositoryId == null) continue;
+          const slug = repoSlugById.get(t.repositoryId);
+          if (slug) taskIdByPr.set(`${slug}#${t.prNumber}`, t.id);
+        }
+
         const results = await Promise.all(
           searchItems.map(async (item) => {
             // Extract owner/repo from repository_url
@@ -270,6 +286,7 @@ export const githubRoutes: Routes = {
               additions: prDetails.data.additions ?? null,
               deletions: prDetails.data.deletions ?? null,
               changesByCategory,
+              taskId: taskIdByPr.get(`${owner}/${repo}#${prNumber}`) ?? null,
             } satisfies ReviewRequest;
           })
         );

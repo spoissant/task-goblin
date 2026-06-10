@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
@@ -273,7 +274,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
                   </div>
                 );
               })}
@@ -281,7 +282,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
           )}
         </TooltipProvider>
       )}
@@ -293,19 +294,24 @@ interface ReviewTableProps {
   items: ReviewRequest[];
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
+  scope: ReviewScope;
   teamMembers: Set<string>;
   highPriorityPrs: Set<string>;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewTable({ items, repoBySlug, showSize, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, showSize, scope, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
+  const isMine = scope === "mine";
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[40px]">
-            <Flame className="h-4 w-4" />
-          </TableHead>
+          {!isMine && (
+            <TableHead className="w-[40px]">
+              <Flame className="h-4 w-4" />
+            </TableHead>
+          )}
+          {isMine && <TableHead className="w-[80px]">Task</TableHead>}
           <TableHead className="w-[80px]">PR</TableHead>
           <TableHead>Title</TableHead>
           <TableHead className="w-[80px]">Chores</TableHead>
@@ -324,6 +330,7 @@ function ReviewTable({ items, repoBySlug, showSize, teamMembers, highPriorityPrs
             request={request}
             repoBySlug={repoBySlug}
             showSize={showSize}
+            scope={scope}
             isTeammate={teamMembers.has(request.author.toLowerCase())}
             isHighPriority={highPriorityPrs.has(prKey(request))}
             onToggleHighPriority={onToggleHighPriority}
@@ -338,12 +345,14 @@ interface ReviewRequestRowProps {
   request: ReviewRequest;
   repoBySlug: Map<string, Repository>;
   showSize: boolean;
+  scope: ReviewScope;
   isTeammate: boolean;
   isHighPriority: boolean;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, showSize, scope, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+  const isMine = scope === "mine";
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
     <TableRow
@@ -354,24 +363,42 @@ function ReviewRequestRow({ request, repoBySlug, showSize, isTeammate, isHighPri
       }
     >
       {/* High Priority */}
-      <TableCell>
-        <button
-          type="button"
-          className="cursor-pointer hover:opacity-80"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleHighPriority(prKey(request));
-          }}
-        >
-          <Flame
-            className={`h-4 w-4 transition-colors ${
-              isHighPriority
-                ? "text-orange-500 fill-orange-500 flame-glow"
-                : "text-muted-foreground/30"
-            }`}
-          />
-        </button>
-      </TableCell>
+      {!isMine && (
+        <TableCell>
+          <button
+            type="button"
+            className="cursor-pointer hover:opacity-80"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleHighPriority(prKey(request));
+            }}
+          >
+            <Flame
+              className={`h-4 w-4 transition-colors ${
+                isHighPriority
+                  ? "text-orange-500 fill-orange-500 flame-glow"
+                  : "text-muted-foreground/30"
+              }`}
+            />
+          </button>
+        </TableCell>
+      )}
+
+      {/* Task */}
+      {isMine && (
+        <TableCell>
+          {request.taskId != null ? (
+            <Link
+              to={`/tasks/${request.taskId}`}
+              className="font-mono text-xs text-blue-600 hover:underline"
+            >
+              #{request.taskId}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      )}
 
       {/* PR Number */}
       <TableCell>
