@@ -80,6 +80,7 @@ export const taskRoutes: Routes = {
         const orConditions = [
           like(tasks.title, `%${title}%`),
           like(tasks.jiraKey, `%${title}%`),
+          like(tasks.epicKey, `%${title}%`),
           like(tasks.headBranch, `%${title}%`),
         ];
         const parsed = Number(title);
@@ -486,6 +487,7 @@ export const taskRoutes: Routes = {
         const orConditions = [
           like(tasks.title, `%${title}%`),
           like(tasks.jiraKey, `%${title}%`),
+          like(tasks.epicKey, `%${title}%`),
           like(tasks.headBranch, `%${title}%`),
         ];
         const parsed = Number(title);
