@@ -6,7 +6,7 @@ import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { ChevronDown, Flame, Snowflake } from "lucide-react";
+import { ChevronDown, Flame, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
@@ -80,25 +80,33 @@ export function SprintCell({ task }: { task: Task }) {
   );
 }
 
-export function EpicCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
-  if (!task.epicKey) {
+export function ParentCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
+  const key = task.epicKey ?? task.parentKey;
+  if (!key) {
     return <span className="text-muted-foreground">—</span>;
   }
-  const epicUrl = getJiraUrl(task.epicKey, jiraHost);
-  if (epicUrl) {
+  const isEpic = task.epicKey != null;
+  const url = getJiraUrl(key, jiraHost);
+  const content = (
+    <span className="inline-flex items-center gap-1">
+      {isEpic && <Zap className="h-3 w-3 text-purple-600 shrink-0" />}
+      {key}
+    </span>
+  );
+  if (url) {
     return (
       <a
-        href={epicUrl}
+        href={url}
         target="_blank"
         rel="noopener noreferrer"
         className="text-blue-600 hover:underline font-mono text-xs"
         onClick={(e) => e.stopPropagation()}
       >
-        {task.epicKey}
+        {content}
       </a>
     );
   }
-  return <span className="font-mono text-xs">{task.epicKey}</span>;
+  return <span className="font-mono text-xs">{content}</span>;
 }
 
 export function KeyCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {

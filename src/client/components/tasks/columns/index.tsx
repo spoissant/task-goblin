@@ -5,7 +5,7 @@ import type { ChoreEntry } from "@/client/lib/queries/chores";
 import {
   TypeCell,
   SprintCell,
-  EpicCell,
+  ParentCell,
   KeyCell,
   TitleCell,
   RepoCell,
@@ -28,7 +28,7 @@ import {
 export {
   TypeCell,
   SprintCell,
-  EpicCell,
+  ParentCell,
   KeyCell,
   TitleCell,
   RepoCell,
@@ -107,9 +107,9 @@ export const COLUMNS = {
   },
   epic: {
     key: "epic",
-    header: "Epic",
+    header: "Parent",
     width: "100px",
-    render: (task, ctx) => <EpicCell task={task} jiraHost={ctx.jiraHost} />,
+    render: (task, ctx) => <ParentCell task={task} jiraHost={ctx.jiraHost} />,
   },
   key: {
     key: "key",

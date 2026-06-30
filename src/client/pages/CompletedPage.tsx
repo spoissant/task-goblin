@@ -25,7 +25,7 @@ import { Input } from "@/client/components/ui/input";
 import { RefreshCw, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import { getJiraUrl, getPrUrl } from "@/client/components/tasks/columns/cells";
+import { getJiraUrl, getPrUrl, ParentCell } from "@/client/components/tasks/columns/cells";
 import type { TaskWithRepository } from "@/client/lib/types";
 
 const PAGE_SIZE = 25;
@@ -153,7 +153,7 @@ export function CompletedPage() {
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
-                  <TableHead className="w-[100px]">Epic</TableHead>
+                  <TableHead className="w-[100px]">Parent</TableHead>
                   <TableHead className="w-[100px]">Key</TableHead>
                   <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead>Title</TableHead>
@@ -231,26 +231,9 @@ function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
         )}
       </TableCell>
 
-      {/* Epic */}
+      {/* Parent */}
       <TableCell>
-        {task.epicKey ? (() => {
-          const epicUrl = getJiraUrl(task.epicKey, jiraHost);
-          return epicUrl ? (
-            <a
-              href={epicUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline font-mono text-xs"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {task.epicKey}
-            </a>
-          ) : (
-            <span className="font-mono text-xs">{task.epicKey}</span>
-          );
-        })() : (
-          <span className="text-muted-foreground">—</span>
-        )}
+        <ParentCell task={task} jiraHost={jiraHost} />
       </TableCell>
 
       {/* Jira Key */}

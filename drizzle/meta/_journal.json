@@ -211,6 +211,13 @@
       "when": 1776699408264,
       "tag": "0029_mature_talos",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1782830669006,
+      "tag": "0030_lean_wasp",
+      "breakpoints": true
     }
   ]
 }

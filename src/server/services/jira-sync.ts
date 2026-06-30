@@ -37,15 +37,11 @@ function stringifyDescription(description: unknown): string | null {
   }
 }
 
-function extractEpicKey(issue: { fields: Record<string, unknown> }): string | null {
+function extractParent(issue: { fields: Record<string, unknown> }): { key: string; isEpic: boolean } | null {
   const parent = issue.fields.parent as { key?: string; fields?: { issuetype?: { name?: string } } } | undefined;
   if (!parent?.key) return null;
-  // Only return if parent is an Epic
-  const parentType = parent.fields?.issuetype?.name?.toLowerCase();
-  if (parentType === "epic") {
-    return parent.key;
-  }
-  return null;
+  const isEpic = parent.fields?.issuetype?.name?.toLowerCase() === "epic";
+  return { key: parent.key, isEpic };
 }
 
 interface Sprint {
@@ -77,6 +73,8 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
     sprintName = activeSprint?.name ?? null;
   }
 
+  const parent = extractParent({ fields: fields as Record<string, unknown> });
+
   return {
     jiraKey: issue.key!,
     title: fields.summary || issue.key!,
@@ -86,7 +84,8 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
     assignee: fields.assignee?.displayName || null,
     priority: fields.priority?.name || null,
     sprint: sprintName,
-    epicKey: extractEpicKey({ fields: fields as Record<string, unknown> }),
+    epicKey: parent?.isEpic ? parent.key : null,
+    parentKey: parent && !parent.isEpic ? parent.key : null,
     jiraSyncedAt: timestamp,
     updatedAt: timestamp,
   };
@@ -113,6 +112,7 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         priority: taskData.priority,
         sprint: taskData.sprint,
         epicKey: taskData.epicKey,
+        parentKey: taskData.parentKey,
         jiraSyncedAt: taskData.jiraSyncedAt,
         updatedAt: taskData.updatedAt,
       })

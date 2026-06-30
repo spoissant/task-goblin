@@ -123,6 +123,7 @@ export async function mergeSingleTask(
     mergedFields.priority = jiraTask.priority;
     mergedFields.sprint = jiraTask.sprint;
     mergedFields.epicKey = jiraTask.epicKey;
+    mergedFields.parentKey = jiraTask.parentKey;
     mergedFields.jiraSyncedAt = jiraTask.jiraSyncedAt;
     // Use Jira summary as title if target doesn't have a good title
     if (jiraTask.title && jiraTask.title !== prTask.headBranch) {

@@ -16,6 +16,7 @@ export const tasks = sqliteTable("tasks", {
   priority: text("priority"),
   sprint: text("sprint"), // sprint name
   epicKey: text("epic_key"), // parent epic key
+  parentKey: text("parent_key"), // non-epic parent key (e.g. sub-task's parent story/bug)
   jiraSyncedAt: text("jira_synced_at"),
 
   // Manual flags (not synced from Jira/GitHub)

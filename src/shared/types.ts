@@ -24,6 +24,7 @@ export interface Task {
   priority: string | null;
   sprint: string | null;
   epicKey: string | null;
+  parentKey: string | null;
   jiraSyncedAt: string | null;
 
   // Manual flags
