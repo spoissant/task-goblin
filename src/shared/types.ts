@@ -244,6 +244,7 @@ export interface ReviewRequest {
   isDraft: boolean;
   approvedCount: number;
   requiredReviews: number;
+  hasPendingReview: boolean;
   createdAt: string;
   changedFiles: number | null;
   additions: number | null;

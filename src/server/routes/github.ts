@@ -256,6 +256,12 @@ export const githubRoutes: Routes = {
             const approvedCount = Array.from(reviewerStates.values())
               .filter((state) => state === "APPROVED").length;
 
+            // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
+            // i.e. the authenticated token user — so this flags the current user's own draft.
+            const hasPendingReview = reviewsResult.data.some(
+              (review) => review.state === "PENDING" && review.user?.login === config.username
+            );
+
             // Hide PRs the user already approved — only relevant for others' PRs.
             const userState = reviewerStates.get(config.username);
             if (scope === "others" && userState === "APPROVED") return null;
@@ -281,6 +287,7 @@ export const githubRoutes: Routes = {
               isDraft,
               approvedCount,
               requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
+              hasPendingReview,
               createdAt: item.created_at,
               changedFiles: prDetails.data.changed_files ?? null,
               additions: prDetails.data.additions ?? null,

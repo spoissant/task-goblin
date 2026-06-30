@@ -28,6 +28,7 @@ import {
   SignalMedium,
   SignalHigh,
   Flame,
+  PencilLine,
 } from "lucide-react";
 import type { ReviewRequest, Repository } from "@/client/lib/types";
 import { categorizePrSize } from "@/shared/pr-size";
@@ -445,15 +446,27 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTe
 
       {/* Title */}
       <TableCell className="max-w-[400px]">
-        <a
-          href={request.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:underline truncate block"
-          title={request.title}
-        >
-          {request.title}
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href={request.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline truncate block"
+            title={request.title}
+          >
+            {request.title}
+          </a>
+          {!isMine && request.hasPendingReview && (
+            <Badge
+              variant="outline"
+              className="shrink-0 gap-1 text-[10px] px-1.5 py-0 border-violet-400 bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-100 dark:border-violet-500"
+              title="You have an unsubmitted draft review on this PR"
+            >
+              <PencilLine className="h-3 w-3" />
+              Draft review
+            </Badge>
+          )}
+        </div>
       </TableCell>
 
       {/* Chores */}
