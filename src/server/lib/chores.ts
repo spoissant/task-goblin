@@ -27,6 +27,7 @@ export interface ChoreEntry {
   prompt: string;
   task: ChoreTask;
   isCustom?: boolean;
+  todoId?: number;
 }
 
 export interface ChoreTask {
@@ -389,6 +390,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
         name: r.todo.content,
         prompt: r.todo.chorePrompt ?? "",
         isCustom: true,
+        todoId: r.todo.id,
         task: {
           id: r.task.id,
           title: r.task.title,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
@@ -433,10 +433,20 @@ export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEnt
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-muted-foreground">Custom</DropdownMenuLabel>
               {customChores.map((chore) => (
-                <DropdownMenuItem key={chore.key} onClick={() => copyPrompt(chore.prompt)}>
-                  <span className="text-muted-foreground mr-2">#{chore.number}</span>
-                  {chore.name}
-                </DropdownMenuItem>
+                <Fragment key={chore.key}>
+                  <DropdownMenuItem onClick={() => copyPrompt(chore.prompt)}>
+                    <span className="text-muted-foreground mr-2">#{chore.number}</span>
+                    {chore.name}
+                  </DropdownMenuItem>
+                  {chore.todoId != null && (
+                    <DropdownMenuItem
+                      onClick={() => copyPrompt(`/chore-custom-chore ${chore.todoId}`)}
+                    >
+                      <span className="text-muted-foreground mr-2">#{chore.number}</span>
+                      <span className="font-mono text-xs">/chore-custom-chore {chore.todoId}</span>
+                    </DropdownMenuItem>
+                  )}
+                </Fragment>
               ))}
             </>
           ) : null}
