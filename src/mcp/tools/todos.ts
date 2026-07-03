@@ -7,18 +7,16 @@ export function registerTodoTools(server: McpServer) {
   server.registerTool(
     "list_todos",
     {
-      description: "List todos with optional filters",
+      description: "List todos with optional filters. Every pending todo surfaces as a chore.",
       inputSchema: {
         taskId: z.number().optional().describe("Filter by parent task ID"),
         done: z.boolean().optional().describe("Filter by completion status"),
-        isCustomChore: z.boolean().optional().describe("Filter by custom chore flag"),
       },
     },
-    async ({ taskId, done, isCustomChore }) => {
+    async ({ taskId, done }) => {
       const params = new URLSearchParams();
       if (taskId !== undefined) params.set("taskId", String(taskId));
       if (done !== undefined) params.set("done", String(done));
-      if (isCustomChore !== undefined) params.set("isCustomChore", String(isCustomChore));
 
       const queryString = params.toString();
       const path = `/api/v1/todos${queryString ? `?${queryString}` : ""}`;
@@ -32,24 +30,22 @@ export function registerTodoTools(server: McpServer) {
   server.registerTool(
     "create_todo",
     {
-      description: "Create a new todo item. For custom chores, set isCustomChore=true and provide choreRank and chorePrompt.",
+      description: "Create a new todo item. Every pending todo surfaces as a chore for its task.",
       inputSchema: {
-        content: z.string().describe("Todo content/name. For custom chores, this is the chore display name."),
-        taskId: z.number().optional().describe("Parent task ID (required for custom chores)"),
+        content: z.string().describe("Todo content — the work to perform"),
+        taskId: z.number().optional().describe("Parent task ID"),
         placement: z.enum(["top", "bottom"]).optional().describe("Where to insert the todo (default: bottom)"),
-        isCustomChore: z.boolean().optional().describe("Set to true to create a custom chore"),
-        choreRank: z.number().int().optional().describe("Chore definition number this runs before (e.g. 5 = runs before chore #5 'Request Reviews'). Required when isCustomChore=true."),
-        chorePrompt: z.string().optional().describe("The custom action/prompt to execute. Required when isCustomChore=true."),
+        choreRank: z.number().int().optional().describe("Chore definition number this runs before (e.g. 5 = runs before chore #5 'Request Reviews'). Defaults to 6 (Continue In Progress)."),
+        chorePrompt: z.string().optional().describe("Optional prompt override. Defaults to '/chore-todo <taskId> <content>'."),
       },
     },
-    async ({ content, taskId, placement, isCustomChore, choreRank, chorePrompt }) => {
+    async ({ content, taskId, placement, choreRank, chorePrompt }) => {
       try {
         const placementMapped = placement === "top" ? "start" : placement === "bottom" ? "end" : undefined;
         const todo = await post<Todo>("/api/v1/todos", {
           content,
           taskId: taskId || null,
           placement: placementMapped,
-          isCustomChore: isCustomChore ?? false,
           choreRank: choreRank ?? null,
           chorePrompt: chorePrompt ?? null,
         });
@@ -65,14 +61,13 @@ export function registerTodoTools(server: McpServer) {
   server.registerTool(
     "update_todo",
     {
-      description: "Update a todo item. Can update content, done status, and custom chore fields.",
+      description: "Update a todo item. Can update content, done status, and chore fields.",
       inputSchema: {
         id: z.number().describe("Todo ID to update"),
         content: z.string().optional().describe("New content/name"),
         done: z.string().nullable().optional().describe("ISO timestamp when done, or null to mark as pending"),
-        isCustomChore: z.boolean().optional().describe("Toggle custom chore flag"),
-        choreRank: z.number().int().nullable().optional().describe("New chore rank"),
-        chorePrompt: z.string().nullable().optional().describe("New chore prompt"),
+        choreRank: z.number().int().nullable().optional().describe("New chore rank (null = default)"),
+        chorePrompt: z.string().nullable().optional().describe("New prompt override (null = default)"),
       },
     },
     async ({ id, ...data }) => {
@@ -110,7 +105,7 @@ export function registerTodoTools(server: McpServer) {
   server.registerTool(
     "toggle_todo",
     {
-      description: "Toggle a todo's completion status. For custom chores, this marks them as done/undone in the chore queue.",
+      description: "Toggle a todo's completion status. This marks the todo as done/undone in the chore queue.",
       inputSchema: {
         id: z.number().describe("Todo ID to toggle"),
       },

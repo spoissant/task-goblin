@@ -26,7 +26,7 @@ export interface ChoreEntry {
   name: string;
   prompt: string;
   task: ChoreTask;
-  isCustom?: boolean;
+  isTodo?: boolean;
   todoId?: number;
 }
 
@@ -53,6 +53,10 @@ function parseChoreSkips(value: string | null): Record<string, boolean> {
 }
 
 const RESERVATION_TTL_MS = 30 * 60 * 1000;
+
+// Every pending todo is a chore. Unranked todos slot in at the same
+// priority as "Continue In Progress" (chore 6).
+const DEFAULT_TODO_CHORE_RANK = 6;
 
 function isTaskReserved(workingOn: string | null): boolean {
   if (!workingOn) return false;
@@ -274,17 +278,16 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
   }
 
-  // Fetch hardcoded chore candidates and custom chore todos in parallel
+  // Fetch hardcoded chore candidates and pending todos in parallel
   const batchRows = new Map<string | null, TaskRow[]>();
 
-  const [customTodoRows] = await Promise.all([
+  const [todoRows] = await Promise.all([
     db
       .select({ todo: todos, task: tasks })
       .from(todos)
       .innerJoin(tasks, eq(todos.taskId, tasks.id))
       .where(
         and(
-          eq(todos.isCustomChore, 1),
           isNull(todos.done),
           notOnIce,
           ...(repoId !== null ? [eq(tasks.repositoryId, repoId)] : []),
@@ -309,8 +312,8 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
 
   // Build a single repoMap across all fetched tasks
   const allRows = [...batchRows.values()].flat();
-  const customTaskRows = customTodoRows.map((r) => r.task);
-  const repoMap = await buildRepoMap([...allRows, ...customTaskRows]);
+  const todoTaskRows = todoRows.map((r) => r.task);
+  const repoMap = await buildRepoMap([...allRows, ...todoTaskRows]);
 
   // Attach repos and sort each batch: displayOrder ASC (closer to done first) → highPriority DESC → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
@@ -371,25 +374,26 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     }
   }
 
-  const todoById = new Map(customTodoRows.map((r) => [r.todo.id, r.todo]));
+  const todoById = new Map(todoRows.map((r) => [r.todo.id, r.todo]));
 
-  const customEntries: ChoreEntry[] = customTodoRows
+  const todoEntries: ChoreEntry[] = todoRows
     .filter((r) => {
-      if (minChore !== undefined && (r.todo.choreRank ?? 0) < minChore) return false;
-      if (maxChore !== undefined && (r.todo.choreRank ?? 0) > maxChore) return false;
+      const rank = r.todo.choreRank ?? DEFAULT_TODO_CHORE_RANK;
+      if (minChore !== undefined && rank < minChore) return false;
+      if (maxChore !== undefined && rank > maxChore) return false;
       if (isTaskReserved(r.task.workingOn ?? null)) return false;
       const skips = parseChoreSkips(r.task.choreSkips);
-      if (skips[`custom-chore-${r.todo.id}`]) return false;
+      if (skips[`todo-${r.todo.id}`]) return false;
       return true;
     })
     .map((r) => {
       const repo = r.task.repositoryId ? (repoMap.get(r.task.repositoryId) ?? null) : null;
       return {
-        number: r.todo.choreRank ?? 0,
-        key: `custom-chore-${r.todo.id}`,
+        number: r.todo.choreRank ?? DEFAULT_TODO_CHORE_RANK,
+        key: `todo-${r.todo.id}`,
         name: r.todo.content,
-        prompt: r.todo.chorePrompt ?? "",
-        isCustom: true,
+        prompt: r.todo.chorePrompt ?? `/chore-todo ${r.task.id} ${r.todo.content}`,
+        isTodo: true,
         todoId: r.todo.id,
         task: {
           id: r.task.id,
@@ -405,20 +409,18 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
         },
       };
     })
-    // Sort custom chores by (position ASC, id ASC) within same rank
+    // Sort todo chores by (position ASC, id ASC) within same rank
     .sort((a, b) => {
-      const aId = parseInt(a.key.replace("custom-chore-", ""), 10);
-      const bId = parseInt(b.key.replace("custom-chore-", ""), 10);
-      const aRow = todoById.get(aId)!;
-      const bRow = todoById.get(bId)!;
+      const aRow = todoById.get(a.todoId!)!;
+      const bRow = todoById.get(b.todoId!)!;
       const posDiff = (aRow.position ?? 999999) - (bRow.position ?? 999999);
       if (posDiff !== 0) return posDiff;
-      return aId - bId;
+      return a.todoId! - b.todoId!;
     });
 
   // Merge and sort: task priority first (tall strategy — finish one task before starting another),
-  // then chore number ASC within the same task, then custom before hardcoded.
-  const allEntries = [...hardcodedEntries, ...customEntries];
+  // then chore number ASC within the same task, then todos before hardcoded.
+  const allEntries = [...hardcodedEntries, ...todoEntries];
   allEntries.sort((a, b) => {
     const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
     const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
@@ -427,9 +429,9 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     if (hpDiff !== 0) return hpDiff;
     if (a.task.id !== b.task.id) return a.task.id - b.task.id;
     if (a.number !== b.number) return a.number - b.number;
-    const aCustom = a.isCustom ? 1 : 0;
-    const bCustom = b.isCustom ? 1 : 0;
-    return bCustom - aCustom;
+    const aTodo = a.isTodo ? 1 : 0;
+    const bTodo = b.isTodo ? 1 : 0;
+    return bTodo - aTodo;
   });
 
   return allEntries;

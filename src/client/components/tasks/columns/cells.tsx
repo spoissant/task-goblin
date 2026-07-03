@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
@@ -383,8 +383,8 @@ export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEnt
   const { data: defsData } = useChoreDefinitionsQuery();
   const definitions = defsData?.items ?? [];
   const { data: choresData } = useChoresQuery();
-  const customChores = (choresData?.items ?? []).filter(
-    (c) => c.task.id === task.id && c.isCustom
+  const todoChores = (choresData?.items ?? []).filter(
+    (c) => c.task.id === task.id && c.isTodo
   );
 
   const copyPrompt = (prompt: string) => {
@@ -428,25 +428,19 @@ export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEnt
               {def.name}
             </DropdownMenuItem>
           ))}
-          {customChores.length > 0 ? (
+          {todoChores.length > 0 ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-muted-foreground">Custom</DropdownMenuLabel>
-              {customChores.map((chore) => (
-                <Fragment key={chore.key}>
-                  <DropdownMenuItem onClick={() => copyPrompt(chore.prompt)}>
-                    <span className="text-muted-foreground mr-2">#{chore.number}</span>
-                    {chore.name}
-                  </DropdownMenuItem>
-                  {chore.todoId != null && (
-                    <DropdownMenuItem
-                      onClick={() => copyPrompt(`/chore-custom-chore ${chore.todoId}`)}
-                    >
-                      <span className="text-muted-foreground mr-2">#{chore.number}</span>
-                      <span className="font-mono text-xs">/chore-custom-chore {chore.todoId}</span>
-                    </DropdownMenuItem>
-                  )}
-                </Fragment>
+              <DropdownMenuLabel className="text-muted-foreground">Todos</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => copyPrompt(`/chore-todos ${task.id}`)}>
+                <span className="font-mono text-xs">/chore-todos {task.id}</span>
+                <span className="text-muted-foreground ml-1">(all {todoChores.length})</span>
+              </DropdownMenuItem>
+              {todoChores.map((chore) => (
+                <DropdownMenuItem key={chore.key} onClick={() => copyPrompt(chore.prompt)}>
+                  <span className="text-muted-foreground mr-2">#{chore.number}</span>
+                  {chore.name}
+                </DropdownMenuItem>
               ))}
             </>
           ) : null}

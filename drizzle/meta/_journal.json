@@ -218,6 +218,13 @@
       "when": 1782830669006,
       "tag": "0030_lean_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1783114124097,
+      "tag": "0031_wild_pride",
+      "breakpoints": true
     }
   ]
 }

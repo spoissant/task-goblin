@@ -35,7 +35,6 @@ interface TodoListProps {
 export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }: TodoListProps) {
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [isCustomChore, setIsCustomChore] = useState(false);
   const [choreRank, setChoreRank] = useState<string>("");
   const [chorePrompt, setChorePrompt] = useState("");
 
@@ -111,21 +110,18 @@ export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }
 
   const handleAdd = () => {
     if (!newTodo.trim()) return;
-    if (isCustomChore && (!choreRank || !chorePrompt.trim())) return;
 
     createTodo.mutate(
       {
         content: newTodo.trim(),
         taskId,
-        ...(isCustomChore
-          ? { isCustomChore: true, choreRank: parseInt(choreRank, 10), chorePrompt: chorePrompt.trim() }
-          : {}),
+        ...(choreRank ? { choreRank: parseInt(choreRank, 10) } : {}),
+        ...(chorePrompt.trim() ? { chorePrompt: chorePrompt.trim() } : {}),
       },
       {
         onSuccess: () => {
           setNewTodo("");
           setIsAdding(false);
-          setIsCustomChore(false);
           setChoreRank("");
           setChorePrompt("");
         },
@@ -139,7 +135,6 @@ export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }
   const handleCancelAdd = () => {
     setNewTodo("");
     setIsAdding(false);
-    setIsCustomChore(false);
     setChoreRank("");
     setChorePrompt("");
   };
@@ -161,7 +156,7 @@ export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !isCustomChore) {
+    if (e.key === "Enter") {
       handleAdd();
     } else if (e.key === "Escape") {
       handleCancelAdd();
@@ -229,18 +224,14 @@ export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }
                       value={newTodo}
                       onChange={(e) => setNewTodo(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder={isCustomChore ? "Chore name..." : "Add a todo..."}
+                      placeholder="Add a todo..."
                       className="flex-1"
                       autoFocus
                     />
                     <Button
                       size="sm"
                       onClick={handleAdd}
-                      disabled={
-                        !newTodo.trim() ||
-                        createTodo.isPending ||
-                        (isCustomChore && (!choreRank || !chorePrompt.trim()))
-                      }
+                      disabled={!newTodo.trim() || createTodo.isPending}
                     >
                       Add
                     </Button>
@@ -248,42 +239,27 @@ export function TodoList({ todos, taskId, showCompleted, onShowCompletedChange }
                       Cancel
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2 pl-7 text-sm">
-                    <Checkbox
-                      id="custom-chore-toggle"
-                      checked={isCustomChore}
-                      onCheckedChange={(checked) => {
-                        setIsCustomChore(checked === true);
-                        if (!checked) { setChoreRank(""); setChorePrompt(""); }
-                      }}
+                  <div className="pl-7 space-y-2">
+                    <Select value={choreRank} onValueChange={setChoreRank}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Run before... (optional, defaults to #6)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {choreDefinitions?.items.map((def) => (
+                          <SelectItem key={def.number} value={String(def.number)}>
+                            {def.number} – {def.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Textarea
+                      value={chorePrompt}
+                      onChange={(e) => setChorePrompt(e.target.value)}
+                      placeholder="Prompt override... (optional)"
+                      className="text-sm resize-none"
+                      rows={3}
                     />
-                    <label htmlFor="custom-chore-toggle" className="text-muted-foreground cursor-pointer select-none">
-                      Custom chore
-                    </label>
                   </div>
-                  {isCustomChore && (
-                    <div className="pl-7 space-y-2">
-                      <Select value={choreRank} onValueChange={setChoreRank}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Run before..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {choreDefinitions?.items.map((def) => (
-                            <SelectItem key={def.number} value={String(def.number)}>
-                              {def.number} – {def.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Textarea
-                        value={chorePrompt}
-                        onChange={(e) => setChorePrompt(e.target.value)}
-                        placeholder="Action prompt..."
-                        className="text-sm resize-none"
-                        rows={3}
-                      />
-                    </div>
-                  )}
                 </li>
               )}
               {sortedTodos.length === 0 && !isAdding && (

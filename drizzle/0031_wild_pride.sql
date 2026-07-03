@@ -1,0 +1,1 @@
+ALTER TABLE `todos` DROP COLUMN `is_custom_chore`;

@@ -11,16 +11,13 @@ export const todoKeys = {
   detail: (id: number) => [...todoKeys.all, "detail", id] as const,
 };
 
-export function useTodosQuery(params: { taskId?: number; done?: boolean; isCustomChore?: boolean } = {}) {
+export function useTodosQuery(params: { taskId?: number; done?: boolean } = {}) {
   const searchParams = new URLSearchParams();
   if (params.taskId !== undefined) {
     searchParams.set("taskId", String(params.taskId));
   }
   if (params.done !== undefined) {
     searchParams.set("done", String(params.done));
-  }
-  if (params.isCustomChore !== undefined) {
-    searchParams.set("isCustomChore", String(params.isCustomChore));
   }
   const queryString = searchParams.toString();
   const url = queryString ? `/todos?${queryString}` : "/todos";
@@ -44,7 +41,6 @@ export interface CreateTodoData {
   content: string;
   taskId?: number;
   placement?: "start" | "end";
-  isCustomChore?: boolean;
   choreRank?: number;
   chorePrompt?: string;
 }
@@ -81,7 +77,7 @@ export function useUpdateTodo() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; content?: string; isCustomChore?: boolean; choreRank?: number | null; chorePrompt?: string | null }) =>
+    mutationFn: ({ id, ...data }: { id: number; content?: string; choreRank?: number | null; chorePrompt?: string | null }) =>
       api.patch<Todo>(`/todos/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: todoKeys.all });

@@ -22,7 +22,6 @@ export interface SortableTodoRowProps {
 export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: SortableTodoRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(todo.content);
-  const [editIsChore, setEditIsChore] = useState(!!todo.isCustomChore);
   const [editChoreRank, setEditChoreRank] = useState(String(todo.choreRank ?? ""));
   const [editChorePrompt, setEditChorePrompt] = useState(todo.chorePrompt ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,7 +52,6 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
 
   const resetEdits = () => {
     setEditValue(todo.content);
-    setEditIsChore(!!todo.isCustomChore);
     setEditChoreRank(String(todo.choreRank ?? ""));
     setEditChorePrompt(todo.chorePrompt ?? "");
   };
@@ -61,24 +59,17 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
   const handleSave = () => {
     const trimmed = editValue.trim();
 
-    // A custom chore needs both a rank and a prompt — keep editing open until provided.
-    if (editIsChore && (!editChoreRank || !editChorePrompt.trim())) {
-      toast.error("A custom chore needs a rank and an action prompt");
-      return;
-    }
-
     const choreChanged =
-      editIsChore !== !!todo.isCustomChore ||
-      (editIsChore && (editChoreRank !== String(todo.choreRank ?? "") || editChorePrompt !== (todo.chorePrompt ?? "")));
+      editChoreRank !== String(todo.choreRank ?? "") ||
+      editChorePrompt.trim() !== (todo.chorePrompt ?? "");
     const changed = (trimmed && trimmed !== todo.content) || choreChanged;
 
     if (changed && trimmed) {
       const updates: Parameters<typeof updateTodo.mutate>[0] = {
         id: todo.id,
         content: trimmed,
-        isCustomChore: editIsChore,
-        choreRank: editIsChore && editChoreRank ? parseInt(editChoreRank, 10) : null,
-        chorePrompt: editIsChore ? editChorePrompt.trim() || null : null,
+        choreRank: editChoreRank ? parseInt(editChoreRank, 10) : null,
+        chorePrompt: editChorePrompt.trim() || null,
       };
       updateTodo.mutate(updates, {
         onError: () => {
@@ -101,7 +92,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
     }
   };
 
-  const choreName = todo.isCustomChore && todo.choreRank
+  const choreName = todo.choreRank
     ? choreDefinitions?.items.find((d) => d.number === todo.choreRank)?.name
     : null;
 
@@ -128,8 +119,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
             ref={inputRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onBlur={editIsChore ? undefined : handleSave}
-            onKeyDown={editIsChore ? undefined : handleKeyDown}
+            onKeyDown={handleKeyDown}
             className="flex-1 h-7 text-sm"
           />
         ) : (
@@ -142,21 +132,10 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
             <Linkify>{todo.content}</Linkify>
           </span>
         )}
-        {todo.isCustomChore && !isEditing && (
+        {todo.choreRank != null && !isEditing && (
           <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded shrink-0">
-            chore{choreName ? ` · before #${todo.choreRank} ${choreName}` : ""}
+            before #{todo.choreRank}{choreName ? ` ${choreName}` : ""}
           </span>
-        )}
-        {editable && isEditing && !editIsChore && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 text-xs text-amber-600 dark:text-amber-400 shrink-0"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setEditIsChore(true)}
-          >
-            Make chore
-          </Button>
         )}
         {editable && !isEditing && (
           <Button
@@ -177,11 +156,11 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
-      {editable && isEditing && editIsChore && (
+      {editable && isEditing && (
         <div className="px-10 pb-2 space-y-2">
           <Select value={editChoreRank} onValueChange={setEditChoreRank}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Run before..." />
+              <SelectValue placeholder="Run before... (optional, defaults to #6)" />
             </SelectTrigger>
             <SelectContent>
               {choreDefinitions?.items.map((def) => (
@@ -194,7 +173,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           <Textarea
             value={editChorePrompt}
             onChange={(e) => setEditChorePrompt(e.target.value)}
-            placeholder="Action prompt..."
+            placeholder="Prompt override... (optional)"
             className="text-sm resize-none"
             rows={3}
           />

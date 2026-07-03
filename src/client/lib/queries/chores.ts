@@ -28,7 +28,7 @@ export interface ChoreEntry {
   name: string;
   prompt: string;
   task: ChoreTask;
-  isCustom?: boolean;
+  isTodo?: boolean;
   todoId?: number;
 }
 

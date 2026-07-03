@@ -52,7 +52,7 @@ export const tasks = sqliteTable("tasks", {
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);
 
-// 2. Todo - Checklist items linked only to tasks
+// 2. Todo - Checklist items linked only to tasks. Every pending todo surfaces as a chore.
 export const todos = sqliteTable("todos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   content: text("content").notNull(),
@@ -61,9 +61,8 @@ export const todos = sqliteTable("todos", {
   position: integer("position"), // global ordering for all todos
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-  isCustomChore: integer("is_custom_chore").default(0), // 1 = custom chore, 0 = regular todo
-  choreRank: integer("chore_rank"), // chore definition number this runs before (e.g. 5 = runs before chore #5)
-  chorePrompt: text("chore_prompt"), // custom action text
+  choreRank: integer("chore_rank"), // chore definition number this runs before (e.g. 5 = runs before chore #5); null = default rank
+  chorePrompt: text("chore_prompt"), // action prompt override; null = defaults to /chore-todo <taskId> <content>
 }, (table) => [
   index("idx_todos_task_id").on(table.taskId),
 ]);
