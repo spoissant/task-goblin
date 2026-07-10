@@ -45,15 +45,25 @@ function getStatusRowColor(status: string, categories?: StatusCategory[]): { lig
   return undefined;
 }
 
+// Columns hidden when compact mode is on
+const COMPACT_HIDDEN_COLUMNS = new Set<(typeof TABLE_COLUMNS)[number]>([
+  "type",
+  "sprint",
+  "highPriority",
+  "onIce",
+  "changes",
+]);
+
 interface TaskTableProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   titleFilter?: string;
   hideLowPriority?: boolean;
   hideOnIce?: boolean;
+  compactMode?: boolean;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, compactMode }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -85,6 +95,10 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
     }
     return map;
   }, [choresData?.items]);
+
+  const visibleColumns = compactMode
+    ? TABLE_COLUMNS.filter((key) => !COMPACT_HIDDEN_COLUMNS.has(key))
+    : TABLE_COLUMNS;
 
   const allTasks = data?.items ?? [];
   const tasks = allTasks.filter((t) => {
@@ -132,7 +146,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
             )}
             <TableHead className="w-[50px]">ID</TableHead>
             <TableHead className="w-[40px]"></TableHead>
-            {TABLE_COLUMNS.map((colKey) => {
+            {visibleColumns.map((colKey) => {
               const col = getColumn(colKey);
               return (
                 <TableHead key={col.key} style={col.width ? { width: col.width } : undefined}>
@@ -148,6 +162,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
             <TaskRow
               key={task.id}
               task={task}
+              columns={visibleColumns}
               repo={task.repositoryId ? repoMap.get(task.repositoryId) : undefined}
               jiraHost={jiraHost}
               statusCategories={statusSettings?.categories}
@@ -181,6 +196,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
 
 interface TaskRowProps {
   task: TaskWithTodos;
+  columns: typeof TABLE_COLUMNS;
   repo?: Repository;
   jiraHost: string | null;
   statusCategories?: StatusCategory[];
@@ -190,7 +206,7 @@ interface TaskRowProps {
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -262,7 +278,7 @@ function TaskRow({ task, repo, jiraHost, statusCategories, nextChore, onOpenTodo
       </TableCell>
 
       {/* Shared columns */}
-      {TABLE_COLUMNS.map((colKey) => {
+      {columns.map((colKey) => {
         const col = getColumn(colKey);
         return (
           <TableCell key={col.key} className={col.cellClassName}>

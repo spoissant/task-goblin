@@ -20,6 +20,7 @@ export function TasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
+  const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
@@ -84,6 +85,16 @@ export function TasksPage() {
                 Hide on ice
               </Label>
             </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Checkbox
+                id="compact-mode"
+                checked={compactMode}
+                onCheckedChange={(checked) => setCompactMode(checked === true)}
+              />
+              <Label htmlFor="compact-mode" className="text-sm cursor-pointer whitespace-nowrap">
+                Compact mode
+              </Label>
+            </div>
           </>
         )}
         <RefreshButton />
@@ -101,6 +112,7 @@ export function TasksPage() {
         titleFilter={debouncedQuery}
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
+        compactMode={compactMode}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
