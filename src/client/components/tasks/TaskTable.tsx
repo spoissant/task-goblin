@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
-import { normalizeStatus } from "@/client/lib/utils";
+import { cn, normalizeStatus } from "@/client/lib/utils";
 import type { StatusCategory } from "@/client/lib/types";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
@@ -235,7 +235,7 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, o
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
-      className={isSelected ? "task-selected" : undefined}
+      className={cn(isSelected && "task-selected", task.onIce && "opacity-50")}
       style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
       {/* Checkbox */}
