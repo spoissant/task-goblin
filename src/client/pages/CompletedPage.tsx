@@ -341,7 +341,10 @@ function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
 
       {/* Review */}
       <TableCell>
-        <ReviewStatusIcon approvedCount={task.approvedReviewCount} />
+        <ReviewStatusIcon
+          approvedCount={task.approvedReviewCount}
+          requiredReviews={repo?.requiredReviews ?? 2}
+        />
       </TableCell>
     </TableRow>
   );
