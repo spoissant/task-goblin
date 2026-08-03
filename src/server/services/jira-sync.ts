@@ -6,7 +6,6 @@ import { tasks } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
 import { isApiError } from "../lib/errors";
-import { getCompletedStatusNames } from "../lib/task-status";
 import type { SyncResult } from "../lib/types";
 
 export type { SyncResult };
@@ -187,7 +186,6 @@ export async function syncJiraItems(): Promise<SyncResult> {
     }
 
     // Sync orphaned tasks (Jira issues that transitioned to Done)
-    const doneStatuses = new Set(await getCompletedStatusNames());
     const orphanedTasks = syncedKeys.size > 0
       ? await db
           .select({ jiraKey: tasks.jiraKey, status: tasks.status })
@@ -205,7 +203,6 @@ export async function syncJiraItems(): Promise<SyncResult> {
 
     for (const task of orphanedTasks) {
       if (!task.jiraKey) continue;
-      if (doneStatuses.has(task.status?.toLowerCase() ?? "")) continue;
       try {
         const issue = await client.issues.getIssue({
           issueIdOrKey: task.jiraKey,

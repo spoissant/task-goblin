@@ -305,7 +305,7 @@ export async function getCompletedCondition(): Promise<ReturnType<typeof or>> {
       isNotNull(tasks.jiraKey),
       isNotNull(tasks.prNumber),
       jiraStatusInCondition(),
-      eq(tasks.prState, "merged")
+      or(eq(tasks.prState, "merged"), eq(tasks.prState, "closed"))
     ),
     // Manual completed: no jiraKey, no prNumber, status in completed list
     and(
