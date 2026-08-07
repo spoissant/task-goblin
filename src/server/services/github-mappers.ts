@@ -29,48 +29,52 @@ export interface PrTaskData {
   deployedOnBranches: string | null;
 }
 
-export function mapPrToTaskData(
-  pr: {
-    number: number;
-    title: string;
-    state: string;
-    draft?: boolean;
-    merged?: boolean;
-    mergeable?: boolean | null;
-    changed_files?: number;
-    additions?: number;
-    deletions?: number;
-    user?: { login?: string } | null;
-    head?: { ref?: string; sha?: string };
-    base?: { ref?: string };
-  },
+export interface GqlPrLike {
+  number: number;
+  title: string;
+  /** GraphQL PullRequestState: OPEN | CLOSED | MERGED */
+  state: string;
+  isDraft: boolean;
+  /** GraphQL MergeableState: MERGEABLE | CONFLICTING | UNKNOWN */
+  mergeable: string;
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
+  author: { login?: string } | null;
+  headRefName: string | null;
+  baseRefName: string | null;
+  approvedReviewCount: number;
+  unresolvedCommentCount: number;
+}
+
+export function mapGqlPrToTaskData(
+  pr: GqlPrLike,
   repositoryId: number,
-  approvedReviewCount = 0,
-  checksResult: ChecksResult = { checksStatus: null, checksDetails: null },
+  checksResult: ChecksResult,
   onDeploymentBranches: string[] = [],
-  unresolvedCommentCount = 0,
   deployedOnBranches: string[] = [],
   labelOnlyDeploymentBranches: string[] = []
 ): PrTaskData {
-  // Map state: GitHub has open/closed + merged boolean, we use open/closed/merged
-  const prState = pr.merged ? "merged" : pr.state;
   const timestamp = now();
 
   return {
     prNumber: pr.number,
     repositoryId,
     title: pr.title,
-    prState,
-    prAuthor: pr.user?.login || null,
-    headBranch: pr.head?.ref || "",
-    baseBranch: pr.base?.ref || null,
-    isDraft: pr.draft ? 1 : 0,
+    // GraphQL reports MERGED directly, where REST needed state + merged flag.
+    prState: pr.state.toLowerCase(),
+    prAuthor: pr.author?.login || null,
+    headBranch: pr.headRefName || "",
+    baseBranch: pr.baseRefName || null,
+    isDraft: pr.isDraft ? 1 : 0,
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,
-    approvedReviewCount,
-    unresolvedCommentCount,
-    hasConflicts: pr.mergeable === false ? 1 : 0,
-    changedFiles: pr.changed_files ?? null,
+    approvedReviewCount: pr.approvedReviewCount,
+    unresolvedCommentCount: pr.unresolvedCommentCount,
+    // UNKNOWN means GitHub is still computing the merge; treated as no conflict,
+    // matching REST's null mergeable.
+    hasConflicts: pr.mergeable === "CONFLICTING" ? 1 : 0,
+    changedFiles: pr.changedFiles ?? null,
     additions: pr.additions ?? null,
     deletions: pr.deletions ?? null,
     prSyncedAt: timestamp,
