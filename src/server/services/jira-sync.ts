@@ -90,6 +90,21 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
   };
 }
 
+// Fields upsertTask writes from Jira. Used for change detection so an
+// unchanged issue costs zero writes — most issues are unchanged on any
+// given sync, and there are hundreds of them.
+const SYNCED_FIELDS = [
+  "title",
+  "description",
+  "status",
+  "type",
+  "assignee",
+  "priority",
+  "sprint",
+  "epicKey",
+  "parentKey",
+] as const;
+
 async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated" | "unchanged"> {
   const existing = await db
     .select()
@@ -98,6 +113,10 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
 
   if (existing.length > 0) {
     const oldTask = existing[0];
+
+    if (SYNCED_FIELDS.every((field) => oldTask[field] === taskData[field])) {
+      return "unchanged";
+    }
 
     // Update existing task, preserve PR fields if already merged
     await db
@@ -121,16 +140,42 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
   } else {
     // Create new Jira-only task
     const timestamp = now();
-    const result = await db
+    await db
       .insert(tasks)
       .values({
         ...taskData,
         createdAt: timestamp,
-      })
-      .returning({ id: tasks.id });
+      });
 
     return "new";
   }
+}
+
+/** Page through a JQL search, returning every issue. */
+async function searchAllIssues(
+  client: ReturnType<typeof getJiraClient>,
+  jql: string,
+  fields: string[]
+): Promise<Array<{ key?: string; fields: IssueFields }>> {
+  const all: Array<{ key?: string; fields: IssueFields }> = [];
+  let pageToken: string | undefined = undefined;
+
+  while (true) {
+    const response: SearchAndReconcileResults = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+      jql,
+      maxResults: 100,
+      nextPageToken: pageToken,
+      fields,
+    });
+
+    const issues = (response.issues || []) as Array<{ key?: string; fields: IssueFields }>;
+    all.push(...issues);
+
+    if (issues.length === 0 || !response.nextPageToken) break;
+    pageToken = response.nextPageToken;
+  }
+
+  return all;
 }
 
 export async function syncJiraItems(): Promise<SyncResult> {
@@ -148,47 +193,33 @@ export async function syncJiraItems(): Promise<SyncResult> {
   let unchangedCount = 0;
   const syncedKeys = new Set<string>();
 
-  const maxResults = 50;
-  let pageToken: string | undefined = undefined;
-
   // Build fields array, optionally including sprint field
   const baseFields = ["summary", "description", "status", "issuetype", "assignee", "priority", "parent"];
   const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
 
-  try {
-    while (true) {
-      const response: SearchAndReconcileResults = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
-        jql,
-        maxResults,
-        nextPageToken: pageToken,
-        fields,
-      });
-
-      const issues = response.issues || [];
-      if (issues.length === 0) {
-        break;
-      }
-
-      for (const issue of issues) {
-        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
-        syncedKeys.add(taskData.jiraKey);
-        const result = await upsertTask(taskData);
-        if (result === "new") newCount++;
-        else if (result === "updated") updatedCount++;
-        else unchangedCount++;
-        synced++;
-      }
-
-      if (!response.nextPageToken) {
-        break;
-      }
-      pageToken = response.nextPageToken;
+  const applyIssues = async (issues: Array<{ key?: string; fields: IssueFields }>) => {
+    for (const issue of issues) {
+      if (!issue.key) continue;
+      const taskData = mapIssueToTaskData(issue, config.sprintField);
+      syncedKeys.add(taskData.jiraKey);
+      const result = await upsertTask(taskData);
+      if (result === "new") newCount++;
+      else if (result === "updated") updatedCount++;
+      else unchangedCount++;
+      synced++;
     }
+  };
 
-    // Sync orphaned tasks (Jira issues that transitioned to Done)
+  try {
+    await applyIssues(await searchAllIssues(client, jql, fields));
+
+    // Sync orphaned tasks (Jira issues that transitioned to Done). These are
+    // fetched in batched `key in (...)` searches rather than one request per
+    // key — the orphan set grows with every completed ticket, so per-key
+    // requests made sync time grow without bound.
     const orphanedTasks = syncedKeys.size > 0
       ? await db
-          .select({ jiraKey: tasks.jiraKey, status: tasks.status })
+          .select({ jiraKey: tasks.jiraKey })
           .from(tasks)
           .where(
             and(
@@ -197,25 +228,23 @@ export async function syncJiraItems(): Promise<SyncResult> {
             )
           )
       : await db
-          .select({ jiraKey: tasks.jiraKey, status: tasks.status })
+          .select({ jiraKey: tasks.jiraKey })
           .from(tasks)
           .where(isNotNull(tasks.jiraKey));
 
-    for (const task of orphanedTasks) {
-      if (!task.jiraKey) continue;
+    // Guard against non-key values reaching JQL. Keys absent from the results
+    // (deleted or inaccessible issues) are simply skipped, as before.
+    const orphanKeys = orphanedTasks
+      .map((t) => t.jiraKey)
+      .filter((key): key is string => !!key && /^[A-Z][A-Z0-9]*-\d+$/i.test(key));
+
+    const KEYS_PER_QUERY = 100;
+    for (let i = 0; i < orphanKeys.length; i += KEYS_PER_QUERY) {
+      const batch = orphanKeys.slice(i, i + KEYS_PER_QUERY);
       try {
-        const issue = await client.issues.getIssue({
-          issueIdOrKey: task.jiraKey,
-          fields,
-        });
-        const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
-        const result = await upsertTask(taskData);
-        if (result === "new") newCount++;
-        else if (result === "updated") updatedCount++;
-        else unchangedCount++;
-        synced++;
+        await applyIssues(await searchAllIssues(client, `key in (${batch.join(",")})`, fields));
       } catch {
-        // Issue may be deleted or inaccessible, skip
+        // Batch failed (e.g. a key in a project we lost access to), skip it
       }
     }
   } catch (err: unknown) {
