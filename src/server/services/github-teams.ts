@@ -4,9 +4,6 @@ import type { CodeownerReview, GitHubTeam } from "@/shared/types";
 
 type GitHubClient = ReturnType<typeof getGitHubClient>;
 
-/** Setting key holding the JSON array of team slugs the codeowner column uses. */
-export const CODEOWNER_TEAMS_SETTING = "codeowner_team_slugs";
-
 /**
  * Teams the token user belongs to. Requires `read:org` on the token; without it
  * GitHub errors rather than returning a subset, so degrade to no team data.

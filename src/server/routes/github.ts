@@ -13,7 +13,6 @@ import {
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
 import { fetchPullRequestTeamReviews, prKey, type GqlPrTeamReviews } from "../services/github-graphql";
 import {
-  CODEOWNER_TEAMS_SETTING,
   computeCodeownerReview,
   fetchMyTeams,
   selectCodeownerTeams,
@@ -23,6 +22,7 @@ import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
 import type { ReviewRequest, FileChanges, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
 import { categorizePrSize } from "@/shared/pr-size";
+import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
 
 function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   const lower = filename.toLowerCase();

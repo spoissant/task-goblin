@@ -8,8 +8,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { toast } from "sonner";
 import type { GitHubTeam } from "@/client/lib/types";
-
-const SETTING_KEY = "codeowner_team_slugs";
+import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
 
 /**
  * No stored value means every team counts, so the column works unconfigured.
@@ -37,14 +36,14 @@ export function CodeownerTeamsForm() {
   const updateSetting = useUpdateSetting();
 
   const teams: GitHubTeam[] = teamsData?.items ?? [];
-  const stored = parseSelection(settings?.[SETTING_KEY]);
+  const stored = parseSelection(settings?.[CODEOWNER_TEAMS_SETTING]);
 
   // An unset setting shows as everything checked — that's what it does.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEffect(() => {
-    const fromSettings = parseSelection(settings?.[SETTING_KEY]);
+    const fromSettings = parseSelection(settings?.[CODEOWNER_TEAMS_SETTING]);
     setSelected(fromSettings ?? new Set(teams.map((t) => t.slug)));
-  }, [settings?.[SETTING_KEY], teamsData]);
+  }, [settings?.[CODEOWNER_TEAMS_SETTING], teamsData]);
 
   const dirty = serialize(selected) !== serialize(stored ?? new Set(teams.map((t) => t.slug)));
 
@@ -57,7 +56,7 @@ export function CodeownerTeamsForm() {
 
   const handleSave = () => {
     updateSetting.mutate(
-      { key: SETTING_KEY, value: serialize(selected) },
+      { key: CODEOWNER_TEAMS_SETTING, value: serialize(selected) },
       {
         onSuccess: () => toast.success("Code owner teams saved"),
         onError: () => toast.error("Failed to save code owner teams"),
