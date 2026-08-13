@@ -1,9 +1,10 @@
-import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/client/components/ui/tooltip";
+import type { CodeownerReview } from "@/shared/types";
 
 interface ReviewStatusIconProps {
   approvedCount: number | null;
@@ -46,6 +47,57 @@ export function ReviewStatusIcon({ approvedCount, requiredReviews = 2, prUrl }: 
         {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
       </TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface CodeownerStatusIconProps {
+  codeowner: CodeownerReview;
+}
+
+/**
+ * Whether one of your teams is holding up a PR. Red is reserved for a review the
+ * PR genuinely can't merge without; a team asked for a courtesy review reads as
+ * muted, and blank means none of your teams was asked at all.
+ */
+export function CodeownerStatusIcon({ codeowner }: CodeownerStatusIconProps) {
+  const { state, pendingTeams, reviewedTeams } = codeowner;
+
+  if (state === "none") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const { Icon, color, label, teams } = {
+    blocking: {
+      Icon: ShieldAlert,
+      color: "text-red-500",
+      label: "Blocking — awaiting review from",
+      teams: pendingTeams,
+    },
+    reviewed: {
+      Icon: ShieldCheck,
+      color: "text-green-500",
+      label: "Reviewed by",
+      teams: reviewedTeams,
+    },
+    optional: {
+      Icon: Shield,
+      color: "text-muted-foreground/50",
+      label: "Review requested from (not required to merge)",
+      teams: pendingTeams,
+    },
+  }[state];
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Icon className={`h-4 w-4 ${color}`} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {label} {teams.join(", ")}
+      </TooltipContent>
     </Tooltip>
   );
 }

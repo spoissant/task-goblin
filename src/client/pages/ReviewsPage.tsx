@@ -11,7 +11,7 @@ import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
-import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon, CodeownerStatusIcon } from "@/client/components/tasks/StatusIcons";
 import {
   Table,
   TableBody,
@@ -325,6 +325,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers
           {showSize && <TableHead className="w-[110px]">Size</TableHead>}
           <TableHead className="w-[100px]">Changes</TableHead>
           <TableHead className="w-[80px]">Reviews</TableHead>
+          <TableHead className="w-[100px]">Code Owners</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -562,6 +563,11 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTe
       {/* Reviews */}
       <TableCell>
         <ReviewStatusIcon approvedCount={request.approvedCount} requiredReviews={request.requiredReviews} prUrl={request.url} />
+      </TableCell>
+
+      {/* Code Owners */}
+      <TableCell>
+        <CodeownerStatusIcon codeowner={request.codeowner} />
       </TableCell>
     </TableRow>
   );

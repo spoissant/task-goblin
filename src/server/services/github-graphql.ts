@@ -47,6 +47,20 @@ export interface GqlPrChecks {
   statusContexts: GqlStatusContext[];
 }
 
+/** Team-level review state on a PR, which is how CODEOWNERS ownership surfaces. */
+export interface GqlPrTeamReviews {
+  /**
+   * GitHub's verdict on the PR's own review requirements: REVIEW_REQUIRED,
+   * CHANGES_REQUESTED, APPROVED, or null when the base ref requires no reviews.
+   * A team request only gates the merge when this says reviews are outstanding.
+   */
+  reviewDecision: string | null;
+  /** Teams with a review request still open, flagged if CODEOWNERS opened it. */
+  pendingTeams: Array<{ slug: string; asCodeOwner: boolean }>;
+  /** Slugs of teams a submitted review was made on behalf of. */
+  reviewedTeams: string[];
+}
+
 export type GqlPullRequest = GqlPrCore & GqlPrChecks;
 
 /** Comparison targets for one PR: env branch names and/or deployed SHAs. */
@@ -139,6 +153,23 @@ const CORE_FIELDS = `
   labels(first: 100) { nodes { name } }
   reviews(first: 100) { nodes { state author { login } } }
   reviewThreads(first: 100) { nodes { isResolved } }`;
+
+// CODEOWNERS ownership isn't exposed as a field: GitHub applies it by opening a
+// review request for each owning team, then drops the team from `reviewRequests`
+// as soon as any member submits a review, stamping that review with `onBehalfOf`.
+// So neither field alone separates "never asked" from "already reviewed" —
+// pending requests answer the first, `onBehalfOf` the second.
+//
+// `asCodeOwner` separates an ownership request from a hand-picked one, and
+// `reviewDecision` says whether the base ref gates merging on reviews at all —
+// CODEOWNERS requests still get opened on refs that require no review, where
+// they're a courtesy rather than a gate. `branchProtectionRule` would answer
+// that directly but reads as null under repository rulesets.
+const TEAM_REVIEW_FIELDS = `
+  number
+  reviewDecision
+  reviewRequests(first: 50) { nodes { asCodeOwner requestedReviewer { __typename ... on Team { slug } } } }
+  reviews(first: 100) { nodes { state onBehalfOf(first: 10) { nodes { slug } } } }`;
 
 // Check runs live under check suites rather than `statusCheckRollup`: the
 // rollup returns a filtered subset (it can omit the most recent run of a
@@ -242,6 +273,54 @@ export async function fetchPullRequestChecks(
         result.set(prKey(g.owner, g.repo, number), {
           checkRuns: (commit.checkSuites?.nodes ?? []).flatMap((s: any) => s?.checkRuns?.nodes ?? []),
           statusContexts: commit.status?.contexts ?? [],
+        });
+      });
+    });
+
+    return result;
+  });
+}
+
+/**
+ * Which teams still owe a review on each PR, and which have already given one.
+ * Issued as its own batched query so callers that don't need it pay nothing.
+ */
+export async function fetchPullRequestTeamReviews(
+  client: GitHubClient,
+  targets: PrTarget[]
+): Promise<Map<string, GqlPrTeamReviews>> {
+  return runChunked(targets, async (batch) => {
+    const result = new Map<string, GqlPrTeamReviews>();
+    const groups = groupByRepo(batch);
+    const data = await graphqlPartial<Record<string, Record<string, any>>>(
+      client,
+      buildPrQuery(groups, TEAM_REVIEW_FIELDS)
+    );
+
+    groups.forEach((g, ri) => {
+      g.numbers.forEach((number, i) => {
+        const pr = data?.[`r${ri}`]?.[`p${i}`];
+        if (!pr) return;
+
+        const pendingTeams = (pr.reviewRequests?.nodes ?? [])
+          .filter((n: any) => n?.requestedReviewer?.__typename === "Team" && n.requestedReviewer.slug)
+          .map((n: any) => ({
+            slug: n.requestedReviewer.slug as string,
+            asCodeOwner: !!n.asCodeOwner,
+          }));
+
+        // PENDING is an unsubmitted draft review — it hasn't answered the
+        // team's request yet, so it mustn't count as one.
+        const reviewedTeams = (pr.reviews?.nodes ?? [])
+          .filter((r: any) => r && r.state !== "PENDING")
+          .flatMap((r: any) =>
+            (r.onBehalfOf?.nodes ?? []).map((t: any) => t?.slug).filter(Boolean) as string[]
+          );
+
+        result.set(prKey(g.owner, g.repo, number), {
+          reviewDecision: pr.reviewDecision ?? null,
+          pendingTeams,
+          reviewedTeams: [...new Set<string>(reviewedTeams)],
         });
       });
     });

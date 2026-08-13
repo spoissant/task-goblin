@@ -6,3 +6,4 @@ export * from "./sync";
 export * from "./chores";
 
 export * from "./reviews";
+export * from "./github-teams";

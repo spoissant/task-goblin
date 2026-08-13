@@ -4,6 +4,7 @@ import { RepositoryList } from "@/client/components/settings/RepositoryList";
 import { StatusCategoriesForm } from "@/client/components/settings/StatusCategoriesForm";
 import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
 import { TeamMembersForm } from "@/client/components/settings/TeamMembersForm";
+import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsForm";
 import { Separator } from "@/client/components/ui/separator";
 
 export function SettingsPage() {
@@ -39,6 +40,17 @@ export function SettingsPage() {
             GitHub usernames of your teammates. Review requests authored by them are highlighted on the Reviews page.
           </p>
           <TeamMembersForm />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Code Owner Teams</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Your GitHub teams, read straight from the token. The Code Owners column on the Reviews page
+            flags PRs the selected teams own but haven't reviewed yet. All teams count until you narrow it.
+          </p>
+          <CodeownerTeamsForm />
         </section>
 
         <Separator />

@@ -233,6 +233,30 @@ export interface FileChanges {
   deletions: number;
 }
 
+/** A GitHub team the token user belongs to. */
+export interface GitHubTeam {
+  org: string;
+  slug: string;
+  name: string;
+}
+
+/**
+ * Where your own teams stand on reviewing a PR:
+ * - none: no team of yours has been asked
+ * - blocking: a team of yours owns changed files and the PR can't merge until it reviews
+ * - reviewed: a member of your team has already reviewed on the team's behalf
+ * - optional: a team of yours was asked, but its review doesn't gate the merge
+ */
+export type CodeownerState = "none" | "blocking" | "reviewed" | "optional";
+
+export interface CodeownerReview {
+  state: CodeownerState;
+  /** Your teams with a review request still open on the PR. */
+  pendingTeams: string[];
+  /** Your teams that already have a review submitted on their behalf. */
+  reviewedTeams: string[];
+}
+
 export interface ReviewRequest {
   prNumber: number;
   title: string;
@@ -244,6 +268,7 @@ export interface ReviewRequest {
   approvedCount: number;
   requiredReviews: number;
   hasPendingReview: boolean;
+  codeowner: CodeownerReview;
   createdAt: string;
   changedFiles: number | null;
   additions: number | null;

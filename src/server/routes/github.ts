@@ -1,6 +1,6 @@
-import { isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories, tasks } from "../../db/schema";
+import { repositories, settings, tasks } from "../../db/schema";
 import { json } from "../response";
 import { AppError } from "../lib/errors";
 import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
@@ -11,6 +11,13 @@ import {
   GitHubApiError,
 } from "../services/github-sync";
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
+import { fetchPullRequestTeamReviews, prKey, type GqlPrTeamReviews } from "../services/github-graphql";
+import {
+  CODEOWNER_TEAMS_SETTING,
+  computeCodeownerReview,
+  fetchMyTeams,
+  selectCodeownerTeams,
+} from "../services/github-teams";
 import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
@@ -161,6 +168,20 @@ export const githubRoutes: Routes = {
     },
   },
 
+  "/api/v1/github/teams": {
+    async GET() {
+      try {
+        const items = await fetchMyTeams(getGitHubClient());
+        return json({ items, total: items.length });
+      } catch (err) {
+        if (err instanceof GitHubConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        throw err;
+      }
+    },
+  },
+
   "/api/v1/github/review-requests": {
     async GET(req) {
       try {
@@ -168,29 +189,25 @@ export const githubRoutes: Routes = {
         const client = getGitHubClient();
         const scope = new URL(req.url).searchParams.get("scope") === "mine" ? "mine" : "others";
 
+        // Drives both the team-review-requested searches below and the codeowner
+        // column; empty when the token lacks read:org.
+        const myTeams = await fetchMyTeams(client);
+
         let queries: string[];
         if (scope === "mine") {
           queries = [`is:pr is:open author:${config.username}`];
         } else {
           // Search for PRs where user is requested directly, plus PRs requested
-          // from any team the user belongs to. Team membership requires read:org
-          // scope on the token; if unavailable we silently fall back to user-only.
-          let teamQueries: string[] = [];
-          try {
-            const teamsResp = await client.teams.listForAuthenticatedUser({ per_page: 100 });
-            teamQueries = teamsResp.data.map(
-              (t) => `is:pr is:open team-review-requested:${t.organization.login}/${t.slug}`
-            );
-          } catch {
-            // ignore — fall back to user-only search
-          }
-
+          // from any team the user belongs to.
           // Exclude PRs the user authored — only happens for team requests since
           // GitHub doesn't request a review from the PR author directly.
           const excludeAuthor = `-author:${config.username}`;
           queries = [
             `is:pr is:open review-requested:${config.username}`,
-            ...teamQueries.map((q) => `${q} ${excludeAuthor}`),
+            ...myTeams.map(
+              (t) =>
+                `is:pr is:open team-review-requested:${t.org}/${t.slug} ${excludeAuthor}`
+            ),
           ];
         }
 
@@ -231,19 +248,40 @@ export const githubRoutes: Routes = {
           if (slug) taskByPr.set(`${slug}#${t.prNumber}`, { id: t.id, jiraKey: t.jiraKey });
         }
 
+        // Teams whose CODEOWNERS reviews the column tracks, keyed by org.
+        const codeownerSetting = await db
+          .select()
+          .from(settings)
+          .where(eq(settings.key, CODEOWNER_TEAMS_SETTING));
+        const codeownerTeamsByOrg = selectCodeownerTeams(myTeams, codeownerSetting[0]?.value ?? null);
+
+        // owner/repo/number per hit, shared by the batched team-review fetch below.
+        const prTargets = searchItems.map((item) => {
+          const parts = item.repository_url.split("/");
+          return {
+            owner: parts[parts.length - 2],
+            repo: parts[parts.length - 1],
+            number: item.number,
+          };
+        });
+
+        // Batched over all PRs (~25 per query) rather than per PR. Awaited inside
+        // the per-PR fan-out below so it overlaps the REST calls instead of
+        // delaying them; skipped entirely when no team is configured.
+        const teamReviewsPromise = codeownerTeamsByOrg.size
+          ? fetchPullRequestTeamReviews(client, prTargets)
+          : Promise.resolve(new Map<string, GqlPrTeamReviews>());
+
         const results = await Promise.all(
-          searchItems.map(async (item) => {
-            // Extract owner/repo from repository_url
-            const repoUrlParts = item.repository_url.split("/");
-            const owner = repoUrlParts[repoUrlParts.length - 2];
-            const repo = repoUrlParts[repoUrlParts.length - 1];
-            const prNumber = item.number;
+          searchItems.map(async (item, idx) => {
+            const { owner, repo, number: prNumber } = prTargets[idx];
 
             // Fetch reviews, PR details, and file list in parallel
-            const [reviewsResult, prDetails, filesResult] = await Promise.all([
+            const [reviewsResult, prDetails, filesResult, teamReviews] = await Promise.all([
               client.pulls.listReviews({ owner, repo, pull_number: prNumber }),
               client.pulls.get({ owner, repo, pull_number: prNumber }),
               client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 }),
+              teamReviewsPromise,
             ]);
 
             // Count unique approving reviewers (latest state per user)
@@ -288,6 +326,10 @@ export const githubRoutes: Routes = {
               approvedCount,
               requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
               hasPendingReview,
+              codeowner: computeCodeownerReview(
+                codeownerTeamsByOrg.get(owner),
+                teamReviews.get(prKey(owner, repo, prNumber))
+              ),
               createdAt: item.created_at,
               changedFiles: prDetails.data.changed_files ?? null,
               additions: prDetails.data.additions ?? null,
