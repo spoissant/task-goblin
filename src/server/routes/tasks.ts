@@ -11,6 +11,7 @@ import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
 import {
   getCompletedCondition,
+  getCompletedStatusNames,
   getNotCompletedCondition,
   getTaskOrderExprsAsync,
   isStatusValid,
@@ -482,7 +483,14 @@ export const taskRoutes: Routes = {
 
       const conditions = [await getCompletedCondition()];
       if (!showDone) {
-        conditions.push(sql`LOWER(${tasks.status}) NOT IN ('done', 'cancelled', 'closed')`);
+        // Hide anything whose status belongs to a "done" category, so the page
+        // only keeps tasks completed via their PR (merged/closed) but not Jira.
+        const doneStatuses = await getCompletedStatusNames();
+        if (doneStatuses.length > 0) {
+          conditions.push(
+            sql`LOWER(${tasks.status}) NOT IN (${sql.join(doneStatuses.map((s) => sql`${s}`), sql`, `)})`
+          );
+        }
       }
       if (title) {
         const orConditions = [
