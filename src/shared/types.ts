@@ -265,7 +265,8 @@ export interface ReviewRequest {
   author: string;
   state: "open" | "draft";
   isDraft: boolean;
-  approvedCount: number;
+  /** null when GitHub wouldn't return the PR's reviews — unknown, not zero. */
+  approvedCount: number | null;
   requiredReviews: number;
   hasPendingReview: boolean;
   codeowner: CodeownerReview;

@@ -46,6 +46,23 @@ export async function getGitHubConfig(): Promise<GitHubConfig> {
   return { username };
 }
 
+// GitHub API degradations surface as transient 404s on PR subresources — a
+// /pulls/N/reviews call 404s while /pulls/N still answers 200 — on top of the
+// usual 5xx and gateway timeouts. Two short retries ride out the blip instead
+// of failing whichever request happened to land in it.
+const RETRYABLE_STATUSES = new Set([404, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [300, 1200];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Reads only — retrying a write could double-apply it. GraphQL goes out as a
+ * POST, but every query this app sends is read-only.
+ */
+function isRetryableRead(options: { method?: string; url?: string }): boolean {
+  return options.method === "GET" || /\/graphql$/.test(options.url ?? "");
+}
+
 export function getGitHubClient(): Octokit {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
@@ -55,5 +72,23 @@ export function getGitHubClient(): Octokit {
     );
   }
 
-  return new Octokit({ auth: token });
+  const octokit = new Octokit({ auth: token });
+
+  octokit.hook.wrap("request", async (request, options) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await request(options);
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        // A network-level failure arrives without a status — also transient.
+        const transient = status === undefined || RETRYABLE_STATUSES.has(status);
+        if (!transient || !isRetryableRead(options) || attempt >= RETRY_DELAYS_MS.length) {
+          throw err;
+        }
+        await sleep(RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  });
+
+  return octokit;
 }

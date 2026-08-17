@@ -41,6 +41,35 @@ function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   return "other";
 }
 
+type FileBuckets = { frontend: FileChanges; backend: FileChanges; other: FileChanges };
+
+function bucketFilesByCategory(
+  files: Array<{ filename: string; additions: number; deletions: number }>
+): FileBuckets {
+  const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
+  const buckets: FileBuckets = { frontend: empty(), backend: empty(), other: empty() };
+  for (const file of files) {
+    const cat = categorizeFile(file.filename);
+    buckets[cat].files += 1;
+    buckets[cat].additions += file.additions;
+    buckets[cat].deletions += file.deletions;
+  }
+  return buckets;
+}
+
+/**
+ * Resolve to null instead of rejecting, so one PR's failed sub-fetch degrades
+ * that PR's row rather than taking the whole review list down with it.
+ */
+async function orNull<T>(label: string, promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (err) {
+    console.warn(`review-requests: ${label} unavailable — ${(err as Error).message}`);
+    return null;
+  }
+}
+
 // Largest-remainder rounding so percentages sum to 100 (when totalFiles > 0).
 function computePercents(buckets: { frontend: FileChanges; backend: FileChanges; other: FileChanges }, totalFiles: number): { frontend: number; backend: number; other: number } {
   if (totalFiles === 0) return { frontend: 0, backend: 0, other: 0 };
@@ -211,14 +240,30 @@ export const githubRoutes: Routes = {
           ];
         }
 
-        const searchResults = await Promise.all(
+        type SearchItem =
+          Awaited<ReturnType<typeof client.search.issuesAndPullRequests>>["data"]["items"][number];
+
+        const searchResults = await Promise.allSettled(
           queries.map((q) => client.search.issuesAndPullRequests({ q, per_page: 100 }))
         );
 
+        // One team's query failing shouldn't blank the board. Every query
+        // failing must not read as "nothing to review", so that still throws.
+        const rejected = searchResults.filter(
+          (r): r is PromiseRejectedResult => r.status === "rejected"
+        );
+        if (rejected.length === searchResults.length) {
+          throw rejected[0].reason;
+        }
+        for (const r of rejected) {
+          console.warn(`review-requests: a review search failed — ${r.reason?.message ?? r.reason}`);
+        }
+
         const seen = new Set<string>();
-        const searchItems: typeof searchResults[number]["data"]["items"] = [];
+        const searchItems: SearchItem[] = [];
         for (const result of searchResults) {
-          for (const item of result.data.items) {
+          if (result.status !== "fulfilled") continue;
+          for (const item of result.value.data.items) {
             if (seen.has(item.html_url)) continue;
             seen.add(item.html_url);
             searchItems.push(item);
@@ -269,51 +314,53 @@ export const githubRoutes: Routes = {
         // the per-PR fan-out below so it overlaps the REST calls instead of
         // delaying them; skipped entirely when no team is configured.
         const teamReviewsPromise = codeownerTeamsByOrg.size
-          ? fetchPullRequestTeamReviews(client, prTargets)
+          ? orNull("team reviews", fetchPullRequestTeamReviews(client, prTargets)).then(
+              (m) => m ?? new Map<string, GqlPrTeamReviews>()
+            )
           : Promise.resolve(new Map<string, GqlPrTeamReviews>());
 
         const results = await Promise.all(
           searchItems.map(async (item, idx) => {
             const { owner, repo, number: prNumber } = prTargets[idx];
+            const slug = `${owner}/${repo}#${prNumber}`;
 
-            // Fetch reviews, PR details, and file list in parallel
+            // Fetch reviews, PR details, and file list in parallel. Each one
+            // degrades on its own: the row still renders with whatever the
+            // other calls returned, with the missing parts shown as unknown.
             const [reviewsResult, prDetails, filesResult, teamReviews] = await Promise.all([
-              client.pulls.listReviews({ owner, repo, pull_number: prNumber }),
-              client.pulls.get({ owner, repo, pull_number: prNumber }),
-              client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 }),
+              orNull(`${slug} reviews`, client.pulls.listReviews({ owner, repo, pull_number: prNumber })),
+              orNull(`${slug} details`, client.pulls.get({ owner, repo, pull_number: prNumber })),
+              orNull(`${slug} files`, client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 })),
               teamReviewsPromise,
             ]);
 
             // Count unique approving reviewers (latest state per user)
             const reviewerStates = new Map<string, string>();
-            for (const review of reviewsResult.data) {
+            for (const review of reviewsResult?.data ?? []) {
               if (review.user?.login && review.state) {
                 reviewerStates.set(review.user.login, review.state);
               }
             }
-            const approvedCount = Array.from(reviewerStates.values())
-              .filter((state) => state === "APPROVED").length;
+            // null, not 0, when reviews are unavailable — "no approvals" and
+            // "unknown" must not look the same to whoever reads the column.
+            const approvedCount = reviewsResult
+              ? Array.from(reviewerStates.values()).filter((state) => state === "APPROVED").length
+              : null;
 
             // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
             // i.e. the authenticated token user — so this flags the current user's own draft.
-            const hasPendingReview = reviewsResult.data.some(
+            const hasPendingReview = (reviewsResult?.data ?? []).some(
               (review) => review.state === "PENDING" && review.user?.login === config.username
             );
 
             // Hide PRs the user already approved — only relevant for others' PRs.
+            // Without the reviews we can't tell, so the PR stays listed.
             const userState = reviewerStates.get(config.username);
             if (scope === "others" && userState === "APPROVED") return null;
 
             const isDraft = item.draft ?? false;
 
-            const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
-            const changesByCategory = { frontend: empty(), backend: empty(), other: empty() };
-            for (const file of filesResult.data) {
-              const cat = categorizeFile(file.filename);
-              changesByCategory[cat].files++;
-              changesByCategory[cat].additions += file.additions;
-              changesByCategory[cat].deletions += file.deletions;
-            }
+            const changesByCategory = filesResult ? bucketFilesByCategory(filesResult.data) : null;
 
             return {
               prNumber,
@@ -331,9 +378,9 @@ export const githubRoutes: Routes = {
                 teamReviews.get(prKey(owner, repo, prNumber))
               ),
               createdAt: item.created_at,
-              changedFiles: prDetails.data.changed_files ?? null,
-              additions: prDetails.data.additions ?? null,
-              deletions: prDetails.data.deletions ?? null,
+              changedFiles: prDetails?.data.changed_files ?? null,
+              additions: prDetails?.data.additions ?? null,
+              deletions: prDetails?.data.deletions ?? null,
               changesByCategory,
               taskId: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.id ?? null,
               taskJiraKey: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.jiraKey ?? null,
@@ -367,21 +414,13 @@ export const githubRoutes: Routes = {
         const client = getGitHubClient();
         const filesResult = await client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 });
 
-        const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
-        const buckets = { frontend: empty(), backend: empty(), other: empty() };
-        let totalAdditions = 0;
-        let totalDeletions = 0;
+        const buckets = bucketFilesByCategory(filesResult.data);
+        const sum = (pick: (b: FileChanges) => number) =>
+          pick(buckets.frontend) + pick(buckets.backend) + pick(buckets.other);
 
-        for (const file of filesResult.data) {
-          const cat = categorizeFile(file.filename);
-          buckets[cat].files += 1;
-          buckets[cat].additions += file.additions;
-          buckets[cat].deletions += file.deletions;
-          totalAdditions += file.additions;
-          totalDeletions += file.deletions;
-        }
-
-        const totalFiles = buckets.frontend.files + buckets.backend.files + buckets.other.files;
+        const totalAdditions = sum((b) => b.additions);
+        const totalDeletions = sum((b) => b.deletions);
+        const totalFiles = sum((b) => b.files);
         const percents = computePercents(buckets, totalFiles);
 
         const withPercent = (b: FileChanges, percent: number): FileChangesWithPercent => ({ ...b, percent });
