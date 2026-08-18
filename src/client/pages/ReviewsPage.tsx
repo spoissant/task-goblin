@@ -365,7 +365,7 @@ interface ReviewRequestRowProps {
 const HIGHLIGHT_ACCENT =
   "[&>td:first-child]:relative [&>td:first-child]:before:content-[''] [&>td:first-child]:before:absolute [&>td:first-child]:before:inset-y-0 [&>td:first-child]:before:left-0 [&>td:first-child]:before:w-1";
 
-const VIP_ROW = `bg-purple-50/60 hover:bg-purple-100/70 dark:bg-purple-950/30 dark:hover:bg-purple-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-purple-400 dark:[&>td:first-child]:before:bg-purple-500`;
+const VIP_ROW = `bg-rose-50/60 hover:bg-rose-100/70 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-rose-400 dark:[&>td:first-child]:before:bg-rose-500`;
 
 const TEAM_ROW = `bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500`;
 
@@ -513,7 +513,7 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTe
             {isVip ? (
               <Badge
                 variant="outline"
-                className="text-[10px] px-1.5 py-0 border-purple-400 bg-purple-100 text-purple-900 dark:bg-purple-900/50 dark:text-purple-100 dark:border-purple-500"
+                className="text-[10px] px-1.5 py-0 border-rose-400 bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100 dark:border-rose-500"
               >
                 VIP
               </Badge>
