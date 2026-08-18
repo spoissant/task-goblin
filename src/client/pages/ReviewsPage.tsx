@@ -97,7 +97,7 @@ function SizeBadge({ size }: { size: SizeCategory }) {
   );
 }
 
-function parseTeamMembers(value: string | null | undefined): Set<string> {
+function parseUsernames(value: string | null | undefined): Set<string> {
   if (!value) return new Set();
   try {
     const parsed = JSON.parse(value);
@@ -142,7 +142,8 @@ export function ReviewsPage() {
   const { data: reposData } = useRepositoriesQuery();
   const { data: settings } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
-  const teamMembers = useMemo(() => parseTeamMembers(settings?.team_members), [settings?.team_members]);
+  const teamMembers = useMemo(() => parseUsernames(settings?.team_members), [settings?.team_members]);
+  const vips = useMemo(() => parseUsernames(settings?.vip_members), [settings?.vip_members]);
   const highPriorityPrs = useMemo(
     () => parseHighPriority(settings?.[HIGH_PRIORITY_KEY]),
     [settings],
@@ -276,7 +277,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
                   </div>
                 );
               })}
@@ -284,7 +285,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
           )}
         </TooltipProvider>
       )}
@@ -299,11 +300,12 @@ interface ReviewTableProps {
   scope: ReviewScope;
   jiraHost?: string | null;
   teamMembers: Set<string>;
+  vips: Set<string>;
   highPriorityPrs: Set<string>;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers, vips, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
   const isMine = scope === "mine";
   return (
     <Table>
@@ -338,6 +340,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers
             scope={scope}
             jiraHost={jiraHost}
             isTeammate={teamMembers.has(request.author.toLowerCase())}
+            isVip={vips.has(request.author.toLowerCase())}
             isHighPriority={highPriorityPrs.has(prKey(request))}
             onToggleHighPriority={onToggleHighPriority}
           />
@@ -354,20 +357,25 @@ interface ReviewRequestRowProps {
   scope: ReviewScope;
   jiraHost?: string | null;
   isTeammate: boolean;
+  isVip: boolean;
   isHighPriority: boolean;
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTeammate, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+const HIGHLIGHT_ACCENT =
+  "[&>td:first-child]:relative [&>td:first-child]:before:content-[''] [&>td:first-child]:before:absolute [&>td:first-child]:before:inset-y-0 [&>td:first-child]:before:left-0 [&>td:first-child]:before:w-1";
+
+const VIP_ROW = `bg-purple-50/60 hover:bg-purple-100/70 dark:bg-purple-950/30 dark:hover:bg-purple-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-purple-400 dark:[&>td:first-child]:before:bg-purple-500`;
+
+const TEAM_ROW = `bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500`;
+
+function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTeammate, isVip, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
   const isMine = scope === "mine";
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
     <TableRow
-      className={
-        isTeammate
-          ? "bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 [&>td:first-child]:relative [&>td:first-child]:before:content-[''] [&>td:first-child]:before:absolute [&>td:first-child]:before:inset-y-0 [&>td:first-child]:before:left-0 [&>td:first-child]:before:w-1 [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500"
-          : undefined
-      }
+      // A VIP author outranks a teammate one, so only one highlight ever applies.
+      className={isVip ? VIP_ROW : isTeammate ? TEAM_ROW : undefined}
     >
       {/* High Priority */}
       {!isMine && (
@@ -502,14 +510,21 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTe
       <TableCell className="text-sm">
         <div className="flex items-center gap-1.5">
           <span className="inline-flex w-10 shrink-0">
-            {isTeammate && (
+            {isVip ? (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-purple-400 bg-purple-100 text-purple-900 dark:bg-purple-900/50 dark:text-purple-100 dark:border-purple-500"
+              >
+                VIP
+              </Badge>
+            ) : isTeammate ? (
               <Badge
                 variant="outline"
                 className="text-[10px] px-1.5 py-0 border-amber-400 bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100 dark:border-amber-500"
               >
                 Team
               </Badge>
-            )}
+            ) : null}
           </span>
           <span>{request.author}</span>
         </div>

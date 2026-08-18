@@ -4,6 +4,7 @@ import { RepositoryList } from "@/client/components/settings/RepositoryList";
 import { StatusCategoriesForm } from "@/client/components/settings/StatusCategoriesForm";
 import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
 import { TeamMembersForm } from "@/client/components/settings/TeamMembersForm";
+import { VipMembersForm } from "@/client/components/settings/VipMembersForm";
 import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsForm";
 import { Separator } from "@/client/components/ui/separator";
 
@@ -40,6 +41,16 @@ export function SettingsPage() {
             GitHub usernames of your teammates. Review requests authored by them are highlighted on the Reviews page.
           </p>
           <TeamMembersForm />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">VIPs</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            GitHub usernames you always want to unblock first. Review requests authored by them are highlighted on the Reviews page.
+          </p>
+          <VipMembersForm />
         </section>
 
         <Separator />
