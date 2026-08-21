@@ -3,7 +3,6 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useUpdateTodo, useChoreDefinitionsQuery } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
-import { Input } from "@/client/components/ui/input";
 import { Textarea } from "@/client/components/ui/textarea";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/client/components/ui/select";
@@ -24,7 +23,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
   const [editValue, setEditValue] = useState(todo.content);
   const [editChoreRank, setEditChoreRank] = useState(String(todo.choreRank ?? ""));
   const [editChorePrompt, setEditChorePrompt] = useState(todo.chorePrompt ?? "");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const updateTodo = useUpdateTodo();
   const { data: choreDefinitions } = useChoreDefinitionsQuery();
 
@@ -84,7 +83,8 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       handleSave();
     } else if (e.key === "Escape") {
       resetEdits();
@@ -102,30 +102,32 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
       style={style}
       className="rounded-md border bg-card hover:bg-muted/50 group"
     >
-      <div className="flex items-center gap-2 p-2">
+      <div className="flex items-start gap-2 p-2">
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+          className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
         >
           <GripVertical className="h-4 w-4" />
         </button>
         <Checkbox
+          className="mt-0.5 shrink-0"
           checked={!!todo.done}
           onCheckedChange={() => onToggle(todo.id)}
         />
         {editable && isEditing ? (
-          <Input
+          <Textarea
             ref={inputRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 h-7 text-sm"
+            className="flex-1 min-h-0 text-sm resize-none"
+            rows={Math.min(6, Math.max(2, Math.ceil(editValue.length / 70)))}
           />
         ) : (
           <span
             onClick={editable ? () => setIsEditing(true) : undefined}
-            className={`flex-1 text-sm truncate ${editable ? "cursor-text" : ""} ${
+            className={`flex-1 min-w-0 text-sm whitespace-pre-wrap break-words ${editable ? "cursor-text" : ""} ${
               todo.done ? "line-through text-muted-foreground" : ""
             }`}
           >
@@ -133,7 +135,7 @@ export function SortableTodoRow({ todo, onToggle, onDelete, editable = true }: S
           </span>
         )}
         {todo.choreRank != null && !isEditing && (
-          <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded shrink-0">
+          <span className="mt-px text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded shrink-0">
             before #{todo.choreRank}{choreName ? ` ${choreName}` : ""}
           </span>
         )}

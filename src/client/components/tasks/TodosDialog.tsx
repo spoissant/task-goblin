@@ -160,7 +160,7 @@ export function TodosDialog({
       onOpenChange={onOpenChange}
       title="Todos"
       description={taskTitle}
-      size="lg"
+      size="xl"
       footer={footer}
     >
       <div className="flex items-center gap-2 py-2">
