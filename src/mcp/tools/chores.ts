@@ -27,7 +27,7 @@ export function registerChoreTools(server: McpServer) {
     "list_chores",
     {
       description:
-        "List all actionable chores across tasks — one entry per chore+task pair, ordered by task priority first (tall strategy: finish one task before starting another), then chore number within the same task. Chores 1-8 are post-implementation housekeeping (assign Jira ticket, fix PR checks, address PR comments, code review, request reviews, fix merge conflicts, deploy to test env, dev QA video). Chore 9 is in-progress work. Chore 10 is tasks not yet started.",
+        "List all actionable chores across tasks — one entry per chore+task pair, ordered by task priority first (tall strategy: finish one task before starting another), then chore number within the same task. The chores are: 1 start task, 2 assign Jira ticket, 3 fix merge conflicts, 4 address comments & todos (fires on unresolved PR review comments OR pending todos), 5 fix PR checks, 6 continue in progress, 7 code review my PR, 8 request code reviews, 9 deploy to test env, 10 requires dev QA video. Call chore_definitions for each chore's exact condition.",
       inputSchema: {
         repository: z
           .string()

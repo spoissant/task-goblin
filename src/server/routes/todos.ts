@@ -73,8 +73,6 @@ export const todoRoutes: Routes = {
           position: newPosition,
           createdAt: timestamp,
           updatedAt: timestamp,
-          choreRank: typeof body.choreRank === "number" ? body.choreRank : null,
-          chorePrompt: typeof body.chorePrompt === "string" && body.chorePrompt ? body.chorePrompt : null,
         })
         .returning();
 
@@ -114,8 +112,6 @@ export const todoRoutes: Routes = {
           done: body.done ?? null,
           taskId: body.taskId ?? null,
           updatedAt: now(),
-          choreRank: body.choreRank ?? null,
-          chorePrompt: body.chorePrompt ?? null,
         })
         .where(eq(todos.id, id))
         .returning();
@@ -137,8 +133,6 @@ export const todoRoutes: Routes = {
       if ("content" in body) updates.content = body.content;
       if ("done" in body) updates.done = body.done;
       if ("taskId" in body) updates.taskId = body.taskId;
-      if ("choreRank" in body) updates.choreRank = body.choreRank;
-      if ("chorePrompt" in body) updates.chorePrompt = body.chorePrompt;
 
       const result = await db
         .update(todos)

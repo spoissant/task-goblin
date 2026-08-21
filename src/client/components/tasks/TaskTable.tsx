@@ -86,13 +86,10 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   }, [reposData?.items]);
 
   // Build a map of taskId -> highest-priority ChoreEntry (list is already ordered).
-  // Todos are skipped: the button is labelled "Chore #N", so it must copy that chore's
-  // command. Todos are reachable from the dropdown and the Todos column.
   const choreMap = useMemo(() => {
     const map = new Map<number, ChoreEntry>();
     if (choresData?.items) {
       for (const chore of choresData.items) {
-        if (chore.isTodo) continue;
         if (!map.has(chore.task.id)) map.set(chore.task.id, chore);
       }
     }

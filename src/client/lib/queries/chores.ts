@@ -28,8 +28,6 @@ export interface ChoreEntry {
   name: string;
   prompt: string;
   task: ChoreTask;
-  isTodo?: boolean;
-  todoId?: number;
 }
 
 export const choreKeys = {

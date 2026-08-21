@@ -41,8 +41,6 @@ export interface CreateTodoData {
   content: string;
   taskId?: number;
   placement?: "start" | "end";
-  choreRank?: number;
-  chorePrompt?: string;
 }
 
 export function useCreateTodo() {
@@ -77,7 +75,7 @@ export function useUpdateTodo() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; content?: string; choreRank?: number | null; chorePrompt?: string | null }) =>
+    mutationFn: ({ id, ...data }: { id: number; content?: string }) =>
       api.patch<Todo>(`/todos/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: todoKeys.all });

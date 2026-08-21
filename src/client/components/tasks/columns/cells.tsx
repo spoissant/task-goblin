@@ -10,7 +10,7 @@ import { ChevronDown, Flame, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
-import { useChoreDefinitionsQuery, useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
+import { useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/client/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
@@ -382,10 +380,6 @@ function resolveChorePrompt(template: string, task: Task): string {
 export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEntry }) {
   const { data: defsData } = useChoreDefinitionsQuery();
   const definitions = defsData?.items ?? [];
-  const { data: choresData } = useChoresQuery();
-  const todoChores = (choresData?.items ?? []).filter(
-    (c) => c.task.id === task.id && c.isTodo
-  );
 
   const copyPrompt = (prompt: string) => {
     navigator.clipboard.writeText(prompt);
@@ -428,22 +422,6 @@ export function NextCell({ task, nextChore }: { task: Task; nextChore?: ChoreEnt
               {def.name}
             </DropdownMenuItem>
           ))}
-          {todoChores.length > 0 ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-muted-foreground">Todos</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => copyPrompt(`/chore-todos ${task.id}`)}>
-                <span className="font-mono text-xs">/chore-todos {task.id}</span>
-                <span className="text-muted-foreground ml-1">(all {todoChores.length})</span>
-              </DropdownMenuItem>
-              {todoChores.map((chore) => (
-                <DropdownMenuItem key={chore.key} onClick={() => copyPrompt(chore.prompt)}>
-                  <span className="text-muted-foreground mr-2">#{chore.number}</span>
-                  {chore.name}
-                </DropdownMenuItem>
-              ))}
-            </>
-          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
