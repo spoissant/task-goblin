@@ -13,5 +13,8 @@ export function useReviewRequestsQuery(scope: ReviewScope) {
   return useQuery({
     queryKey: reviewKeys.requests(scope),
     queryFn: () => api.get<ListResponse<ReviewRequest>>(`/github/review-requests?scope=${scope}`),
+    // Each load fans out to GitHub; without this, every window refocus refires
+    // the whole fetch. Manual refresh invalidates the key and bypasses this.
+    staleTime: 60_000,
   });
 }

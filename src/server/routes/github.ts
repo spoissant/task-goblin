@@ -11,7 +11,13 @@ import {
   GitHubApiError,
 } from "../services/github-sync";
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
-import { fetchPullRequestTeamReviews, prKey, type GqlPrTeamReviews } from "../services/github-graphql";
+import {
+  fetchPullRequestReviewInfo,
+  fetchPullRequestTeamReviews,
+  prKey,
+  type GqlPrReviewInfo,
+  type GqlPrTeamReviews,
+} from "../services/github-graphql";
 import {
   computeCodeownerReview,
   fetchMyTeams,
@@ -20,6 +26,7 @@ import {
 import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
+import type { Endpoints } from "@octokit/types";
 import type { ReviewRequest, FileChanges, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
 import { categorizePrSize } from "@/shared/pr-size";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
@@ -58,8 +65,8 @@ function bucketFilesByCategory(
 }
 
 /**
- * Resolve to null instead of rejecting, so one PR's failed sub-fetch degrades
- * that PR's row rather than taking the whole review list down with it.
+ * Resolve to null instead of rejecting, so a failed batched fetch degrades the
+ * affected columns rather than taking the whole review list down with it.
  */
 async function orNull<T>(label: string, promise: Promise<T>): Promise<T | null> {
   try {
@@ -240,11 +247,14 @@ export const githubRoutes: Routes = {
           ];
         }
 
-        type SearchItem =
-          Awaited<ReturnType<typeof client.search.issuesAndPullRequests>>["data"]["items"][number];
+        type SearchItem = Endpoints["GET /search/issues"]["response"]["data"]["items"][number];
 
+        // `search.issuesAndPullRequests` is deprecated (and logs on every
+        // call); the raw route with `advanced_search` is its replacement.
         const searchResults = await Promise.allSettled(
-          queries.map((q) => client.search.issuesAndPullRequests({ q, per_page: 100 }))
+          queries.map((q) =>
+            client.request("GET /search/issues", { q, per_page: 100, advanced_search: "true" })
+          )
         );
 
         // One team's query failing shouldn't blank the board. Every query
@@ -310,87 +320,79 @@ export const githubRoutes: Routes = {
           };
         });
 
-        // Batched over all PRs (~25 per query) rather than per PR. Awaited inside
-        // the per-PR fan-out below so it overlaps the REST calls instead of
-        // delaying them; skipped entirely when no team is configured.
+        // Both fetches are batched over all PRs (~25 per query, bounded
+        // concurrency) instead of firing REST calls per PR — the unbounded
+        // per-PR fan-out tripped GitHub's secondary rate limit on busy boards.
+        // The team query is skipped entirely when no team is configured.
         const teamReviewsPromise = codeownerTeamsByOrg.size
           ? orNull("team reviews", fetchPullRequestTeamReviews(client, prTargets)).then(
               (m) => m ?? new Map<string, GqlPrTeamReviews>()
             )
           : Promise.resolve(new Map<string, GqlPrTeamReviews>());
 
-        const results = await Promise.all(
-          searchItems.map(async (item, idx) => {
-            const { owner, repo, number: prNumber } = prTargets[idx];
-            const slug = `${owner}/${repo}#${prNumber}`;
+        const [reviewInfoMap, teamReviews] = await Promise.all([
+          orNull("review info", fetchPullRequestReviewInfo(client, prTargets)).then(
+            (m) => m ?? new Map<string, GqlPrReviewInfo>()
+          ),
+          teamReviewsPromise,
+        ]);
 
-            // Fetch reviews, PR details, and file list in parallel. Each one
-            // degrades on its own: the row still renders with whatever the
-            // other calls returned, with the missing parts shown as unknown.
-            const [reviewsResult, prDetails, filesResult, teamReviews] = await Promise.all([
-              orNull(`${slug} reviews`, client.pulls.listReviews({ owner, repo, pull_number: prNumber })),
-              orNull(`${slug} details`, client.pulls.get({ owner, repo, pull_number: prNumber })),
-              orNull(`${slug} files`, client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 })),
-              teamReviewsPromise,
-            ]);
+        searchItems.forEach((item, idx) => {
+          const { owner, repo, number: prNumber } = prTargets[idx];
+          // Missing entry (inaccessible repo, deleted PR, failed batch) leaves
+          // the row rendered from the search hit alone, extras shown as unknown.
+          const info = reviewInfoMap.get(prKey(owner, repo, prNumber)) ?? null;
 
-            // Count unique approving reviewers (latest state per user)
-            const reviewerStates = new Map<string, string>();
-            for (const review of reviewsResult?.data ?? []) {
-              if (review.user?.login && review.state) {
-                reviewerStates.set(review.user.login, review.state);
-              }
-            }
-            // null, not 0, when reviews are unavailable — "no approvals" and
-            // "unknown" must not look the same to whoever reads the column.
-            const approvedCount = reviewsResult
-              ? Array.from(reviewerStates.values()).filter((state) => state === "APPROVED").length
-              : null;
+          // Count unique approving reviewers (latest state per user)
+          const reviewerStates = new Map<string, string>();
+          for (const review of info?.reviews ?? []) {
+            reviewerStates.set(review.authorLogin, review.state);
+          }
+          // null, not 0, when reviews are unavailable — "no approvals" and
+          // "unknown" must not look the same to whoever reads the column.
+          const approvedCount = info
+            ? Array.from(reviewerStates.values()).filter((state) => state === "APPROVED").length
+            : null;
 
-            // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
-            // i.e. the authenticated token user — so this flags the current user's own draft.
-            const hasPendingReview = (reviewsResult?.data ?? []).some(
-              (review) => review.state === "PENDING" && review.user?.login === config.username
-            );
+          // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
+          // i.e. the authenticated token user — so this flags the current user's own draft.
+          const hasPendingReview = (info?.reviews ?? []).some(
+            (review) => review.state === "PENDING" && review.authorLogin === config.username
+          );
 
-            // Hide PRs the user already approved — only relevant for others' PRs.
-            // Without the reviews we can't tell, so the PR stays listed.
-            const userState = reviewerStates.get(config.username);
-            if (scope === "others" && userState === "APPROVED") return null;
+          // Hide PRs the user already approved — only relevant for others' PRs.
+          // Without the reviews we can't tell, so the PR stays listed.
+          const userState = reviewerStates.get(config.username);
+          if (scope === "others" && userState === "APPROVED") return;
 
-            const isDraft = item.draft ?? false;
+          const isDraft = item.draft ?? false;
 
-            const changesByCategory = filesResult ? bucketFilesByCategory(filesResult.data) : null;
+          const changesByCategory = info ? bucketFilesByCategory(info.files) : null;
 
-            return {
-              prNumber,
-              title: item.title,
-              url: item.html_url,
-              repo: { owner, repo },
-              author: item.user?.login ?? "unknown",
-              state: isDraft ? "draft" : "open",
-              isDraft,
-              approvedCount,
-              requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
-              hasPendingReview,
-              codeowner: computeCodeownerReview(
-                codeownerTeamsByOrg.get(owner),
-                teamReviews.get(prKey(owner, repo, prNumber))
-              ),
-              createdAt: item.created_at,
-              changedFiles: prDetails?.data.changed_files ?? null,
-              additions: prDetails?.data.additions ?? null,
-              deletions: prDetails?.data.deletions ?? null,
-              changesByCategory,
-              taskId: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.id ?? null,
-              taskJiraKey: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.jiraKey ?? null,
-            } satisfies ReviewRequest;
-          })
-        );
-
-        for (const item of results) {
-          if (item !== null) items.push(item);
-        }
+          items.push({
+            prNumber,
+            title: item.title,
+            url: item.html_url,
+            repo: { owner, repo },
+            author: item.user?.login ?? "unknown",
+            state: isDraft ? "draft" : "open",
+            isDraft,
+            approvedCount,
+            requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
+            hasPendingReview,
+            codeowner: computeCodeownerReview(
+              codeownerTeamsByOrg.get(owner),
+              teamReviews.get(prKey(owner, repo, prNumber))
+            ),
+            createdAt: item.created_at,
+            changedFiles: info?.changedFiles ?? null,
+            additions: info?.additions ?? null,
+            deletions: info?.deletions ?? null,
+            changesByCategory,
+            taskId: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.id ?? null,
+            taskJiraKey: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.jiraKey ?? null,
+          } satisfies ReviewRequest);
+        });
 
         return json({ items, total: items.length });
       } catch (err) {

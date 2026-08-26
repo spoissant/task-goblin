@@ -63,6 +63,19 @@ export interface GqlPrTeamReviews {
 
 export type GqlPullRequest = GqlPrCore & GqlPrChecks;
 
+/** Everything the review-requests board needs per PR beyond the search hit. */
+export interface GqlPrReviewInfo {
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
+  /**
+   * Oldest first, matching REST listReviews order. Includes the viewer's own
+   * unsubmitted draft as PENDING — GitHub only exposes those to their author.
+   */
+  reviews: Array<{ authorLogin: string; state: string }>;
+  files: Array<{ filename: string; additions: number; deletions: number }>;
+}
+
 /** Comparison targets for one PR: env branch names and/or deployed SHAs. */
 export interface ContainmentTarget {
   label: string;
@@ -171,6 +184,14 @@ const TEAM_REVIEW_FIELDS = `
   reviewRequests(first: 50) { nodes { asCodeOwner requestedReviewer { __typename ... on Team { slug } } } }
   reviews(first: 100) { nodes { state onBehalfOf(first: 10) { nodes { slug } } } }`;
 
+// REST clamps listFiles to 100 per page anyway, so `files(first: 100)` covers
+// exactly what the REST path did; beyond that the category split is a sample.
+const REVIEW_INFO_FIELDS = `
+  number
+  additions deletions changedFiles
+  reviews(first: 100) { nodes { state author { login } } }
+  files(first: 100) { nodes { path additions deletions } }`;
+
 // Check runs live under check suites rather than `statusCheckRollup`: the
 // rollup returns a filtered subset (it can omit the most recent run of a
 // re-run check), which would let a failing run go unseen. `checkSuites`
@@ -273,6 +294,49 @@ export async function fetchPullRequestChecks(
         result.set(prKey(g.owner, g.repo, number), {
           checkRuns: (commit.checkSuites?.nodes ?? []).flatMap((s: any) => s?.checkRuns?.nodes ?? []),
           statusContexts: commit.status?.contexts ?? [],
+        });
+      });
+    });
+
+    return result;
+  });
+}
+
+/**
+ * Reviews, size stats and file list for each PR. Replaces the review-requests
+ * board's per-PR REST triple (listReviews + pulls.get + listFiles), whose
+ * unbounded fan-out tripped GitHub's secondary rate limit on busy boards.
+ */
+export async function fetchPullRequestReviewInfo(
+  client: GitHubClient,
+  targets: PrTarget[]
+): Promise<Map<string, GqlPrReviewInfo>> {
+  return runChunked(targets, async (batch) => {
+    const result = new Map<string, GqlPrReviewInfo>();
+    const groups = groupByRepo(batch);
+    const data = await graphqlPartial<Record<string, Record<string, any>>>(
+      client,
+      buildPrQuery(groups, REVIEW_INFO_FIELDS)
+    );
+
+    groups.forEach((g, ri) => {
+      g.numbers.forEach((number, i) => {
+        const pr = data?.[`r${ri}`]?.[`p${i}`];
+        if (!pr) return;
+        result.set(prKey(g.owner, g.repo, number), {
+          additions: pr.additions ?? null,
+          deletions: pr.deletions ?? null,
+          changedFiles: pr.changedFiles ?? null,
+          reviews: (pr.reviews?.nodes ?? [])
+            .filter((r: any) => r?.author?.login && r.state)
+            .map((r: any) => ({ authorLogin: r.author.login as string, state: r.state as string })),
+          files: (pr.files?.nodes ?? [])
+            .filter((f: any) => f?.path)
+            .map((f: any) => ({
+              filename: f.path as string,
+              additions: f.additions ?? 0,
+              deletions: f.deletions ?? 0,
+            })),
         });
       });
     });
