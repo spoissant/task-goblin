@@ -210,7 +210,7 @@ export interface PaginatedResponse<T> extends ListResponse<T> {
 
 export interface SyncResult {
   synced: number;
-  created: number;
+  new: number;
   updated: number;
   unchanged: number;
 }

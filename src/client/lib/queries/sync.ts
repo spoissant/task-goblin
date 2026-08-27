@@ -72,10 +72,22 @@ export function useSyncGitHub(options?: SyncOptions) {
   });
 }
 
+export interface SyncStepFailure {
+  step: SyncStep;
+  message: string;
+}
+
 interface SyncAllResult {
   jira?: SyncResult;
   github?: SyncResult;
   merged?: number;
+  failures: SyncStepFailure[];
+}
+
+function describeSyncError(err: unknown): string {
+  // A rejected fetch (not an ApiError) means the request never reached the
+  // server at all, e.g. the backend process isn't running.
+  return err instanceof ApiError ? err.message : "Could not reach the server";
 }
 
 export function useSyncAll(options?: SyncOptions) {
@@ -83,28 +95,34 @@ export function useSyncAll(options?: SyncOptions) {
 
   return useMutation({
     mutationFn: async (): Promise<SyncAllResult> => {
-      const results: SyncAllResult = {};
+      const results: SyncAllResult = { failures: [] };
 
       options?.onStepChange?.("jira");
       try {
         results.jira = await api.post<SyncResult>("/sync/jira");
-      } catch {
-        // Jira sync failed, continue with GitHub
+      } catch (err) {
+        results.failures.push({ step: "jira", message: describeSyncError(err) });
       }
 
       options?.onStepChange?.("github");
       try {
         results.github = await api.post<SyncResult>("/sync/github");
-      } catch {
-        // GitHub sync failed
+      } catch (err) {
+        results.failures.push({ step: "github", message: describeSyncError(err) });
       }
 
       options?.onStepChange?.("matching");
       try {
         const matchResult = await api.post<MatchResult>("/sync/match");
         results.merged = matchResult.merged;
-      } catch {
-        // Match failed
+      } catch (err) {
+        results.failures.push({ step: "matching", message: describeSyncError(err) });
+      }
+
+      // All three steps hit the same server; if every one failed, the
+      // backend is unreachable rather than mid-sync — surface it as an error.
+      if (results.failures.length === 3) {
+        throw new Error(results.failures[0].message);
       }
 
       return results;

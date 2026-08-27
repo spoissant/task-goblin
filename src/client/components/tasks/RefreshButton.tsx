@@ -10,6 +10,12 @@ const stepLabels: Record<SyncStep, string> = {
   matching: "matching...",
 };
 
+const stepNames: Record<SyncStep, string> = {
+  jira: "Jira",
+  github: "GitHub",
+  matching: "Matching",
+};
+
 export function RefreshButton() {
   const [syncStep, setSyncStep] = useState<SyncStep | null>(null);
 
@@ -24,19 +30,19 @@ export function RefreshButton() {
       onSuccess: (results) => {
         const parts: string[] = [];
         const jiraUnchanged = results.jira?.unchanged ?? 0;
-        const jiraCreated = results.jira?.created ?? 0;
+        const jiraNew = results.jira?.new ?? 0;
         const jiraUpdated = results.jira?.updated ?? 0;
         const ghUnchanged = results.github?.unchanged ?? 0;
-        const ghCreated = results.github?.created ?? 0;
+        const ghNew = results.github?.new ?? 0;
         const ghUpdated = results.github?.updated ?? 0;
         const merged = results.merged ?? 0;
 
         const totalUnchanged = jiraUnchanged + ghUnchanged;
-        const totalCreated = jiraCreated + ghCreated;
+        const totalNew = jiraNew + ghNew;
         const totalUpdated = jiraUpdated + ghUpdated;
 
         if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
-        if (totalCreated > 0) parts.push(`${totalCreated} created`);
+        if (totalNew > 0) parts.push(`${totalNew} created`);
         if (totalUpdated > 0) parts.push(`${totalUpdated} updated`);
         if (merged > 0) parts.push(`${merged} auto-merged`);
 
@@ -45,9 +51,13 @@ export function RefreshButton() {
         } else {
           toast.success(`Synced. ${parts.join(", ")}.`);
         }
+
+        for (const failure of results.failures) {
+          toast.error(`${stepNames[failure.step]} sync failed: ${failure.message}`);
+        }
       },
-      onError: () => {
-        toast.error("Sync failed");
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Sync failed");
       },
     });
   };
