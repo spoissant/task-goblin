@@ -1,7 +1,35 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, or, not } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, worktrees, repositories } from "../../db/schema";
 import { NotFoundError } from "./errors";
+
+/**
+ * Build a search condition for the `title` query param. A leading `~`
+ * negates the match (e.g. "~tiptap" matches tasks that don't mention tiptap).
+ * Columns are COALESCE'd to '' so NULL values compare as non-matches instead
+ * of poisoning the OR/NOT with SQL's three-valued NULL logic.
+ */
+export function buildTitleSearchCondition(title: string) {
+  const negate = title.startsWith("~");
+  const term = negate ? title.slice(1).trim() : title;
+  if (!term) return undefined;
+
+  const pattern = `%${term}%`;
+  const orConditions = [
+    sql`COALESCE(${tasks.title}, '') LIKE ${pattern}`,
+    sql`COALESCE(${tasks.jiraKey}, '') LIKE ${pattern}`,
+    sql`COALESCE(${tasks.epicKey}, '') LIKE ${pattern}`,
+    sql`COALESCE(${tasks.parentKey}, '') LIKE ${pattern}`,
+    sql`COALESCE(${tasks.headBranch}, '') LIKE ${pattern}`,
+  ];
+  const parsed = Number(term);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    orConditions.push(eq(tasks.id, parsed));
+  }
+
+  const match = or(...orConditions)!;
+  return negate ? not(match) : match;
+}
 
 /**
  * Fetch a task with its associated repository (if any).

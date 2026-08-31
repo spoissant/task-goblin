@@ -50,7 +50,7 @@ export function registerTaskTools(server: McpServer) {
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
         statuses: z.string().optional().describe("Comma-separated list of status names to filter by (e.g. 'Code Review,Ready to Merge')"),
-        title: z.string().optional().describe("Substring search on title, Jira key, or branch name"),
+        title: z.string().optional().describe("Substring search on title, Jira key, or branch name. Prefix with ~ to negate (e.g. '~tiptap' excludes matches)"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
         maxReviews: z.number().int().optional().describe("Tasks with fewer than N approved reviews"),

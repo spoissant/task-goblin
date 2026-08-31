@@ -1,7 +1,7 @@
-import { eq, and, sql, ne, isNull, isNotNull, or, like } from "drizzle-orm";
+import { eq, and, sql, ne, isNull, isNotNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, repositories } from "../../db/schema";
-import { buildRepoMap, getTaskOrThrow } from "../lib/queries";
+import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors";
 import { fetchPrTaskData, GitHubApiError } from "../services/github-sync";
@@ -78,18 +78,8 @@ export const taskRoutes: Routes = {
       }
 
       if (title) {
-        const orConditions = [
-          like(tasks.title, `%${title}%`),
-          like(tasks.jiraKey, `%${title}%`),
-          like(tasks.epicKey, `%${title}%`),
-          like(tasks.parentKey, `%${title}%`),
-          like(tasks.headBranch, `%${title}%`),
-        ];
-        const parsed = Number(title);
-        if (Number.isInteger(parsed) && parsed > 0) {
-          orConditions.push(eq(tasks.id, parsed));
-        }
-        conditions.push(or(...orConditions));
+        const condition = buildTitleSearchCondition(title);
+        if (condition) conditions.push(condition);
       }
 
       // Filter by checks status (passing / failing)
@@ -493,18 +483,8 @@ export const taskRoutes: Routes = {
         }
       }
       if (title) {
-        const orConditions = [
-          like(tasks.title, `%${title}%`),
-          like(tasks.jiraKey, `%${title}%`),
-          like(tasks.epicKey, `%${title}%`),
-          like(tasks.parentKey, `%${title}%`),
-          like(tasks.headBranch, `%${title}%`),
-        ];
-        const parsed = Number(title);
-        if (Number.isInteger(parsed) && parsed > 0) {
-          orConditions.push(eq(tasks.id, parsed));
-        }
-        conditions.push(or(...orConditions));
+        const condition = buildTitleSearchCondition(title);
+        if (condition) conditions.push(condition);
       }
       const whereCondition = and(...conditions);
 

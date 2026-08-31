@@ -148,6 +148,27 @@ describe("Tasks endpoints", () => {
   });
 });
 
+describe("Task search filter", () => {
+  beforeEach(async () => {
+    await request("POST", "/api/v1/tasks", { title: "Migrate to tiptap editor" });
+    await request("POST", "/api/v1/tasks", { title: "Fix login bug" });
+  });
+
+  it("matches tasks containing the search term", async () => {
+    const res = await request("GET", "/api/v1/tasks?title=tiptap");
+    const data = await res.json();
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe("Migrate to tiptap editor");
+  });
+
+  it("excludes tasks containing the term when prefixed with ~", async () => {
+    const res = await request("GET", "/api/v1/tasks?title=~tiptap");
+    const data = await res.json();
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe("Fix login bug");
+  });
+});
+
 describe("Todos endpoints", () => {
   it("creates a todo", async () => {
     const res = await request("POST", "/api/v1/todos", {
