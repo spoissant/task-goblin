@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
+import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
@@ -18,6 +19,7 @@ export function TasksPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [repoFilter, setRepoFilter] = useState<number | null>(null);
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
@@ -107,6 +109,12 @@ export function TasksPage() {
         )}
       </div>
 
+      <RepoFilterBar
+        titleFilter={debouncedQuery}
+        selectedRepoId={repoFilter}
+        onSelectedRepoIdChange={setRepoFilter}
+      />
+
       <TaskTable
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
@@ -114,6 +122,7 @@ export function TasksPage() {
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
         compactMode={compactMode}
+        repoFilter={repoFilter}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />

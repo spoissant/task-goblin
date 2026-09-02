@@ -1,4 +1,5 @@
 import { Badge } from "@/client/components/ui/badge";
+import { cn } from "@/client/lib/utils";
 import type { Repository } from "@/client/lib/types";
 
 // Predefined color options for repository badges
@@ -29,16 +30,17 @@ const DEFAULT_COLOR: BadgeColorName = "gray";
 
 interface RepoBadgeProps {
   repo: Repository;
+  className?: string;
 }
 
-export function RepoBadge({ repo }: RepoBadgeProps) {
+export function RepoBadge({ repo, className }: RepoBadgeProps) {
   const colorName = (repo.badgeColor as BadgeColorName) || DEFAULT_COLOR;
   const colorClasses = BADGE_COLORS[colorName] || BADGE_COLORS[DEFAULT_COLOR];
 
   return (
     <Badge
       variant="outline"
-      className={`text-xs border-transparent ${colorClasses}`}
+      className={cn("text-xs border-transparent", colorClasses, className)}
       title={repo.alias ? `${repo.owner}/${repo.repo}` : undefined}
     >
       {repo.alias || repo.repo}

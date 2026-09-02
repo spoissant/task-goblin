@@ -61,9 +61,10 @@ interface TaskTableProps {
   hideLowPriority?: boolean;
   hideOnIce?: boolean;
   compactMode?: boolean;
+  repoFilter?: number | null;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, compactMode }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, compactMode, repoFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -104,6 +105,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   const tasks = allTasks.filter((t) => {
     if (hideLowPriority && !t.sprint && !t.highPriority) return false;
     if (hideOnIce && t.onIce) return false;
+    if (repoFilter != null && t.repositoryId !== repoFilter) return false;
     return true;
   });
 
