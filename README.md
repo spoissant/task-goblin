@@ -115,3 +115,19 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 ```
 
 The MCP server requires the API server to be running (`bun run dev:api`).
+
+## Standup Summaries
+
+Task Goblin keeps no history, so summaries come from comparing daily snapshots
+of your board. Read them in the app at **`/standup`** — the page builds the
+diff on demand from the snapshots on disk, with a date picker for any two of
+them and a Copy button for pasting into Slack.
+
+```bash
+bun run standup:snapshot     # sync, then write snapshots/<today>.json
+bun run standup              # same diff from the CLI -> standup/<date>.md
+```
+
+A launchd agent in `scripts/` takes the nightly snapshot that feeds the page.
+See [src/standup/README.md](src/standup/README.md) for scoping rules, the full
+list of detected events, and scheduling notes.

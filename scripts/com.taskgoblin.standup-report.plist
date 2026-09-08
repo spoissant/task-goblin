@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs `bun run standup` to build the morning report.
+     Install:  cp scripts/com.taskgoblin.standup-report.plist ~/Library/LaunchAgents/
+               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.taskgoblin.standup-report.plist
+     Remove:   launchctl bootout gui/$(id -u)/com.taskgoblin.standup-report -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.taskgoblin.standup-report</string>
+
+  <!-- A login shell so bun, asdf shims and $PATH resolve the same way they do
+       in a terminal. launchd itself has almost no PATH. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd /Users/simonpoissant/Code/task-goblin &amp;&amp; bun run standup</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>8</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/simonpoissant/Code/task-goblin/logs/standup-report.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/simonpoissant/Code/task-goblin/logs/standup-report.log</string>
+</dict>
+</plist>

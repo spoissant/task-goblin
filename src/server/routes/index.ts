@@ -11,6 +11,7 @@ import { syncBranchRoutes } from "./sync-branch";
 import { worktreeRoutes } from "./worktrees";
 import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
+import { standupRoutes } from "./standup";
 import { json } from "../response";
 
 const healthRoute: Routes = {
@@ -35,4 +36,5 @@ export const routes: Routes = {
   ...worktreeRoutes,
   ...teamChannelRoutes,
   ...choreRoutes,
+  ...standupRoutes,
 };

@@ -42,3 +42,7 @@ plans/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Standup snapshots & generated reports (root-anchored: src/standup/ is source)
+/snapshots/
+/standup/

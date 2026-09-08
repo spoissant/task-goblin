@@ -7,3 +7,4 @@ export * from "./chores";
 
 export * from "./reviews";
 export * from "./github-teams";
+export * from "./standup";
