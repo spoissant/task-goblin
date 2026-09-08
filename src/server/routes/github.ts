@@ -30,7 +30,6 @@ import type { Endpoints } from "@octokit/types";
 import type { ReviewRequest, FileChanges, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
 import { categorizePrSize } from "@/shared/pr-size";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
-import { ensureTodaysSnapshot } from "../../standup/scheduler";
 
 function categorizeFile(filename: string): "frontend" | "backend" | "other" {
   const lower = filename.toLowerCase();
@@ -111,8 +110,6 @@ export const githubRoutes: Routes = {
     async POST() {
       try {
         const result = await syncJiraItems();
-        // Freshest possible comparison point for the standup page.
-        await ensureTodaysSnapshot("jira sync", { synced: true });
         return json(result);
       } catch (err) {
         if (err instanceof JiraConfigError) {
@@ -131,7 +128,6 @@ export const githubRoutes: Routes = {
     async POST() {
       try {
         const result = await syncGitHubPullRequests();
-        await ensureTodaysSnapshot("github sync", { synced: true });
         return json(result);
       } catch (err) {
         if (err instanceof GitHubConfigError) {

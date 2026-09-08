@@ -3,7 +3,6 @@ import { routes } from "./routes";
 import { withCors, handleCors, withErrorBoundary } from "./middleware";
 import { migrateTaskStatuses } from "./lib/status-migration";
 import { addClient, removeClient, autoBroadcast } from "./lib/sse";
-import { startStandupScheduler } from "../standup/scheduler";
 
 const port = Number(process.env.PORT) || 3456;
 const router = createRouter(routes);
@@ -12,9 +11,6 @@ const router = createRouter(routes);
 async function startup() {
   // Run migrations
   await migrateTaskStatuses();
-
-  // Accrue daily standup snapshots without anyone having to run anything
-  startStandupScheduler();
 
   // Start server
   Bun.serve({

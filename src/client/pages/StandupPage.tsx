@@ -177,7 +177,7 @@ export function StandupPage() {
           <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
             {available.length === 0
               ? "Task Goblin keeps no history, so summaries come from comparing daily snapshots. Take the first one now — once a second exists, this page shows what moved in between."
-              : `Only one snapshot so far (${formatDate(available[0]!)}). The nightly job takes the next one at 00:05, or take one now to compare against it.`}
+              : `Only one snapshot so far (${formatDate(available[0]!)}). Take the next one before your next meeting to see what moved in between.`}
           </p>
           <Button className="mt-5" onClick={snapshotNow} disabled={busy}>
             <Camera />

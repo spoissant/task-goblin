@@ -12,7 +12,6 @@ import {
   resolveRange,
   writeSnapshot,
 } from "./service";
-import { ensureTodaysSnapshot } from "./scheduler";
 import { takeSnapshot } from "./snapshot";
 import type { EventKind, Snapshot } from "./types";
 
@@ -534,71 +533,5 @@ describe("snapshot files on disk", () => {
 
   test("reports no snapshots rather than throwing on a missing directory", async () => {
     expect(await listSnapshotDates(tmpDir())).toEqual([]);
-  });
-});
-
-describe("automatic snapshots", () => {
-  const tmpDir = () => `/tmp/standup-sched-${Math.random().toString(36).slice(2)}`;
-
-  function seedDb(): string {
-    const path = `/tmp/standup-sched-db-${Math.random().toString(36).slice(2)}.db`;
-    const db = new Database(path, { create: true });
-    createTestTables(db);
-    const insCat = db.prepare(
-      "insert into status_categories (name,color,done,display_order,jira_mappings) values (?,?,?,?,?)",
-    );
-    for (const [name, done, order, maps] of CATEGORIES) insCat.run(name, "c", done, order, JSON.stringify(maps));
-    db.exec("insert into settings (key,value) values ('github_username','spoissant')");
-    insertTasks(db, [base], "2026-09-02T09:00:00.000Z");
-    db.close();
-    return path;
-  }
-
-  test("writes today's snapshot when there isn't one", async () => {
-    const dir = tmpDir();
-    expect(await ensureTodaysSnapshot("test", { dir, dbPath: seedDb(), date: "2026-09-08" })).toBe(true);
-    expect(await listSnapshotDates(dir)).toEqual(["2026-09-08"]);
-  });
-
-  test("leaves an existing snapshot alone when no sync happened", async () => {
-    const dir = tmpDir();
-    const dbPath = seedDb();
-    await ensureTodaysSnapshot("first", { dir, dbPath, date: "2026-09-08" });
-    const before = (await loadSnapshot("2026-09-08", dir)).takenAt;
-
-    expect(await ensureTodaysSnapshot("again", { dir, dbPath, date: "2026-09-08" })).toBe(false);
-    expect((await loadSnapshot("2026-09-08", dir)).takenAt).toBe(before);
-  });
-
-  test("a sync replaces the pre-sync snapshot written at server start", async () => {
-    const dir = tmpDir();
-    const dbPath = seedDb();
-    await ensureTodaysSnapshot("server start", { dir, dbPath, date: "2026-09-08" });
-    const stale = await loadSnapshot("2026-09-08", dir);
-    expect(stale.meta.syncTriggered).toBe(false);
-    expect(stale.tasks).toHaveLength(1);
-
-    // The sync brings in a task that did not exist when the server booted.
-    const db = new Database(dbPath);
-    insertTasks(db, [{ ...base, id: 2, jira_key: "EV-2", title: "Arrived in the sync" }], "2026-09-08T09:00:00.000Z");
-    db.close();
-
-    expect(
-      await ensureTodaysSnapshot("jira sync", { dir, dbPath, date: "2026-09-08", synced: true }),
-    ).toBe(true);
-
-    const fresh = await loadSnapshot("2026-09-08", dir);
-    expect(fresh.meta.syncTriggered).toBe(true);
-    expect(fresh.tasks).toHaveLength(2);
-    // Still one file for the day, not two.
-    expect(await listSnapshotDates(dir)).toEqual(["2026-09-08"]);
-  });
-
-  test("swallows failures so a bad snapshot cannot take the server down", async () => {
-    const dir = tmpDir();
-    expect(
-      await ensureTodaysSnapshot("test", { dir, dbPath: "/tmp/definitely-not-a-database.db", date: "2026-09-08" }),
-    ).toBe(false);
-    expect(await listSnapshotDates(dir)).toEqual([]);
   });
 });

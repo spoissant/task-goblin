@@ -128,7 +128,7 @@ bun run standup:snapshot     # sync, then write snapshots/<today>.json
 bun run standup              # same diff from the CLI -> standup/<date>.md
 ```
 
-Snapshots are taken automatically by the API server — after each Jira/GitHub
-sync, plus an hourly safety net — so there is nothing to install or remember.
+Snapshots are manual: hit **Snapshot now** on the Standup page just before your
+meeting, and the report compares it to the one from the previous meeting.
 See [src/standup/README.md](src/standup/README.md) for scoping rules, the full
 list of detected events, and the optional launchd agents.
