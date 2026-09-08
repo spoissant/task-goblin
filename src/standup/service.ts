@@ -74,6 +74,8 @@ export interface StandupReport {
   markdown: string;
   /** Number of tasks with at least one change, for a quick headline. */
   changedCount: number;
+  /** When each snapshot was taken (ISO). */
+  fromTakenAt: string;
   takenAt: string;
   assignee: string | null;
 }
@@ -99,6 +101,7 @@ export async function buildReport(options: {
     available,
     markdown: renderReport(diff),
     changedCount: diff.changed.length,
+    fromTakenAt: from.takenAt,
     takenAt: to.takenAt,
     assignee: to.meta.assignee,
   };

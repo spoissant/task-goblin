@@ -29,6 +29,13 @@ function formatDate(date: string): string {
   });
 }
 
+/** Selected value shows date + time; the option list stays date-only since
+ *  only the two selected snapshots' timestamps are in the report. */
+function formatDateTime(date: string, takenAt: string): string {
+  const time = new Date(takenAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${formatDate(date)} · ${time}`;
+}
+
 export function StandupPage() {
   const queryClient = useQueryClient();
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
@@ -106,8 +113,8 @@ export function StandupPage() {
             value={report.from}
             onValueChange={(from) => setRange((r) => ({ ...r, from }))}
           >
-            <SelectTrigger className="w-[170px]">
-              <SelectValue />
+            <SelectTrigger className="w-[190px]">
+              <SelectValue>{formatDateTime(report.from, report.fromTakenAt)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {available
@@ -127,8 +134,8 @@ export function StandupPage() {
               setRange((r) => ({ to, from: r.from && r.from < to ? r.from : undefined }))
             }
           >
-            <SelectTrigger className="w-[170px]">
-              <SelectValue />
+            <SelectTrigger className="w-[190px]">
+              <SelectValue>{formatDateTime(report.to, report.takenAt)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {available.slice(1).map((d) => (

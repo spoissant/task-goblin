@@ -121,6 +121,16 @@ function renderEvents(events: ChangeEvent[]): string[] {
   return lines;
 }
 
+function formatTakenAt(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function freshnessNote(to: Snapshot): string | null {
   const synced = to.meta.jiraDeltaSyncedAt;
   if (!synced) return "No Jira sync timestamp recorded — the snapshot may be stale.";
@@ -226,7 +236,7 @@ export function renderReport(diff: DiffResult): string {
   out.push("---");
   out.push("");
   out.push(
-    `_Scoped to Jira assignee \`${to.meta.assignee ?? "?"}\`${idNote} and GitHub user \`${to.meta.githubUser ?? "?"}\`. Snapshot taken ${to.takenAt}._`,
+    `_Scoped to Jira assignee \`${to.meta.assignee ?? "?"}\`${idNote} and GitHub user \`${to.meta.githubUser ?? "?"}\`. Snapshot taken ${formatTakenAt(to.takenAt)}._`,
   );
   out.push("");
 

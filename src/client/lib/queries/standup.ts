@@ -7,6 +7,7 @@ export interface StandupReport {
   available: string[];
   markdown: string;
   changedCount: number;
+  fromTakenAt: string;
   takenAt: string;
   assignee: string | null;
 }
