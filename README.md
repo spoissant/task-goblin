@@ -128,6 +128,7 @@ bun run standup:snapshot     # sync, then write snapshots/<today>.json
 bun run standup              # same diff from the CLI -> standup/<date>.md
 ```
 
-A launchd agent in `scripts/` takes the nightly snapshot that feeds the page.
+Snapshots are taken automatically by the API server — after each Jira/GitHub
+sync, plus an hourly safety net — so there is nothing to install or remember.
 See [src/standup/README.md](src/standup/README.md) for scoping rules, the full
-list of detected events, and scheduling notes.
+list of detected events, and the optional launchd agents.

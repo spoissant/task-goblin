@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { buildCategoryResolver } from "./categories";
 import type { Snapshot, SnapshotMeta, TaskSnapshot, TodoSnapshot } from "./types";
 
@@ -78,6 +79,9 @@ function openDb(path: string): Database {
   try {
     return new Database(path, { readonly: true });
   } catch (err) {
+    // Only a WAL that needs recovering justifies a read-write open. If the
+    // file isn't there, falling back would silently create an empty database.
+    if (!existsSync(path)) throw err;
     console.warn(
       `Read-only open of ${path} failed (${err instanceof Error ? err.message : err}); reopening read-write to recover the WAL.`,
     );

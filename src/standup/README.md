@@ -78,40 +78,46 @@ block/unblock, PRs opened, leaving draft, hitting the repo's own
 conflicts, new deployment branches, merges, sprint moves, on-ice, high-priority
 flags, and checklist items ticked off or added.
 
-## Scheduling
+## How snapshots get taken
 
-The page needs only the **snapshot** job; the report job is optional and just
-keeps a markdown copy in `standup/` for grepping or pasting elsewhere.
+**Automatically, by the API server.** No install step, nothing to remember:
 
-`scripts/com.taskgoblin.standup-*.plist` are launchd agents — a snapshot at
-00:05 and a report at 08:30. Install with:
+- **After every successful Jira or GitHub sync**, the server writes today's
+  snapshot. This is the primary path — the data is freshest at exactly that
+  moment, it costs one extra file write, and it happens naturally on every day
+  you actually work. A later sync the same day overwrites it, so today's
+  snapshot is always "the board as of your last sync today", which is the right
+  window for a standup.
+- **On startup (after 5 minutes) and hourly**, as a safety net, the server
+  writes today's snapshot if one doesn't exist yet — without syncing. That
+  snapshot holds whatever the last sync left behind, and the first sync of the
+  day replaces it with fresh data. Reports warn at the top whenever the
+  snapshot they used was built on sync data more than six hours old.
+
+Failures are logged and swallowed: a snapshot that can't be written must never
+take the API server down. Look for `[standup]` lines in the `bun run dev:api`
+output.
+
+This means snapshots accrue on working days and skip weekends and days off,
+which is what you want — a diff across a quiet weekend is just noise.
+
+### Optional: launchd
+
+`scripts/com.taskgoblin.standup-*.plist` are launchd agents (snapshot at 00:05,
+markdown report at 08:30). They are **not needed** and not installed by
+default — the in-app scheduler covers every day you open the app. Install them
+only if you want snapshots on days you never open Task Goblin at all:
 
 ```bash
 cp scripts/com.taskgoblin.standup-*.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.taskgoblin.standup-snapshot.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.taskgoblin.standup-report.plist
 ```
 
 They run through a login shell so `bun` is on `PATH`, and write to
-`logs/standup-*.log`. If the Mac is asleep at the scheduled time launchd runs
-the job on wake.
-
-### A caveat about midnight
-
-The database only knows what the last sync told it. `standup:snapshot` tries to
-`POST /api/v1/sync/{jira,github}` first, but that needs `bun run dev:api` to be
-up — at 00:05 it usually isn't, so the snapshot captures yesterday afternoon's
-sync. That is fine for a day-over-day diff (both ends are equally stale), but if
-you want each snapshot to be genuinely current, move the snapshot job to the
-morning and let it sync first:
-
-```xml
-<key>Hour</key><integer>8</integer>
-<key>Minute</key><integer>0</integer>
-```
-
-Reports warn at the top whenever the snapshot they used was built on sync data
-more than six hours old.
+`logs/standup-*.log`. Be aware that at 00:05 the API server is usually down, so
+those snapshots can't sync and will hold the previous afternoon's data. The
+skip-if-exists logic makes running both mechanisms safe — whichever fires first
+wins, and the day's first sync refreshes it either way.
 
 ## Layout
 
@@ -122,6 +128,7 @@ more than six hours old.
 | `render.ts` | Turn a diff into standup markdown |
 | `categories.ts` | Raw Jira status → workflow column |
 | `service.ts` | Snapshot files on disk: list, load, resolve a range, build a report |
+| `scheduler.ts` | Keeps today's snapshot written, from the API server |
 | `cli.ts` | `snapshot` / `report` commands |
 | `standup.test.ts` | `bun test src/standup` |
 
