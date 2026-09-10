@@ -72,14 +72,15 @@ a side-state rather than the back of the queue.
 
 Reports are scoped to the board's **Sprint view**: tasks in the active sprint
 or flagged high priority. Everything else stays out of the standup. Tasks on ice
-or flagged high priority are tagged as such on their line, in every section.
+(❄️) or flagged high priority (🔥) carry the board's icon in front of their
+line, in every section; the on-ice reason is appended when there is one.
 
 Reports answer three questions, one line per task:
 
 - **Done** — tasks that reached a done column or had their PR merged since the
   previous snapshot.
 - **Working on** — everything currently between Backlog and Done (Blocked
-  included, on-ice included but tagged and listed last), with its column and PR
+  included, on-ice included but marked ❄️ and listed last), with its column and PR
   state, plus the most notable change since last time in italics.
 - **New, not started** — backlog work that appeared in the sprint view since the
   previous snapshot: added to the board, pulled into the sprint, or flagged

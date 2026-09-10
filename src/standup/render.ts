@@ -42,21 +42,33 @@ const leadEvent = (events: ChangeEvent[]): ChangeEvent | undefined =>
 const has = (tc: TaskChanges | undefined, ...kinds: EventKind[]) =>
   !!tc && tc.events.some((e) => kinds.includes(e.kind));
 
+/** Same icons as the board: snowflake for on ice, flame for high priority. Prefixes the line. */
+function flagIcons(t: TaskSnapshot): string {
+  let icons = "";
+  if (t.highPriority) icons += "🔥 ";
+  if (t.onIce) icons += "❄️ ";
+  return icons;
+}
+
+/** The on-ice reason is worth saying; the flag itself is already in the icon. */
+const flags = (t: TaskSnapshot): string[] => (t.onIce && t.onIceReason ? [t.onIceReason] : []);
+
 function taskRef(t: TaskSnapshot, meta: Snapshot["meta"]): string {
   const title = t.title.replace(/\s+/g, " ").trim();
+  const icons = flagIcons(t);
   if (t.jiraKey) {
     const key = meta.jiraHost
       ? `[${t.jiraKey}](${meta.jiraHost.replace(/\/$/, "")}/browse/${t.jiraKey})`
       : t.jiraKey;
-    return `**${key}** ${title}`;
+    return `${icons}**${key}** ${title}`;
   }
   if (t.pr) {
     const pr = t.pr.repoPath
       ? `[${t.pr.repo}#${t.pr.number}](https://github.com/${t.pr.repoPath}/pull/${t.pr.number})`
       : `${t.pr.repo}#${t.pr.number}`;
-    return `**${pr}** ${title}`;
+    return `${icons}**${pr}** ${title}`;
   }
-  return `**${title}**`;
+  return `${icons}**${title}**`;
 }
 
 function formatTakenAt(iso: string): string {
@@ -98,14 +110,6 @@ const byColumn = (a: TaskSnapshot, b: TaskSnapshot) =>
 
 /** Mirrors the board's "Sprint view" toggle: in the sprint, or flagged high priority. */
 const inSprintView = (t: TaskSnapshot) => !!t.sprint || t.highPriority;
-
-/** Flags worth calling out on every line, whatever section the task lands in. */
-function flags(t: TaskSnapshot): string[] {
-  const bits: string[] = [];
-  if (t.onIce) bits.push(t.onIceReason ? `on ice — ${t.onIceReason}` : "on ice");
-  if (t.highPriority) bits.push("high-prio");
-  return bits;
-}
 
 /**
  * Scoped to the sprint view. Three questions, one line per task:

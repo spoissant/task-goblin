@@ -452,7 +452,7 @@ describe("report rendering", () => {
     expect(md).toContain("Nothing new landed");
   });
 
-  test("working on excludes backlog and done work, and tags iced and high-prio work", () => {
+  test("working on excludes backlog and done work, and marks iced and high-prio work with icons", () => {
     const [, d2] = snapshotPair(
       [
         { ...base, id: 1, jira_key: "EV-1", status: "In Progress" },
@@ -466,9 +466,9 @@ describe("report rendering", () => {
     const working = section(renderReport(diffSnapshots(d2, d2)), "Working on");
     expect(working).toContain("EV-1");
     expect(working).not.toContain("EV-2");
-    expect(working).toMatch(/EV-3.*on ice/);
+    expect(working).toMatch(/❄️ \*\*\[EV-3\]/);
     expect(working).not.toContain("EV-4");
-    expect(working).toMatch(/EV-5.*high-prio/);
+    expect(working).toMatch(/🔥 \*\*\[EV-5\]/);
     // Iced work sinks to the bottom so live work reads first.
     expect(working.indexOf("EV-5")).toBeLessThan(working.indexOf("EV-3"));
   });
@@ -490,14 +490,14 @@ describe("report rendering", () => {
     const md = renderReport(diffSnapshots(d1, d2));
     // EV-1 finished but was never in the sprint view — not standup material.
     expect(md).not.toContain("EV-1");
-    expect(section(md, "Working on")).toMatch(/EV-2.*high-prio/);
+    expect(section(md, "Working on")).toMatch(/🔥 \*\*\[EV-2\]/);
     expect(section(md, "Working on")).toContain("EV-3");
     expect(md).not.toContain("EV-4");
     // Flagging a backlog ticket high-prio pulls it into view as new work.
-    expect(section(md, "New, not started")).toMatch(/EV-5.*high-prio/);
+    expect(section(md, "New, not started")).toMatch(/🔥 \*\*\[EV-5\]/);
   });
 
-  test("on-ice work in Done and New is tagged too", () => {
+  test("on-ice work in Done and New gets the icon too, with its reason", () => {
     const [d1, d2] = snapshotPair(
       [{ ...base, id: 1, jira_key: "EV-1", status: "In Progress", on_ice: 1 }],
       (db) => {
@@ -507,8 +507,8 @@ describe("report rendering", () => {
       },
     );
     const md = renderReport(diffSnapshots(d1, d2));
-    expect(section(md, "Done")).toMatch(/EV-1.*on ice — waiting on design/);
-    expect(section(md, "New, not started")).toMatch(/EV-2.*on ice/);
+    expect(section(md, "Done")).toMatch(/❄️ \*\*\[EV-1\].*— waiting on design/);
+    expect(section(md, "New, not started")).toMatch(/❄️ \*\*\[EV-2\]/);
   });
 });
 
