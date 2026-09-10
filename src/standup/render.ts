@@ -96,11 +96,22 @@ function prState(t: TaskSnapshot): string[] {
 const byColumn = (a: TaskSnapshot, b: TaskSnapshot) =>
   (a.categoryOrder ?? 99) - (b.categoryOrder ?? 99) || a.id - b.id;
 
+/** Mirrors the board's "Sprint view" toggle: in the sprint, or flagged high priority. */
+const inSprintView = (t: TaskSnapshot) => !!t.sprint || t.highPriority;
+
+/** Flags worth calling out on every line, whatever section the task lands in. */
+function flags(t: TaskSnapshot): string[] {
+  const bits: string[] = [];
+  if (t.onIce) bits.push(t.onIceReason ? `on ice — ${t.onIceReason}` : "on ice");
+  if (t.highPriority) bits.push("high-prio");
+  return bits;
+}
+
 /**
- * Three questions, one line per task:
+ * Scoped to the sprint view. Three questions, one line per task:
  *   Done        — reached a done column or got its PR merged since last time
- *   Working on  — everything currently between Backlog and Done (Blocked included), not on ice
- *   New         — appeared on my board or got pulled into the sprint, and is not started
+ *   Working on  — everything currently between Backlog and Done (Blocked and on-ice included, tagged)
+ *   New         — appeared in the sprint view and is not started
  */
 export function renderReport(diff: DiffResult): string {
   const { to, changed } = diff;
@@ -108,19 +119,21 @@ export function renderReport(diff: DiffResult): string {
   const backlogOrder = to.categories.find((c) => c.name === "Backlog")?.order ?? Infinity;
   const isBacklog = (t: TaskSnapshot) => t.categoryOrder == null || t.categoryOrder >= backlogOrder;
   const isBlocked = (t: TaskSnapshot) => t.category === "Blocked";
+  const tasks = to.tasks.filter(inSprintView);
 
-  const done = to.tasks
-    .filter((t) => has(changes.get(t.id), "completed", "merged"))
-    .sort(byColumn);
+  const done = tasks.filter((t) => has(changes.get(t.id), "completed", "merged")).sort(byColumn);
 
-  const working = to.tasks
-    .filter((t) => !t.categoryDone && !t.onIce && (isBlocked(t) || !isBacklog(t)))
+  const working = tasks
+    .filter((t) => !t.categoryDone && (isBlocked(t) || !isBacklog(t)))
     .filter((t) => !done.includes(t))
-    .sort((a, b) => Number(isBlocked(a)) - Number(isBlocked(b)) || byColumn(a, b));
+    .sort(
+      (a, b) =>
+        Number(a.onIce) - Number(b.onIce) || Number(isBlocked(a)) - Number(isBlocked(b)) || byColumn(a, b),
+    );
 
-  const fresh = to.tasks
-    .filter((t) => !t.categoryDone && !t.onIce && isBacklog(t) && !isBlocked(t))
-    .filter((t) => has(changes.get(t.id), "added", "sprint_added"))
+  const fresh = tasks
+    .filter((t) => !t.categoryDone && isBacklog(t) && !isBlocked(t))
+    .filter((t) => has(changes.get(t.id), "added", "sprint_added", "high_priority_on"))
     .sort(byColumn);
 
   const out: string[] = [];
@@ -139,16 +152,16 @@ export function renderReport(diff: DiffResult): string {
   if (!done.length) out.push("_Nothing closed out._");
   for (const t of done) {
     const lead = leadEvent(changes.get(t.id)!.events)!;
-    const tail = lead.kind === "merged" && !t.categoryDone ? ` — PR merged, ticket still ${t.category ?? t.status}` : "";
-    out.push(`- ${taskRef(t, to.meta)}${tail}`);
+    const bits = [...flags(t)];
+    if (lead.kind === "merged" && !t.categoryDone) bits.push(`PR merged, ticket still ${t.category ?? t.status}`);
+    out.push(`- ${taskRef(t, to.meta)}${bits.length ? ` — ${bits.join(", ")}` : ""}`);
   }
   out.push("");
 
   out.push("## Working on", "");
   if (!working.length) out.push("_Nothing active._");
   for (const t of working) {
-    const state = [t.category ?? t.status, ...prState(t)];
-    if (t.highPriority) state.push("high-prio");
+    const state = [t.category ?? t.status, ...prState(t), ...flags(t)];
     const tc = changes.get(t.id);
     const lead = tc && leadEvent(tc.events);
     const since = lead ? ` · _${lead.kind === "added" ? "new" : lead.detail}_` : "";
@@ -161,7 +174,7 @@ export function renderReport(diff: DiffResult): string {
   for (const t of fresh) {
     const bits: string[] = [];
     if (t.sprint && has(changes.get(t.id), "sprint_added")) bits.push(`sprint ${t.sprint}`);
-    if (t.highPriority) bits.push("high-prio");
+    bits.push(...flags(t));
     out.push(`- ${taskRef(t, to.meta)}${bits.length ? ` — ${bits.join(", ")}` : ""}`);
   }
   out.push("");

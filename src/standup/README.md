@@ -70,16 +70,20 @@ columns, case-insensitively and tolerating the legacy snake_case values
 counts down to Done, so a lower order is further along; `Blocked` is treated as
 a side-state rather than the back of the queue.
 
+Reports are scoped to the board's **Sprint view**: tasks in the active sprint
+or flagged high priority. Everything else stays out of the standup. Tasks on ice
+or flagged high priority are tagged as such on their line, in every section.
+
 Reports answer three questions, one line per task:
 
 - **Done** — tasks that reached a done column or had their PR merged since the
   previous snapshot.
 - **Working on** — everything currently between Backlog and Done (Blocked
-  included, on-ice excluded), with its column and PR state, plus the most
-  notable change since last time in italics.
-- **New, not started** — backlog work that appeared on the board or was pulled
-  into the sprint since the previous snapshot. The rest of the backlog stays
-  quiet.
+  included, on-ice included but tagged and listed last), with its column and PR
+  state, plus the most notable change since last time in italics.
+- **New, not started** — backlog work that appeared in the sprint view since the
+  previous snapshot: added to the board, pulled into the sprint, or flagged
+  high priority. The rest of the backlog stays quiet.
 
 Detected changes include status moves, completions, reopenings, block/unblock,
 PRs opened, leaving draft, hitting the repo's own `required_reviews`, CI

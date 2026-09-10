@@ -452,21 +452,63 @@ describe("report rendering", () => {
     expect(md).toContain("Nothing new landed");
   });
 
-  test("working on excludes backlog, done and iced work", () => {
+  test("working on excludes backlog and done work, and tags iced and high-prio work", () => {
     const [, d2] = snapshotPair(
       [
         { ...base, id: 1, jira_key: "EV-1", status: "In Progress" },
         { ...base, id: 2, jira_key: "EV-2", status: "Backlog" },
         { ...base, id: 3, jira_key: "EV-3", status: "In Progress", on_ice: 1 },
         { ...base, id: 4, jira_key: "EV-4", status: "Done" },
+        { ...base, id: 5, jira_key: "EV-5", status: "In Progress", high_priority: 1 },
       ],
       () => {},
     );
     const working = section(renderReport(diffSnapshots(d2, d2)), "Working on");
     expect(working).toContain("EV-1");
     expect(working).not.toContain("EV-2");
-    expect(working).not.toContain("EV-3");
+    expect(working).toMatch(/EV-3.*on ice/);
     expect(working).not.toContain("EV-4");
+    expect(working).toMatch(/EV-5.*high-prio/);
+    // Iced work sinks to the bottom so live work reads first.
+    expect(working.indexOf("EV-5")).toBeLessThan(working.indexOf("EV-3"));
+  });
+
+  test("only reports tasks in the sprint view: in the sprint or flagged high priority", () => {
+    const [d1, d2] = snapshotPair(
+      [
+        { ...base, id: 1, jira_key: "EV-1", status: "In Progress", sprint: null },
+        { ...base, id: 2, jira_key: "EV-2", status: "In Progress", sprint: null, high_priority: 1 },
+        { ...base, id: 3, jira_key: "EV-3", status: "In Progress" },
+        { ...base, id: 4, jira_key: "EV-4", status: "In Progress", sprint: null },
+        { ...base, id: 5, jira_key: "EV-5", status: "Backlog", sprint: null },
+      ],
+      (db) => {
+        db.exec("update tasks set status='Done' where id in (1, 4)");
+        db.exec("update tasks set high_priority=1 where id=5");
+      },
+    );
+    const md = renderReport(diffSnapshots(d1, d2));
+    // EV-1 finished but was never in the sprint view — not standup material.
+    expect(md).not.toContain("EV-1");
+    expect(section(md, "Working on")).toMatch(/EV-2.*high-prio/);
+    expect(section(md, "Working on")).toContain("EV-3");
+    expect(md).not.toContain("EV-4");
+    // Flagging a backlog ticket high-prio pulls it into view as new work.
+    expect(section(md, "New, not started")).toMatch(/EV-5.*high-prio/);
+  });
+
+  test("on-ice work in Done and New is tagged too", () => {
+    const [d1, d2] = snapshotPair(
+      [{ ...base, id: 1, jira_key: "EV-1", status: "In Progress", on_ice: 1 }],
+      (db) => {
+        db.exec("update tasks set status='Done', on_ice_reason='waiting on design' where id=1");
+        db.exec(`insert into tasks (id,title,status,created_at,updated_at,jira_key,assignee,sprint,on_ice)
+          values (2,'Fresh','Backlog','2026-09-03T00:00:00.000Z','2026-09-03T00:00:00.000Z','EV-2','${ME}','${SPRINT}',1)`);
+      },
+    );
+    const md = renderReport(diffSnapshots(d1, d2));
+    expect(section(md, "Done")).toMatch(/EV-1.*on ice — waiting on design/);
+    expect(section(md, "New, not started")).toMatch(/EV-2.*on ice/);
   });
 });
 
