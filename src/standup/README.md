@@ -70,13 +70,22 @@ columns, case-insensitively and tolerating the legacy snake_case values
 counts down to Done, so a lower order is further along; `Blocked` is treated as
 a side-state rather than the back of the queue.
 
-Reports group changes into **Shipped**, **Moved forward**, **Needs attention**,
-**New on my plate** and **Dropped / de-scoped**, then list what is currently in
-flight. Detected events include status moves, completions, reopenings,
-block/unblock, PRs opened, leaving draft, hitting the repo's own
-`required_reviews`, CI flipping, review comments arriving or clearing, merge
-conflicts, new deployment branches, merges, sprint moves, on-ice, high-priority
-flags, and checklist items ticked off or added.
+Reports answer three questions, one line per task:
+
+- **Done** — tasks that reached a done column or had their PR merged since the
+  previous snapshot.
+- **Working on** — everything currently between Backlog and Done (Blocked
+  included, on-ice excluded), with its column and PR state, plus the most
+  notable change since last time in italics.
+- **New, not started** — backlog work that appeared on the board or was pulled
+  into the sprint since the previous snapshot. The rest of the backlog stays
+  quiet.
+
+Detected changes include status moves, completions, reopenings, block/unblock,
+PRs opened, leaving draft, hitting the repo's own `required_reviews`, CI
+flipping, review comments arriving or clearing, merge conflicts, new deployment
+branches, merges, sprint moves, on-ice, high-priority flags, and checklist items
+ticked off or added.
 
 ## How snapshots get taken
 

@@ -1,54 +1,6 @@
 import type { ChangeEvent, DiffResult, EventKind, Snapshot, TaskChanges, TaskSnapshot } from "./types";
 
-type SectionId = "shipped" | "forward" | "attention" | "new" | "off";
-
-interface Section {
-  id: SectionId;
-  heading: string;
-  empty: string;
-}
-
-const SECTIONS: Section[] = [
-  { id: "shipped", heading: "Shipped", empty: "Nothing merged or closed out." },
-  { id: "forward", heading: "Moved forward", empty: "No forward movement recorded." },
-  { id: "attention", heading: "Needs attention", empty: "Nothing new needing attention." },
-  { id: "new", heading: "New on my plate", empty: "Nothing new landed." },
-  { id: "off", heading: "Dropped / de-scoped", empty: "" },
-];
-
-/** Which section a task lands in, decided by its most significant event. */
-const SECTION_BY_KIND: Record<EventKind, SectionId> = {
-  completed: "shipped",
-  merged: "shipped",
-  // A staging/barney deploy is progress, not closure.
-  deployed: "forward",
-  advanced: "forward",
-  pr_ready: "forward",
-  approved: "forward",
-  comments_cleared: "forward",
-  ci_fixed: "forward",
-  conflicts_cleared: "forward",
-  todos_done: "forward",
-  pr_opened: "forward",
-  unblocked: "forward",
-  off_ice: "forward",
-  blocked: "attention",
-  regressed: "attention",
-  ci_broke: "attention",
-  comments_up: "attention",
-  conflicts_appeared: "attention",
-  on_ice: "attention",
-  high_priority_on: "attention",
-  added: "new",
-  sprint_added: "new",
-  todos_added: "new",
-  removed: "off",
-  pr_closed: "off",
-  sprint_removed: "off",
-  high_priority_off: "off",
-};
-
-/** Lower wins when a task has several events. */
+/** Lower wins when a task has several events — the one worth saying out loud. */
 const KIND_RANK: EventKind[] = [
   "completed",
   "merged",
@@ -57,7 +9,6 @@ const KIND_RANK: EventKind[] = [
   "ci_broke",
   "conflicts_appeared",
   "comments_up",
-  "added",
   "deployed",
   "approved",
   "pr_ready",
@@ -72,6 +23,7 @@ const KIND_RANK: EventKind[] = [
   "off_ice",
   "high_priority_on",
   "sprint_added",
+  "added",
   "sprint_removed",
   "high_priority_off",
   "todos_added",
@@ -84,41 +36,27 @@ const rank = (k: EventKind) => {
   return i === -1 ? KIND_RANK.length : i;
 };
 
-function sectionFor(tc: TaskChanges): SectionId {
-  const lead = [...tc.events].sort((a, b) => rank(a.kind) - rank(b.kind))[0]!;
-  return SECTION_BY_KIND[lead.kind];
-}
+const leadEvent = (events: ChangeEvent[]): ChangeEvent | undefined =>
+  [...events].sort((a, b) => rank(a.kind) - rank(b.kind))[0];
+
+const has = (tc: TaskChanges | undefined, ...kinds: EventKind[]) =>
+  !!tc && tc.events.some((e) => kinds.includes(e.kind));
 
 function taskRef(t: TaskSnapshot, meta: Snapshot["meta"]): string {
-  const flags: string[] = [];
-  if (t.highPriority) flags.push("high-prio");
-  if (t.onIce) flags.push("on ice");
-  const suffix = flags.length ? ` _(${flags.join(", ")})_` : "";
-
   const title = t.title.replace(/\s+/g, " ").trim();
   if (t.jiraKey) {
     const key = meta.jiraHost
       ? `[${t.jiraKey}](${meta.jiraHost.replace(/\/$/, "")}/browse/${t.jiraKey})`
       : t.jiraKey;
-    return `**${key}** ${title}${suffix}`;
+    return `**${key}** ${title}`;
   }
   if (t.pr) {
     const pr = t.pr.repoPath
       ? `[${t.pr.repo}#${t.pr.number}](https://github.com/${t.pr.repoPath}/pull/${t.pr.number})`
       : `${t.pr.repo}#${t.pr.number}`;
-    return `**${pr}** ${title}${suffix}`;
+    return `**${pr}** ${title}`;
   }
-  return `**${title}**${suffix}`;
-}
-
-function renderEvents(events: ChangeEvent[]): string[] {
-  const lines: string[] = [];
-  const sorted = [...events].sort((a, b) => rank(a.kind) - rank(b.kind));
-  for (const e of sorted) {
-    lines.push(`  - ${e.detail}`);
-    for (const item of e.items ?? []) lines.push(`    - ${item}`);
-  }
-  return lines;
+  return `**${title}**`;
 }
 
 function formatTakenAt(iso: string): string {
@@ -139,106 +77,96 @@ function freshnessNote(to: Snapshot): string | null {
   return `Jira data was ${Math.round(ageH)}h old when this snapshot was taken (last sync ${synced}) — run a sync for an accurate picture.`;
 }
 
-/** Current state, not a diff — the "what I'm on today" half of a standup. */
-function inFlight(to: Snapshot): TaskSnapshot[] {
-  const backlogOrder = to.categories.find((c) => c.name === "Backlog")?.order ?? Infinity;
-  return to.tasks
-    .filter((t) => !t.categoryDone && !t.onIce && t.categoryOrder != null && t.categoryOrder < backlogOrder)
-    .sort((a, b) => (a.categoryOrder ?? 99) - (b.categoryOrder ?? 99) || a.id - b.id);
-}
-
-function prState(t: TaskSnapshot): string {
-  if (!t.pr) return "";
+/** Compact PR state for a line: "CI failing, 1/2 approved, 3 open comments". */
+function prState(t: TaskSnapshot): string[] {
+  if (!t.pr || t.pr.state !== "open") return [];
   const bits: string[] = [];
   if (t.pr.draft) bits.push("draft");
   if (t.pr.checks) bits.push(`CI ${t.pr.checks}`);
-  if (t.pr.state === "open") {
-    // "4/1 approved" reads like a typo — once the bar is met the count is noise.
-    bits.push(
-      t.pr.approvals >= t.pr.requiredReviews
-        ? "approved"
-        : `${t.pr.approvals}/${t.pr.requiredReviews} approved`,
-    );
-  }
+  // "4/1 approved" reads like a typo — once the bar is met the count is noise.
+  bits.push(
+    t.pr.approvals >= t.pr.requiredReviews ? "approved" : `${t.pr.approvals}/${t.pr.requiredReviews} approved`,
+  );
   if (t.pr.unresolvedComments) bits.push(`${t.pr.unresolvedComments} open comments`);
   if (t.pr.conflicts) bits.push("conflicts");
   if (t.pr.deployed.length) bits.push(`on ${t.pr.deployed.join("/")}`);
-  return bits.length ? ` — ${bits.join(", ")}` : "";
+  return bits;
 }
 
-export function renderReport(diff: DiffResult): string {
-  const { from, to, changed } = diff;
-  const out: string[] = [];
+const byColumn = (a: TaskSnapshot, b: TaskSnapshot) =>
+  (a.categoryOrder ?? 99) - (b.categoryOrder ?? 99) || a.id - b.id;
 
+/**
+ * Three questions, one line per task:
+ *   Done        — reached a done column or got its PR merged since last time
+ *   Working on  — everything currently between Backlog and Done (Blocked included), not on ice
+ *   New         — appeared on my board or got pulled into the sprint, and is not started
+ */
+export function renderReport(diff: DiffResult): string {
+  const { to, changed } = diff;
+  const changes = new Map(changed.map((tc) => [tc.task.id, tc]));
+  const backlogOrder = to.categories.find((c) => c.name === "Backlog")?.order ?? Infinity;
+  const isBacklog = (t: TaskSnapshot) => t.categoryOrder == null || t.categoryOrder >= backlogOrder;
+  const isBlocked = (t: TaskSnapshot) => t.category === "Blocked";
+
+  const done = to.tasks
+    .filter((t) => has(changes.get(t.id), "completed", "merged"))
+    .sort(byColumn);
+
+  const working = to.tasks
+    .filter((t) => !t.categoryDone && !t.onIce && (isBlocked(t) || !isBacklog(t)))
+    .filter((t) => !done.includes(t))
+    .sort((a, b) => Number(isBlocked(a)) - Number(isBlocked(b)) || byColumn(a, b));
+
+  const fresh = to.tasks
+    .filter((t) => !t.categoryDone && !t.onIce && isBacklog(t) && !isBlocked(t))
+    .filter((t) => has(changes.get(t.id), "added", "sprint_added"))
+    .sort(byColumn);
+
+  const out: string[] = [];
   const heading = new Date(to.takenAt).toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-
-  out.push(`# Standup — ${heading}`);
-  out.push("");
-  out.push(`Changes between the ${from.localDate} and ${to.localDate} snapshots.`);
-  out.push("");
+  out.push(`# Standup — ${heading}`, "");
 
   const note = freshnessNote(to);
-  if (note) {
-    out.push(`> **Heads up:** ${note}`);
-    out.push("");
-  }
+  if (note) out.push(`> **Heads up:** ${note}`, "");
 
-  const bySection = new Map<SectionId, TaskChanges[]>();
-  for (const tc of changed) {
-    const id = sectionFor(tc);
-    bySection.set(id, [...(bySection.get(id) ?? []), tc]);
-  }
-
-  if (changed.length === 0) {
-    out.push("_No changes between these two snapshots._");
-    out.push("");
-  }
-
-  for (const section of SECTIONS) {
-    const items = bySection.get(section.id) ?? [];
-    // "Left my board" is noise when empty; the others are worth stating.
-    if (!items.length && !section.empty) continue;
-    out.push(`## ${section.heading}`);
-    out.push("");
-    if (!items.length) {
-      out.push(`_${section.empty}_`);
-      out.push("");
-      continue;
-    }
-    for (const tc of items) {
-      out.push(`- ${taskRef(tc.task, to.meta)}`);
-      out.push(...renderEvents(tc.events));
-    }
-    out.push("");
-  }
-
-  const flight = inFlight(to);
-  out.push("## In flight right now");
-  out.push("");
-  if (!flight.length) {
-    out.push("_Nothing active._");
-  } else {
-    for (const t of flight) {
-      out.push(`- ${taskRef(t, to.meta)} — ${t.category ?? t.status}${prState(t)}`);
-    }
+  out.push("## Done", "");
+  if (!done.length) out.push("_Nothing closed out._");
+  for (const t of done) {
+    const lead = leadEvent(changes.get(t.id)!.events)!;
+    const tail = lead.kind === "merged" && !t.categoryDone ? ` — PR merged, ticket still ${t.category ?? t.status}` : "";
+    out.push(`- ${taskRef(t, to.meta)}${tail}`);
   }
   out.push("");
 
-  const idNote =
-    to.meta.assigneeSource === "detected"
-      ? ` (auto-detected; set the \`standup_assignee\` setting to pin it)`
-      : "";
-  out.push("---");
+  out.push("## Working on", "");
+  if (!working.length) out.push("_Nothing active._");
+  for (const t of working) {
+    const state = [t.category ?? t.status, ...prState(t)];
+    if (t.highPriority) state.push("high-prio");
+    const tc = changes.get(t.id);
+    const lead = tc && leadEvent(tc.events);
+    const since = lead ? ` · _${lead.kind === "added" ? "new" : lead.detail}_` : "";
+    out.push(`- ${taskRef(t, to.meta)} — ${state.join(", ")}${since}`);
+  }
   out.push("");
-  out.push(
-    `_Scoped to Jira assignee \`${to.meta.assignee ?? "?"}\`${idNote} and GitHub user \`${to.meta.githubUser ?? "?"}\`. Snapshot taken ${formatTakenAt(to.takenAt)}._`,
-  );
+
+  out.push("## New, not started", "");
+  if (!fresh.length) out.push("_Nothing new landed._");
+  for (const t of fresh) {
+    const bits: string[] = [];
+    if (t.sprint && has(changes.get(t.id), "sprint_added")) bits.push(`sprint ${t.sprint}`);
+    if (t.highPriority) bits.push("high-prio");
+    out.push(`- ${taskRef(t, to.meta)}${bits.length ? ` — ${bits.join(", ")}` : ""}`);
+  }
   out.push("");
+
+  out.push(`_Since ${formatTakenAt(diff.from.takenAt)}, snapshot ${formatTakenAt(to.takenAt)}._`, "");
 
   return out.join("\n");
 }

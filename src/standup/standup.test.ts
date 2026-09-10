@@ -383,27 +383,51 @@ describe("checklist and flags", () => {
 });
 
 describe("report rendering", () => {
-  test("groups events into standup sections", () => {
+  const section = (md: string, name: string) => md.split(`## ${name}`)[1]!.split("\n## ")[0]!;
+
+  test("answers done / working on / new, one line per task", () => {
     const [d1, d2] = snapshotPair(
       [
         { ...base, id: 1, jira_key: "EV-1", status: "Code Review", pr_number: 1, repository_id: 1, pr_state: "open", checks_status: "passing" },
         { ...base, id: 2, jira_key: "EV-2", status: "In Progress" },
         { ...base, id: 3, jira_key: "EV-3", status: "In Progress", pr_number: 3, repository_id: 1, pr_state: "open", checks_status: "passing", deployed_on_branches: "[]" },
+        { ...base, id: 4, jira_key: "EV-4", status: "Backlog" },
       ],
       (db) => {
         db.exec("update tasks set status='Done', pr_state='merged' where id=1");
         db.exec("update tasks set status='Blocked' where id=2");
         db.exec(`update tasks set deployed_on_branches='["staging"]' where id=3`);
+        db.exec(`insert into tasks (id,title,status,created_at,updated_at,jira_key,assignee,sprint)
+          values (5,'Fresh','Backlog','2026-09-03T00:00:00.000Z','2026-09-03T00:00:00.000Z','EV-5','${ME}','${SPRINT}')`);
       },
     );
     const md = renderReport(diffSnapshots(d1, d2));
 
-    const section = (name: string) => md.split(`## ${name}`)[1]!.split("\n## ")[0]!;
-    expect(section("Shipped")).toContain("EV-1");
-    expect(section("Needs attention")).toContain("EV-2");
-    // A staging deploy is progress, not closure.
-    expect(section("Moved forward")).toContain("EV-3");
-    expect(section("Shipped")).not.toContain("EV-3");
+    expect(section(md, "Done")).toContain("EV-1");
+    // Blocked is still on my plate; a staging deploy is progress, not closure.
+    const working = section(md, "Working on");
+    expect(working).toContain("EV-2");
+    expect(working).toContain("Blocked");
+    expect(working).toContain("EV-3");
+    expect(working).toContain("now on staging");
+    expect(working).not.toContain("EV-1");
+    expect(working).not.toContain("EV-4");
+    // Only backlog work that appeared since last time is "new"; the old backlog stays quiet.
+    const fresh = section(md, "New, not started");
+    expect(fresh).toContain("EV-5");
+    expect(fresh).not.toContain("EV-4");
+    // One line per task — no nested event bullets.
+    expect(md).not.toMatch(/^ {2}- /m);
+  });
+
+  test("a merged PR whose ticket has not caught up still counts as done", () => {
+    const [d1, d2] = snapshotPair(
+      [{ ...base, status: "Code Review", pr_number: 1, repository_id: 1, pr_state: "open" }],
+      (db) => db.exec("update tasks set pr_state='merged' where id=1"),
+    );
+    const done = section(renderReport(diffSnapshots(d1, d2)), "Done");
+    expect(done).toContain("EV-1");
+    expect(done).toContain("ticket still Code Review");
   });
 
   test("links Jira keys and PRs", () => {
@@ -420,24 +444,29 @@ describe("report rendering", () => {
     expect(renderReport(diffSnapshots(d1, d2))).toContain("Heads up");
   });
 
-  test("says so plainly when nothing changed", () => {
-    const [d1, d2] = snapshotPair([base], () => {});
-    expect(renderReport(diffSnapshots(d1, d2))).toContain("No changes between these two snapshots");
+  test("uses empty placeholders when nothing changed", () => {
+    const [d1, d2] = snapshotPair([{ ...base, status: "Backlog" }], () => {});
+    const md = renderReport(diffSnapshots(d1, d2));
+    expect(md).toContain("Nothing closed out");
+    expect(md).toContain("Nothing active");
+    expect(md).toContain("Nothing new landed");
   });
 
-  test("lists what is currently in flight, excluding backlog and iced work", () => {
+  test("working on excludes backlog, done and iced work", () => {
     const [, d2] = snapshotPair(
       [
         { ...base, id: 1, jira_key: "EV-1", status: "In Progress" },
         { ...base, id: 2, jira_key: "EV-2", status: "Backlog" },
         { ...base, id: 3, jira_key: "EV-3", status: "In Progress", on_ice: 1 },
+        { ...base, id: 4, jira_key: "EV-4", status: "Done" },
       ],
       () => {},
     );
-    const flight = renderReport(diffSnapshots(d2, d2)).split("## In flight right now")[1]!;
-    expect(flight).toContain("EV-1");
-    expect(flight).not.toContain("EV-2");
-    expect(flight).not.toContain("EV-3");
+    const working = section(renderReport(diffSnapshots(d2, d2)), "Working on");
+    expect(working).toContain("EV-1");
+    expect(working).not.toContain("EV-2");
+    expect(working).not.toContain("EV-3");
+    expect(working).not.toContain("EV-4");
   });
 });
 
@@ -518,7 +547,7 @@ describe("snapshot files on disk", () => {
     expect(report.from).toBe("2026-09-02");
     expect(report.to).toBe("2026-09-03");
     expect(report.changedCount).toBe(1);
-    expect(report.markdown).toContain("## Shipped");
+    expect(report.markdown).toContain("## Done");
     expect(report.available).toEqual(["2026-09-02", "2026-09-03"]);
   });
 
