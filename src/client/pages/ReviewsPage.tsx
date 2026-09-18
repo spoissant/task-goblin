@@ -56,7 +56,7 @@ function formatRelativeTime(dateString: string): string {
 type SizeCategory = PrSize;
 
 function categorizePR(pr: ReviewRequest): SizeCategory {
-  return categorizePrSize(pr.changedFiles, pr.additions, pr.deletions);
+  return categorizePrSize(pr.additions, pr.deletions);
 }
 
 const SIZE_LABELS: Record<SizeCategory, string> = {

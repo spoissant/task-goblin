@@ -431,7 +431,7 @@ export const githubRoutes: Routes = {
           totalFiles,
           totalAdditions,
           totalDeletions,
-          size: categorizePrSize(totalFiles, totalAdditions, totalDeletions),
+          size: categorizePrSize(totalAdditions, totalDeletions),
           frontend: withPercent(buckets.frontend, percents.frontend),
           backend: withPercent(buckets.backend, percents.backend),
           other: withPercent(buckets.other, percents.other),
