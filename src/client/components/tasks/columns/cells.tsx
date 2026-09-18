@@ -129,19 +129,17 @@ export function KeyCell({ task, jiraHost }: { task: Task; jiraHost?: string | nu
 }
 
 export function TitleCell({ task, linkToTask }: { task: Task; linkToTask?: boolean }) {
+  // High-priority titles borrow the flame icon's color and glow so they stand out in the list.
+  const className = `truncate block${task.highPriority ? " text-orange-500 flame-glow" : ""}`;
   if (linkToTask) {
     return (
-      <Link
-        to={`/tasks/${task.id}`}
-        className="hover:underline truncate block"
-        title={task.title}
-      >
+      <Link to={`/tasks/${task.id}`} className={`hover:underline ${className}`} title={task.title}>
         {task.title}
       </Link>
     );
   }
   return (
-    <span className="truncate block" title={task.title}>
+    <span className={className} title={task.title}>
       {task.title}
     </span>
   );
