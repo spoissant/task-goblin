@@ -64,11 +64,12 @@ interface TaskTableProps {
   hideLowPriority?: boolean;
   hideOnIce?: boolean;
   hideChores?: boolean;
+  hideParents?: boolean;
   compactMode?: boolean;
   repoFilter?: number | null;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, hideChores, compactMode, repoFilter }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, hideChores, hideParents, compactMode, repoFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -116,12 +117,24 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   });
 
   const allTasks = data?.items ?? [];
-  const tasks = allTasks.filter((t) => {
+  const shownTasks = allTasks.filter((t) => {
     if (hideLowPriority && !t.sprint && !t.highPriority) return false;
     if (hideOnIce && t.onIce) return false;
     if (repoFilter != null && t.repositoryId !== repoFilter) return false;
     return true;
   });
+
+  // Keys of tasks that still have a visible sub-task or child issue below them
+  const parentKeys = new Set<string>();
+  if (hideParents) {
+    for (const t of shownTasks) {
+      if (t.parentKey) parentKeys.add(t.parentKey);
+      if (t.epicKey) parentKeys.add(t.epicKey);
+    }
+  }
+  const tasks = hideParents
+    ? shownTasks.filter((t) => !t.jiraKey || !parentKeys.has(t.jiraKey))
+    : shownTasks;
 
   if (isLoading) {
     return (
