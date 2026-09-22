@@ -316,11 +316,15 @@ export async function pollActiveSessions(): Promise<void> {
  * things: a run that ended without the agent declaring an outcome, and an
  * agent parked waiting on CI or a scheduled wake-up. Only the second can
  * resume on its own, so the job's pending work tells them apart.
+ *
+ * `state: "blocked"` is also sticky: it survives the answer that unblocked the
+ * session, so an active tempo outranks it.
  */
 function effectiveState(job: JobState): ClaudeSessionState | null {
   const state = normalizeState(job.state);
   if (state && TERMINAL_STATES.includes(state)) return state;
   if (job.tempo === "blocked") return "blocked";
+  if (job.tempo === "active") return "working";
   if (job.tempo === "idle" && !willResume(job)) return "done";
   return state;
 }

@@ -142,6 +142,18 @@ describe("claude sessions", () => {
     let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("blocked");
 
+    // answered: `state` stays blocked in state.json, but an active tempo means working
+    writeState("abcd1234", {
+      state: "blocked",
+      tempo: "active",
+      detail: "go ahead and push",
+      inFlight: { tasks: 1, queued: 0, kinds: ["local_bash"], drainableMonitors: 0 },
+      updatedAt: "2026-01-01T00:02:00.000Z",
+    });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
+
     // parked on a scheduled wake-up: still working, however long it idles
     writeState("abcd1234", { ...idle, wake: { at: Date.now() + 600_000 }, inFlight: { tasks: 0, queued: 0, kinds: [] } });
     await pollActiveSessions();
