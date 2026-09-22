@@ -41,6 +41,8 @@ export function autoBroadcast(pathname: string) {
   let entity: string | null = null;
   if (pathname.includes("/todos")) entity = "todo";
   else if (pathname.includes("/settings")) entity = "setting";
+  else if (pathname.includes("/sessions")) entity = "session";
+  else if (pathname.includes("/worktree")) entity = "worktree";
   else if (
     pathname.includes("/tasks") ||
     pathname.includes("/sync") ||

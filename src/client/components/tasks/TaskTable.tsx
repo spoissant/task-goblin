@@ -7,7 +7,6 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
-import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -22,6 +21,9 @@ import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import type { TaskWithTodos, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
+import { useLatestSessionsQuery } from "@/client/lib/queries/sessions";
+import type { ClaudeSession } from "@/client/lib/types";
+import { CopyChip } from "@/client/components/ui/copy-chip";
 
 // Map Tailwind bg class to rgba for faint row tinting
 const STATUS_ROW_COLORS: Record<string, { light: string; dark: string }> = {
@@ -70,7 +72,15 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   const { data: settingsData } = useSettingsQuery();
   const { data: statusSettings } = useStatusSettingsQuery();
   const { data: choresData } = useChoresQuery();
+  const { data: sessionsData } = useLatestSessionsQuery();
   const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
+
+  // Latest AI session per task
+  const sessionMap = useMemo(() => {
+    const map = new Map<number, ClaudeSession>();
+    for (const s of sessionsData?.items ?? []) map.set(s.taskId, s);
+    return map;
+  }, [sessionsData?.items]);
 
   // Extract jiraHost from settings
   const jiraHost = settingsData?.jira_host || null;
@@ -169,6 +179,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
               jiraHost={jiraHost}
               statusCategories={statusSettings?.categories}
               nextChore={choreMap.get(task.id)}
+              session={sessionMap.get(task.id)}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               onSelectionChange={onSelectionChange ? (selected) => {
@@ -203,12 +214,13 @@ interface TaskRowProps {
   jiraHost: string | null;
   statusCategories?: StatusCategory[];
   nextChore?: ChoreEntry;
+  session?: ClaudeSession;
   onOpenTodos: () => void;
   isSelected: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -228,6 +240,7 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, o
     prUrl,
     linkToTask: true,
     nextChore,
+    session,
   };
 
   const isDark = document.documentElement.classList.contains("dark");
@@ -251,16 +264,9 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, o
       )}
       {/* Task ID */}
       <TableCell>
-        <button
-          type="button"
-          className="font-mono text-xs hover:text-blue-600 cursor-pointer"
-          onClick={() => {
-            navigator.clipboard.writeText(String(task.id));
-            toast.success("Task ID copied");
-          }}
-        >
+        <CopyChip value={String(task.id)} message="Task ID copied" title="Copy task ID">
           {task.id}
-        </button>
+        </CopyChip>
       </TableCell>
       {/* Sync / Unread Logs */}
       <TableCell>

@@ -1,7 +1,8 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Flame, MessageSquare, Snowflake } from "lucide-react";
-import type { Task, Repository } from "@/client/lib/types";
+import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
+import { AiCell } from "./AiCell";
 import {
   TypeCell,
   SprintCell,
@@ -62,6 +63,7 @@ export interface ColumnContext {
   prUrl?: string | null;
   linkToTask?: boolean; // Whether title should link to task detail
   nextChore?: ChoreEntry;
+  session?: ClaudeSession; // latest AI session for the task
 }
 
 // Shared Column Definitions
@@ -192,6 +194,12 @@ export const COLUMNS = {
     width: "110px",
     render: (task, ctx) => <NextCell task={task} nextChore={ctx.nextChore} />,
   },
+  ai: {
+    key: "ai",
+    header: "AI",
+    width: "120px",
+    render: (task, ctx) => <AiCell task={task} session={ctx.session} nextChore={ctx.nextChore} />,
+  },
 } as const satisfies Record<string, ColumnDef>;
 
 // Type helper to access columns with full ColumnDef interface
@@ -210,6 +218,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "status",
   "title",
   "next",
+  "ai",
   "repo",
   "branch",
   "pr",

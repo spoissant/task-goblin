@@ -1,0 +1,48 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "../api";
+import type { ClaudeSession, ListResponse } from "../types";
+import { taskKeys } from "./tasks";
+
+export const sessionKeys = {
+  all: ["sessions"] as const,
+  latest: () => [...sessionKeys.all, "latest"] as const,
+  task: (taskId: number) => [...sessionKeys.all, "task", taskId] as const,
+};
+
+/** Newest session per task, for the tasks table. */
+export function useLatestSessionsQuery() {
+  return useQuery({
+    queryKey: sessionKeys.latest(),
+    queryFn: () => api.get<ListResponse<ClaudeSession>>("/sessions"),
+  });
+}
+
+export function useTaskSessionsQuery(taskId: number) {
+  return useQuery({
+    queryKey: sessionKeys.task(taskId),
+    queryFn: () => api.get<ListResponse<ClaudeSession>>(`/tasks/${taskId}/sessions`),
+    enabled: taskId > 0,
+  });
+}
+
+export function useStartSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, choreKey }: { taskId: number; choreKey: string }) =>
+      api.post<ClaudeSession>(`/tasks/${taskId}/sessions`, { choreKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+    },
+  });
+}
+
+export function useStopSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<ClaudeSession>(`/sessions/${id}/stop`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+    },
+  });
+}

@@ -40,6 +40,37 @@ export function RepositoryList() {
   const [requiredReviewsInputs, setRequiredReviewsInputs] = useState<Record<number, string>>({});
   // URL inputs keyed by `${repoId}-${branch}`
   const [deploymentUrlInputs, setDeploymentUrlInputs] = useState<Record<string, string>>({});
+  // Task worktree fields keyed by `${repoId}-${field}`
+  const [worktreeFieldInputs, setWorktreeFieldInputs] = useState<Record<string, string>>({});
+
+  type WorktreeField = "setupCommand" | "teardownCommand" | "defaultBaseBranch";
+  const renderWorktreeField = (
+    repo: { id: number } & Record<WorktreeField, string | null>,
+    field: WorktreeField,
+    placeholder: string,
+    width: string,
+  ) => {
+    const key = `${repo.id}-${field}`;
+    return (
+      <Input
+        className={`h-6 ${width} text-xs font-mono`}
+        placeholder={placeholder}
+        value={worktreeFieldInputs[key] ?? (repo[field] || "")}
+        onChange={(e) => setWorktreeFieldInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+        onBlur={() => {
+          const val = worktreeFieldInputs[key];
+          if (val === undefined) return;
+          updateRepo.mutate(
+            { id: repo.id, [field]: val.trim() || null },
+            { onError: () => toast.error(`Failed to update ${field}`) }
+          );
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+      />
+    );
+  };
 
   const handleBadgeColorChange = (id: number, color: string) => {
     updateRepo.mutate(
@@ -196,6 +227,7 @@ export function RepositoryList() {
                   <TableHead>Worktrees</TableHead>
                   <TableHead>Deployment Branches</TableHead>
                   <TableHead>Slack Channel</TableHead>
+                  <TableHead>Task Worktrees</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -354,6 +386,22 @@ export function RepositoryList() {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                         }}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground w-14 shrink-0">Base</span>
+                          {renderWorktreeField(repo, "defaultBaseBranch", "main", "w-24")}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground w-14 shrink-0">Setup</span>
+                          {renderWorktreeField(repo, "setupCommand", "yarn install", "w-64")}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground w-14 shrink-0">Teardown</span>
+                          {renderWorktreeField(repo, "teardownCommand", "bin/dev worktree-cleanup {{composeProject}}", "w-64")}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Checkbox

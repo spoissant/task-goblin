@@ -78,6 +78,9 @@ export const repositories = sqliteTable("repositories", {
   deploymentUrls: text("deployment_urls"), // JSON object mapping branch -> environment URL (e.g., {"staging": "https://staging.hvbrt.com"})
   slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
   requiredReviews: integer("required_reviews").default(2), // number of approving reviews required to merge
+  setupCommand: text("setup_command"), // shell line run inside a new task worktree (e.g. "bin/dev worktree-setup --copy-volumes --test-only && yarn install")
+  teardownCommand: text("teardown_command"), // shell line run before removing a task worktree; may use {{composeProject}}
+  defaultBaseBranch: text("default_base_branch"), // base for tasks without a branch yet (e.g. "sprint", "main")
 });
 
 // 3b. Worktree - Local filesystem paths per repository
@@ -88,6 +91,49 @@ export const worktrees = sqliteTable("worktrees", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+// 3c. Task worktree - one git worktree per task, created on first AI session start
+export const taskWorktrees = sqliteTable("task_worktrees", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id").notNull().unique().references(() => tasks.id, { onDelete: "cascade" }),
+  repositoryId: integer("repository_id").notNull().references(() => repositories.id),
+  path: text("path").notNull(), // may start with ~ like worktrees.path
+  branch: text("branch"), // null while detached (before the start-task skill creates a branch)
+  state: text("state").notNull(), // preparing | ready | failed | dirty | removing
+  setupLog: text("setup_log"), // tail of setup/teardown output
+  error: text("error"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  readyAt: text("ready_at"),
+});
+
+// 3d. Claude sessions - background Claude Code sessions, one row per chore run
+export const claudeSessions = sqliteTable("claude_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  repositoryId: integer("repository_id").references(() => repositories.id),
+  choreKey: text("chore_key").notNull(),
+  choreName: text("chore_name").notNull(),
+  prompt: text("prompt").notNull(), // resolved prompt snapshot
+  cwd: text("cwd").notNull(), // task worktree or repo main checkout
+  name: text("name").notNull(), // "<JIRA-KEY> · <chore name>"
+  shortId: text("short_id").unique(), // claude --bg job id; null until spawned
+  sessionId: text("session_id"),
+  bridgeSessionId: text("bridge_session_id"), // cse_XXX → https://claude.ai/code/session_XXX
+  state: text("state").notNull(), // queued | preparing | working | blocked | done | failed | stopped
+  detail: text("detail"),
+  needs: text("needs"),
+  result: text("result"),
+  error: text("error"), // our side: setup/spawn failure
+  claudeUpdatedAt: text("claude_updated_at"),
+  firstTerminalAt: text("first_terminal_at"),
+  processStoppedAt: text("process_stopped_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("idx_claude_sessions_task_id").on(table.taskId),
+  index("idx_claude_sessions_state").on(table.state),
+]);
 
 // 4. Team Channels - maps GitHub team slugs to Slack channels for code review routing
 export const teamChannels = sqliteTable("team_channels", {

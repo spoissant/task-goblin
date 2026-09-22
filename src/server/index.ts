@@ -3,6 +3,7 @@ import { routes } from "./routes";
 import { withCors, handleCors, withErrorBoundary } from "./middleware";
 import { migrateTaskStatuses } from "./lib/status-migration";
 import { addClient, removeClient, autoBroadcast } from "./lib/sse";
+import { startClaudeRuntime } from "./services/claude-runtime";
 
 const port = Number(process.env.PORT) || 3456;
 const router = createRouter(routes);
@@ -61,6 +62,9 @@ async function startup() {
   });
 
   console.log(`Task Goblin API running on :${port}`);
+
+  // Resume interrupted worktree work and start polling background sessions
+  startClaudeRuntime();
 }
 
 startup();

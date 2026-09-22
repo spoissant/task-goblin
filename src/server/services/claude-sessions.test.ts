@@ -1,0 +1,141 @@
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { sqlite } from "../../db";
+import { createTestTables } from "../../test/createSchema";
+import { createRouter, type Routes } from "../router";
+import { routes } from "../routes";
+import { withErrorBoundary } from "../middleware";
+import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
+import { pollActiveSessions, reapIdleProcesses } from "./claude-sessions";
+
+const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
+const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
+const MAIN_PATH = `${import.meta.dir}/../../..`; // any existing directory works as the "main checkout"
+
+describe("claude sessions", () => {
+  let router: ReturnType<typeof createRouter>;
+  const commands: string[] = [];
+
+  const request = (method: string, path: string, body?: unknown) =>
+    withErrorBoundary(() =>
+      router.route(
+        new Request("http://localhost" + path, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined,
+        }),
+      ),
+    );
+
+  const writeState = (shortId: string, state: Record<string, unknown>) => {
+    mkdirSync(`${JOBS_DIR}/${shortId}`, { recursive: true });
+    writeFileSync(`${JOBS_DIR}/${shortId}/state.json`, JSON.stringify(state));
+  };
+
+  beforeAll(() => {
+    createTestTables(sqlite);
+    router = createRouter(routes as Routes);
+    process.env.CLAUDE_JOBS_DIR = JOBS_DIR;
+  });
+
+  beforeEach(() => {
+    commands.length = 0;
+    rmSync(JOBS_DIR, { recursive: true, force: true });
+    for (const t of ["claude_sessions", "task_worktrees", "todos", "tasks", "worktrees", "repositories"]) {
+      sqlite.exec(`DELETE FROM ${t}`);
+    }
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
+    sqlite.exec(`INSERT INTO worktrees (id, repository_id, path, created_at, updated_at) VALUES (1, 1, '${MAIN_PATH}', 'x', 'x')`);
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
+      VALUES (1, 'A task', 'Code review', ${ts}, ${ts}, 'EV-1', 1, 10, 'fix/EV-1', 'open', 0, 0)`);
+    setCommandRunner(async (cmd, args) => {
+      commands.push([cmd, ...args].join(" "));
+      if (cmd === "claude" && args[0] === "--bg") return ok("backgrounded · abcd1234\n  claude attach abcd1234");
+      if (cmd === "claude" && args[0] === "agents") return ok("[]");
+      return ok();
+    });
+  });
+
+  afterEach(() => {
+    resetCommandRunner();
+    rmSync(JOBS_DIR, { recursive: true, force: true });
+  });
+
+  it("rejects unknown chores", async () => {
+    const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "nope" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("UNKNOWN_CHORE");
+  });
+
+  it("starts a main-checkout chore, polls it to done, and reaps it", async () => {
+    const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    expect(res.status).toBe(202);
+    const created = await res.json();
+    expect(created.state).toBe("preparing");
+    expect(created.cwd).toBe(MAIN_PATH);
+    expect(created.prompt).toBe("/chore-request-reviews 1");
+
+    // let the background start run
+    await new Promise((r) => setTimeout(r, 50));
+    const spawn = commands.find((c) => c.startsWith("claude --bg"));
+    expect(spawn).toBe("claude --bg --rc --name EV-1 · Request Code Reviews /chore-request-reviews 1");
+
+    let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
+    expect(list.items[0].shortId).toBe("abcd1234");
+
+    // a second start is refused while active
+    const dup = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    expect(dup.status).toBe(409);
+
+    writeState("abcd1234", {
+      state: "working",
+      detail: "Posting to Slack",
+      bridgeSessionId: "cse_01ABC",
+      sessionId: "11111111-2222-3333-4444-555555555555",
+      updatedAt: "2026-01-01T00:01:00.000Z",
+    });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/sessions")).json();
+    expect(list.items[0].detail).toBe("Posting to Slack");
+    expect(list.items[0].link).toBe("https://claude.ai/code/session_01ABC");
+
+    writeState("abcd1234", {
+      state: "done",
+      detail: "posted",
+      output: { result: "Review requested" },
+      bridgeSessionId: "cse_01ABC",
+      updatedAt: "2026-01-01T00:02:00.000Z",
+      firstTerminalAt: "2026-01-01T00:02:00.000Z",
+    });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("done");
+    expect(list.items[0].result).toBe("Review requested");
+
+    // finished long ago → process gets stopped once
+    await reapIdleProcesses();
+    expect(commands.filter((c) => c === "claude stop abcd1234")).toHaveLength(1);
+    await reapIdleProcesses();
+    expect(commands.filter((c) => c === "claude stop abcd1234")).toHaveLength(1);
+  });
+
+  it("stops a working session", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+    const list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    const res = await request("POST", `/api/v1/sessions/${list.items[0].id}/stop`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).state).toBe("stopped");
+    expect(commands).toContain("claude stop abcd1234");
+  });
+
+  it("marks a session failed when state.json never appears and the daemon does not know it", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 6; i++) await pollActiveSessions();
+    const list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("failed");
+  });
+});

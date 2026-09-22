@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/
 import { Button } from "@/client/components/ui/button";
 import { Textarea } from "@/client/components/ui/textarea";
 import { Linkify } from "@/client/components/ui/Linkify";
+import { CopyChip } from "@/client/components/ui/copy-chip";
 import { AssignPrDialog } from "../AssignPrDialog";
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -157,18 +158,14 @@ export function BranchCell({ task }: { task: Task }) {
     return <span className="text-muted-foreground">—</span>;
   }
   return (
-    <button
-      type="button"
-      className="font-mono text-xs hover:text-blue-600 cursor-pointer text-left truncate block w-full"
+    <CopyChip
+      value={task.headBranch}
+      message="Branch copied to clipboard"
       title={task.headBranch}
-      onClick={(e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(task.headBranch!);
-        toast.success("Branch copied to clipboard");
-      }}
+      className="truncate block w-full"
     >
       {task.headBranch}
-    </button>
+    </CopyChip>
   );
 }
 

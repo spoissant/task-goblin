@@ -4,6 +4,8 @@ import {
   todos,
   repositories,
   worktrees,
+  taskWorktrees,
+  claudeSessions,
 } from "./schema";
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -12,6 +14,11 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     fields: [tasks.repositoryId],
     references: [repositories.id],
   }),
+  worktree: one(taskWorktrees, {
+    fields: [tasks.id],
+    references: [taskWorktrees.taskId],
+  }),
+  sessions: many(claudeSessions),
 }));
 
 export const todosRelations = relations(todos, ({ one }) => ({
@@ -33,3 +40,20 @@ export const worktreesRelations = relations(worktrees, ({ one }) => ({
   }),
 }));
 
+export const taskWorktreesRelations = relations(taskWorktrees, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskWorktrees.taskId],
+    references: [tasks.id],
+  }),
+  repository: one(repositories, {
+    fields: [taskWorktrees.repositoryId],
+    references: [repositories.id],
+  }),
+}));
+
+export const claudeSessionsRelations = relations(claudeSessions, ({ one }) => ({
+  task: one(tasks, {
+    fields: [claudeSessions.taskId],
+    references: [tasks.id],
+  }),
+}));

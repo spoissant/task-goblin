@@ -64,8 +64,12 @@ export function generateTestSchema(): string {
     // Order matters for foreign key references
     schema.settings,
     schema.repositories,
+    schema.worktrees,
     schema.tasks,
     schema.todos,
+    schema.taskWorktrees,
+    schema.claudeSessions,
+    schema.teamChannels,
     schema.statusCategories,
   ];
 

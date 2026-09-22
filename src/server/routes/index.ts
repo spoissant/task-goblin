@@ -9,6 +9,8 @@ import { githubRoutes } from "./github";
 import { deployRoutes } from "./deploy";
 import { syncBranchRoutes } from "./sync-branch";
 import { worktreeRoutes } from "./worktrees";
+import { taskWorktreeRoutes } from "./task-worktrees";
+import { sessionRoutes } from "./sessions";
 import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
 import { standupRoutes } from "./standup";
@@ -34,6 +36,8 @@ export const routes: Routes = {
   ...deployRoutes,
   ...syncBranchRoutes,
   ...worktreeRoutes,
+  ...taskWorktreeRoutes,
+  ...sessionRoutes,
   ...teamChannelRoutes,
   ...choreRoutes,
   ...standupRoutes,

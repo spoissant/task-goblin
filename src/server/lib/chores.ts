@@ -18,6 +18,7 @@ interface ChoreDefinition {
   excludeCategories?: string[]; // category names whose tasks must never match this chore
   match: (task: TaskRow, repo: RepoRow | null, pendingTodos: number) => boolean;
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
+  cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
 }
 
 export interface ChoreEntry {
@@ -144,6 +145,7 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-request-reviews {{taskId}}",
     categories: null,
     supportsBulk: true,
+    cwd: "main",
     match: (t, repo) =>
       t.isDraft === 0 &&
       t.prState === "open" &&
@@ -158,6 +160,7 @@ const CHORES: ChoreDefinition[] = [
     categories: null,
     excludeCategories: ["Ready to Merge"],
     supportsBulk: true,
+    cwd: "main",
     match: (t, repo) =>
       parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
       t.prState === "open" &&
@@ -189,10 +192,17 @@ export function getChoreDefinitions() {
   }));
 }
 
-function resolvePrompt(template: string, task: TaskRow): string {
+export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jiraKey">): string {
   return template
     .replace("{{taskId}}", String(task.id))
     .replace("{{jiraKey}}", task.jiraKey ?? "");
+}
+
+/** Look up a chore by key, with the cwd it should run in. */
+export function getChoreDefinition(key: string) {
+  const chore = CHORES.find((c) => c.key === key);
+  if (!chore) return null;
+  return { number: chore.number, key: chore.key, name: chore.name, prompt: chore.prompt, cwd: chore.cwd ?? "task" } as const;
 }
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };

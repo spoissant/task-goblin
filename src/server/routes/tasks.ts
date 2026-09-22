@@ -287,6 +287,22 @@ export const taskRoutes: Routes = {
       if ("onIceReason" in body) updates.onIceReason = body.onIceReason ?? null;
       if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
       if ("workingOn" in body) updates.workingOn = body.workingOn;
+      if ("repositoryId" in body) {
+        // The repository of a PR-backed task is owned by the GitHub sync.
+        if (existing.prNumber !== null) {
+          throw new ValidationError("Cannot change repository of a task with a PR");
+        }
+        if (body.repositoryId !== null) {
+          const repoId = Number(body.repositoryId);
+          const repo = await db.select({ id: repositories.id }).from(repositories).where(eq(repositories.id, repoId));
+          if (!Number.isInteger(repoId) || repo.length === 0) {
+            throw new ValidationError("Unknown repositoryId");
+          }
+          updates.repositoryId = repoId;
+        } else {
+          updates.repositoryId = null;
+        }
+      }
 
       const result = await db
         .update(tasks)

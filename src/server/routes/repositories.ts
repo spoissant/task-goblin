@@ -7,6 +7,11 @@ import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
+// Trim a free-text input; empty or non-string becomes null.
+function normalizeText(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 // Coerce a required-reviews input to a positive integer, defaulting to 2 when absent/invalid.
 function normalizeRequiredReviews(v: unknown): number {
   const n = Number(v);
@@ -139,6 +144,9 @@ export const repositoryRoutes: Routes = {
           requiredReviews: body.requiredReviews !== undefined
             ? normalizeRequiredReviews(body.requiredReviews)
             : existing[0].requiredReviews,
+          setupCommand: body.setupCommand !== undefined ? normalizeText(body.setupCommand) : existing[0].setupCommand,
+          teardownCommand: body.teardownCommand !== undefined ? normalizeText(body.teardownCommand) : existing[0].teardownCommand,
+          defaultBaseBranch: body.defaultBaseBranch !== undefined ? normalizeText(body.defaultBaseBranch) : existing[0].defaultBaseBranch,
         })
         .where(eq(repositories.id, id))
         .returning();
@@ -168,6 +176,9 @@ export const repositoryRoutes: Routes = {
       if (body.requiredReviews !== undefined) updates.requiredReviews = normalizeRequiredReviews(body.requiredReviews);
       if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
       if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel || null;
+      if (body.setupCommand !== undefined) updates.setupCommand = normalizeText(body.setupCommand);
+      if (body.teardownCommand !== undefined) updates.teardownCommand = normalizeText(body.teardownCommand);
+      if (body.defaultBaseBranch !== undefined) updates.defaultBaseBranch = normalizeText(body.defaultBaseBranch);
       if (body.deploymentBranches !== undefined) {
         updates.deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
           ? JSON.stringify(body.deploymentBranches)

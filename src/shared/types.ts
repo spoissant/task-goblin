@@ -106,7 +106,65 @@ export interface Repository {
   deploymentUrls: string | null; // JSON object mapping branch -> environment URL
   slackChannel: string | null; // Slack channel for review requests
   requiredReviews: number | null; // number of approving reviews required to merge (default 2)
+  setupCommand: string | null; // shell line run inside a new task worktree
+  teardownCommand: string | null; // shell line run before removing a task worktree; may use {{composeProject}}
+  defaultBaseBranch: string | null; // base branch for tasks without a branch yet
   worktrees?: Worktree[];
+}
+
+// Per-task git worktree, created on first AI session start
+export type TaskWorktreeState = "preparing" | "ready" | "failed" | "dirty" | "removing";
+
+export interface TaskWorktree {
+  id: number;
+  taskId: number;
+  repositoryId: number;
+  path: string;
+  branch: string | null; // null while detached
+  state: TaskWorktreeState;
+  setupLog: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  readyAt: string | null;
+}
+
+export interface TaskWorktreeStatus extends TaskWorktree {
+  changedFiles: number | null; // live git status count; null when unavailable
+}
+
+// Background Claude Code session, one per chore run
+export type ClaudeSessionState = "queued" | "preparing" | "working" | "blocked" | "done" | "failed" | "stopped";
+
+export interface ClaudeSession {
+  id: number;
+  taskId: number;
+  repositoryId: number | null;
+  choreKey: string;
+  choreName: string;
+  prompt: string;
+  cwd: string;
+  name: string;
+  shortId: string | null;
+  sessionId: string | null;
+  bridgeSessionId: string | null;
+  link: string | null; // https://claude.ai/code/session_XXX, derived from bridgeSessionId
+  state: ClaudeSessionState;
+  detail: string | null;
+  needs: string | null;
+  result: string | null;
+  error: string | null;
+  claudeUpdatedAt: string | null;
+  firstTerminalAt: string | null;
+  processStoppedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RepositoryGuess {
+  repositoryId: number | null;
+  reason: "title-keyword" | "jira-project" | "only-enabled-repo" | null;
+  candidates: { repositoryId: number; count: number }[];
 }
 
 export interface TeamChannel {
