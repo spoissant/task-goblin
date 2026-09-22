@@ -6,8 +6,11 @@ import {
   pollActiveSessions,
   reapIdleProcesses,
   reconcileOnStartup,
+  setCapacityCheck,
   startQueued,
 } from "./claude-sessions";
+import { ensureStackCapacity, sweepIdleStacks } from "./docker-stacks";
+import { reapCompletedWorktrees } from "./task-worktrees";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
@@ -15,17 +18,12 @@ const SWEEP_INTERVAL_MS = 60_000;
 let timers: ReturnType<typeof setInterval>[] | null = null;
 let polling = false;
 let sweeping = false;
-let sweepHook: () => Promise<void> = async () => {};
-
-/** Slice 4 installs the Docker stack sweeper and worktree reaper here. */
-export function setSweepHook(fn: () => Promise<void>): void {
-  sweepHook = fn;
-}
 
 export function startClaudeRuntime(): void {
   if (timers) return;
   if (process.env.TASK_GOBLIN_SCHEDULERS === "0") return;
 
+  setCapacityCheck(ensureStackCapacity);
   reconcileOnStartup().catch((err) => console.error("[claude] reconcile failed", err));
 
   const poll = setInterval(async () => {
@@ -44,7 +42,8 @@ export function startClaudeRuntime(): void {
     if (sweeping) return;
     sweeping = true;
     try {
-      await sweepHook();
+      await sweepIdleStacks();
+      await reapCompletedWorktrees();
       await reapIdleProcesses();
       await startQueued();
     } catch (err) {

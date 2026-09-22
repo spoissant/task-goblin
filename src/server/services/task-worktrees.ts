@@ -2,11 +2,12 @@ import { existsSync } from "fs";
 import { basename, dirname } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { taskWorktrees, claudeSessions, type repositories, type tasks } from "../../db/schema";
+import { taskWorktrees, claudeSessions, tasks, type repositories } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { now } from "../lib/timestamp";
 import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
+import { getCompletedCondition } from "../lib/task-status";
 import { runShell, tailOutput } from "../lib/process";
 import {
   changedFileCount,
@@ -283,6 +284,31 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
     broadcast("worktree", { taskId: row.taskId, state: null });
   } catch (err) {
     await updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
+ * Remove worktrees of completed tasks (PR merged/closed or completed status)
+ * when they are clean; flag dirty ones instead of deleting work.
+ */
+export async function reapCompletedWorktrees(): Promise<void> {
+  const completed = await getCompletedCondition();
+  const rows = await db
+    .select({ worktree: taskWorktrees })
+    .from(taskWorktrees)
+    .innerJoin(tasks, eq(tasks.id, taskWorktrees.taskId))
+    .where(and(eq(taskWorktrees.state, "ready"), completed));
+  for (const { worktree } of rows) {
+    if (await hasActiveSession(worktree.taskId)) continue;
+    try {
+      await removeTaskWorktree(worktree.taskId, { force: false });
+    } catch (err) {
+      if (err instanceof AppError && err.code === "WORKTREE_DIRTY") {
+        await updateRow(worktree.id, { state: "dirty", error: err.message });
+      } else {
+        console.warn(`[worktree] reap failed for task ${worktree.taskId}:`, err);
+      }
+    }
   }
 }
 
