@@ -8,7 +8,7 @@ import { claudeSessions } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getTaskWithRepository } from "../lib/queries";
-import { getChoreDefinition, resolvePrompt } from "../lib/chores";
+import { CUSTOM_CHORE, getChoreDefinition, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
@@ -93,17 +93,70 @@ async function findActiveSession(taskId: number): Promise<SessionRow | null> {
   return rows[0] ?? null;
 }
 
+export interface ChoreSessionInput {
+  /** Replaces the chore's own prompt, e.g. the command plus hand-typed context. */
+  prompt?: string | null;
+  model?: string | null;
+  effort?: string | null;
+}
+
 /**
  * Validate and record a session start, then continue in the background.
  * Returns the row in `preparing`.
  */
-export async function startChoreSession(taskId: number, choreKey: string): Promise<SessionRow> {
+export async function startChoreSession(
+  taskId: number,
+  choreKey: string,
+  input: ChoreSessionInput = {},
+): Promise<SessionRow> {
+  const chore = getChoreDefinition(choreKey);
+  if (!chore || chore.key === CUSTOM_CHORE.key) {
+    throw new AppError(`Unknown chore: ${choreKey}`, 400, "UNKNOWN_CHORE");
+  }
+  const override = input.prompt?.trim();
+  return createSession(taskId, {
+    chore,
+    prompt: (task) => override || resolvePrompt(chore.prompt, task),
+    model: input.model ?? null,
+    effort: input.effort ?? null,
+  });
+}
+
+export interface CustomSessionInput {
+  prompt: string;
+  model?: string | null;
+  effort?: string | null;
+}
+
+/** Start a session from a prompt typed by hand, in the task's worktree. */
+export async function startCustomSession(taskId: number, input: CustomSessionInput): Promise<SessionRow> {
+  const prompt = input.prompt.trim();
+  if (!prompt) throw new AppError("prompt is required", 400, "VALIDATION_ERROR");
+  return createSession(taskId, {
+    chore: CUSTOM_CHORE,
+    prompt: () => prompt,
+    model: input.model ?? null,
+    effort: input.effort ?? null,
+  });
+}
+
+type ChoreLike = { key: string; name: string; cwd: "task" | "main" };
+type TaskForPrompt = { id: number; jiraKey: string | null };
+
+async function createSession(
+  taskId: number,
+  opts: {
+    chore: ChoreLike;
+    prompt: (task: TaskForPrompt) => string;
+    model?: string | null;
+    effort?: string | null;
+  },
+): Promise<SessionRow> {
   const result = await getTaskWithRepository(taskId);
   if (!result) throw new NotFoundError("Task", taskId);
   const { repository, ...task } = result;
 
-  const chore = getChoreDefinition(choreKey);
-  if (!chore) throw new AppError(`Unknown chore: ${choreKey}`, 400, "UNKNOWN_CHORE");
+  const { chore } = opts;
   if (!repository) throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
   const mainPath = await resolveMainPath(repository);
 
@@ -126,9 +179,11 @@ export async function startChoreSession(taskId: number, choreKey: string): Promi
       repositoryId: repository.id,
       choreKey: chore.key,
       choreName: chore.name,
-      prompt: resolvePrompt(chore.prompt, task),
+      prompt: opts.prompt(task),
       cwd,
       name: `${task.jiraKey ?? `#${task.id}`} · ${chore.name}`,
+      model: opts.model ?? null,
+      effort: opts.effort ?? null,
       state: "preparing",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -184,7 +239,13 @@ async function spawnGated(sessionId: number, cwd: string): Promise<void> {
     return;
   }
 
-  const spawned = await spawnBackground({ cwd, name: row.name, prompt: row.prompt });
+  const spawned = await spawnBackground({
+    cwd,
+    name: row.name,
+    prompt: row.prompt,
+    model: row.model,
+    effort: row.effort,
+  });
   if ("error" in spawned) {
     await updateRow(sessionId, { state: "failed", cwd, error: spawned.error });
     return;

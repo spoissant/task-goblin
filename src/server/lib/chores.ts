@@ -199,7 +199,14 @@ export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jira
 }
 
 /** Look up a chore by key, with the cwd it should run in. */
+/**
+ * Pseudo-chore for ad-hoc prompts typed in the AI column. Not in CHORES, so it
+ * never shows up in the chore list or in `next_chore`.
+ */
+export const CUSTOM_CHORE = { number: 0, key: "custom", name: "Custom prompt", prompt: "", cwd: "task" } as const;
+
 export function getChoreDefinition(key: string) {
+  if (key === CUSTOM_CHORE.key) return CUSTOM_CHORE;
   const chore = CHORES.find((c) => c.key === key);
   if (!chore) return null;
   return { number: chore.number, key: chore.key, name: chore.name, prompt: chore.prompt, cwd: chore.cwd ?? "task" } as const;

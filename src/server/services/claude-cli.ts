@@ -54,10 +54,24 @@ export function sessionLink(bridgeSessionId: string | null | undefined): string 
 
 export type SpawnResult = { shortId: string } | { error: string };
 
+export interface SpawnOptions {
+  cwd: string;
+  name: string;
+  prompt: string;
+  /** `--model` alias; omitted falls back to the CLI default. */
+  model?: string | null;
+  /** `--effort` level; omitted falls back to the CLI default. */
+  effort?: string | null;
+}
+
 /** Start a background session with Remote Control in `cwd`. */
-export async function spawnBackground(opts: { cwd: string; name: string; prompt: string }): Promise<SpawnResult> {
+export async function spawnBackground(opts: SpawnOptions): Promise<SpawnResult> {
   const startedAt = Date.now();
-  const result = await runCommand("claude", ["--bg", "--rc", "--name", opts.name, opts.prompt], {
+  const args = ["--bg", "--rc", "--name", opts.name];
+  if (opts.model) args.push("--model", opts.model);
+  if (opts.effort) args.push("--effort", opts.effort);
+  args.push(opts.prompt);
+  const result = await runCommand("claude", args, {
     cwd: opts.cwd,
     timeoutMs: SPAWN_TIMEOUT_MS,
   });

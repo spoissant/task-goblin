@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  PenLine,
   Sparkles,
   Square,
   Terminal,
@@ -14,9 +15,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState, Task } from "@/client/lib/types";
-import { ApiError } from "@/client/lib/api";
-import { useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
-import { useStartSession, useStopSession } from "@/client/lib/queries/sessions";
+import { resolveChorePrompt, useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
+import { useStopSession } from "@/client/lib/queries/sessions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,13 +28,14 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
 import { RepoConfirmDialog } from "../RepoConfirmDialog";
+import { CustomPromptDialog, type PromptChore } from "../CustomPromptDialog";
 
 export const ACTIVE_SESSION_STATES: ClaudeSessionState[] = ["queued", "preparing", "working", "blocked"];
 
 const STATE_UI: Record<ClaudeSessionState, { label: string; icon: typeof Loader2; className: string }> = {
   queued: { label: "Queued", icon: Clock, className: "text-muted-foreground" },
   preparing: { label: "Preparing", icon: Loader2, className: "text-muted-foreground animate-spin" },
-  working: { label: "Working", icon: Loader2, className: "text-blue-500 animate-spin" },
+  working: { label: "Working", icon: Loader2, className: "text-yellow-500 animate-spin" },
   blocked: { label: "Needs input", icon: MessageSquare, className: "text-yellow-500" },
   done: { label: "Done", icon: CheckCircle, className: "text-green-500" },
   failed: { label: "Failed", icon: XCircle, className: "text-red-500" },
@@ -45,10 +46,11 @@ export function isSessionActive(session: ClaudeSession | undefined): boolean {
   return !!session && ACTIVE_SESSION_STATES.includes(session.state);
 }
 
-function startErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  return err instanceof Error ? err.message : "Failed to start session";
-}
+/** States the column skips: the session is over and said nothing worth keeping. */
+const SETTLED_STATES: ClaudeSessionState[] = ["done", "stopped"];
+
+/** What the prompt dialog should open with: a chore's command, or a blank prompt. */
+type PromptTarget = PromptChore | null;
 
 interface AiCellProps {
   task: Task;
@@ -64,27 +66,32 @@ interface AiCellProps {
 export function AiCell({ task, session, nextChore }: AiCellProps) {
   const { data: defsData } = useChoreDefinitionsQuery();
   const definitions = defsData?.items ?? [];
-  const startSession = useStartSession();
   const stopSession = useStopSession();
-  const [pendingChoreKey, setPendingChoreKey] = useState<string | null>(null);
+  // Both hold a PromptTarget, so `undefined` means "closed" and `null` means
+  // "open with a blank prompt".
+  const [promptTarget, setPromptTarget] = useState<PromptTarget | undefined>(undefined);
+  const [repoTarget, setRepoTarget] = useState<PromptTarget | undefined>(undefined);
 
   const active = isSessionActive(session);
-  const ui = session ? STATE_UI[session.state] : null;
+  // A settled session says nothing useful here; fall back to the idle /
+  // next-chore label. Its links stay in the menu below, and the task's
+  // Sessions section still shows every state.
+  const shown = session && !SETTLED_STATES.includes(session.state) ? session : undefined;
+  const ui = shown ? STATE_UI[shown.state] : null;
   const Icon = ui?.icon ?? Sparkles;
 
-  const start = (choreKey: string) => {
+  // Every start goes through the prompt dialog, so the command can be tweaked
+  // and the model picked before the session spawns.
+  const openPrompt = (target: PromptTarget) => {
     if (!task.repositoryId) {
-      setPendingChoreKey(choreKey);
+      setRepoTarget(target);
       return;
     }
-    startSession.mutate(
-      { taskId: task.id, choreKey },
-      {
-        onSuccess: (row) => toast.success(`Started ${row.choreName}`),
-        onError: (err) => toast.error(startErrorMessage(err)),
-      },
-    );
+    setPromptTarget(target);
   };
+
+  const startChore = (def: { number: number; key: string; name: string; prompt: string }) =>
+    openPrompt({ number: def.number, key: def.key, name: def.name, prompt: resolveChorePrompt(def.prompt, task) });
 
   const stop = () => {
     if (!session) return;
@@ -101,14 +108,20 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
     toast.success(`Copied: ${cmd}`);
   };
 
-  const tooltip = session
-    ? [`${session.choreName} · ${ui?.label}`, session.needs ?? session.detail ?? session.error].filter(Boolean).join("\n")
-    : "No AI session yet";
+  const idleNext = !shown && nextChore ? nextChore : null;
+
+  const tooltip = shown
+    ? [`${shown.choreName} · ${ui?.label}`, shown.needs ?? shown.detail ?? shown.error].filter(Boolean).join("\n")
+    : idleNext
+      ? `Next: #${idleNext.number} ${idleNext.name}\nClick to start`
+      : "No AI session yet";
 
   const stateContent = (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium">
-      <Icon className={cn("h-3.5 w-3.5", ui?.className ?? "text-muted-foreground/50")} />
-      {ui?.label ?? "AI"}
+      <Icon
+        className={cn("h-3.5 w-3.5 shrink-0", ui?.className ?? (idleNext ? "text-blue-500" : "text-muted-foreground/50"))}
+      />
+      <span className="truncate">{ui?.label ?? (idleNext ? `${idleNext.number}. ${idleNext.name}` : "AI")}</span>
     </span>
   );
 
@@ -117,9 +130,9 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
       <div className="inline-flex items-stretch rounded overflow-hidden bg-muted text-muted-foreground">
         <Tooltip>
           <TooltipTrigger asChild>
-            {session?.link ? (
+            {shown?.link ? (
               <a
-                href={session.link}
+                href={shown.link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:bg-accent hover:text-accent-foreground"
@@ -127,6 +140,17 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
               >
                 {stateContent}
               </a>
+            ) : idleNext ? (
+              <button
+                type="button"
+                className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startChore(idleNext);
+                }}
+              >
+                {stateContent}
+              </button>
             ) : (
               stateContent
             )}
@@ -170,17 +194,22 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
                 <DropdownMenuSeparator />
               </>
             )}
+            <DropdownMenuItem disabled={active} onClick={() => openPrompt(null)}>
+              <PenLine className="h-3.5 w-3.5 mr-2" />
+              Custom prompt...
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               {active ? "Start (busy until the session ends)" : "Start a chore"}
             </DropdownMenuLabel>
             {nextChore && (
-              <DropdownMenuItem disabled={active} onClick={() => start(nextChore.key)} className="font-medium">
+              <DropdownMenuItem disabled={active} onClick={() => startChore(nextChore)} className="font-medium">
                 <Sparkles className="h-3.5 w-3.5 mr-2 text-blue-500" />
                 Next: #{nextChore.number} {nextChore.name}
               </DropdownMenuItem>
             )}
             {definitions.map((def) => (
-              <DropdownMenuItem key={def.key} disabled={active} onClick={() => start(def.key)}>
+              <DropdownMenuItem key={def.key} disabled={active} onClick={() => startChore(def)}>
                 <span className="text-muted-foreground mr-2">#{def.number}</span>
                 {def.name}
               </DropdownMenuItem>
@@ -188,22 +217,19 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <CustomPromptDialog
+        open={promptTarget !== undefined}
+        onOpenChange={(open) => !open && setPromptTarget(undefined)}
+        taskId={task.id}
+        chore={promptTarget ?? null}
+      />
       <RepoConfirmDialog
-        open={pendingChoreKey !== null}
-        onOpenChange={(open) => !open && setPendingChoreKey(null)}
+        open={repoTarget !== undefined}
+        onOpenChange={(open) => !open && setRepoTarget(undefined)}
         taskId={task.id}
         onConfirmed={() => {
-          const key = pendingChoreKey;
-          setPendingChoreKey(null);
-          if (key) {
-            startSession.mutate(
-              { taskId: task.id, choreKey: key },
-              {
-                onSuccess: (row) => toast.success(`Started ${row.choreName}`),
-                onError: (err) => toast.error(startErrorMessage(err)),
-              },
-            );
-          }
+          setPromptTarget(repoTarget ?? null);
+          setRepoTarget(undefined);
         }}
       />
     </>

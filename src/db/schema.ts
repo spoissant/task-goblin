@@ -117,6 +117,8 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   prompt: text("prompt").notNull(), // resolved prompt snapshot
   cwd: text("cwd").notNull(), // task worktree or repo main checkout
   name: text("name").notNull(), // "<JIRA-KEY> · <chore name>"
+  model: text("model"), // claude --model alias; null = CLI default
+  effort: text("effort"), // claude --effort level; null = CLI default
   shortId: text("short_id").unique(), // claude --bg job id; null until spawned
   sessionId: text("session_id"),
   bridgeSessionId: text("bridge_session_id"), // cse_XXX → https://claude.ai/code/session_XXX

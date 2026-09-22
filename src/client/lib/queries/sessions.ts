@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { ClaudeSession, ListResponse } from "../types";
+import type { ClaudeSession, ListResponse, SessionEffort, SessionModel } from "../types";
 import { taskKeys } from "./tasks";
 
 export const sessionKeys = {
@@ -25,11 +25,20 @@ export function useTaskSessionsQuery(taskId: number) {
   });
 }
 
+export interface StartSessionInput {
+  taskId: number;
+  prompt: string;
+  model: SessionModel;
+  effort: SessionEffort;
+  /** Records the session under that chore; the prompt stands in for its command. */
+  choreKey?: string;
+}
+
 export function useStartSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, choreKey }: { taskId: number; choreKey: string }) =>
-      api.post<ClaudeSession>(`/tasks/${taskId}/sessions`, { choreKey }),
+    mutationFn: ({ taskId, ...body }: StartSessionInput) =>
+      api.post<ClaudeSession>(`/tasks/${taskId}/sessions`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });

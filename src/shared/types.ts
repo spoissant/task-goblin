@@ -137,6 +137,14 @@ export interface TaskWorktreeStatus extends TaskWorktree {
 // Background Claude Code session, one per chore run
 export type ClaudeSessionState = "queued" | "preparing" | "working" | "blocked" | "done" | "failed" | "stopped";
 
+/** `claude --model` aliases offered for custom-prompt sessions. */
+export const SESSION_MODELS = ["opus", "sonnet", "fable", "haiku"] as const;
+export type SessionModel = (typeof SESSION_MODELS)[number];
+
+/** `claude --effort` levels. */
+export const SESSION_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type SessionEffort = (typeof SESSION_EFFORTS)[number];
+
 export interface ClaudeSession {
   id: number;
   taskId: number;
@@ -146,6 +154,8 @@ export interface ClaudeSession {
   prompt: string;
   cwd: string;
   name: string;
+  model: string | null;
+  effort: string | null;
   shortId: string | null;
   sessionId: string | null;
   bridgeSessionId: string | null;

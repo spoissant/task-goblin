@@ -30,6 +30,11 @@ export interface ChoreEntry {
   task: ChoreTask;
 }
 
+/** Fill a chore prompt template for a task. Mirrors the server's resolvePrompt. */
+export function resolveChorePrompt(template: string, task: { id: number; jiraKey: string | null }): string {
+  return template.replace("{{taskId}}", String(task.id)).replace("{{jiraKey}}", task.jiraKey ?? "");
+}
+
 export const choreKeys = {
   all: ["chores"] as const,
   definitions: () => [...choreKeys.all, "definitions"] as const,
