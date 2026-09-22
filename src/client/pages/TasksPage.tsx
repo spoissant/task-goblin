@@ -22,6 +22,7 @@ export function TasksPage() {
   const [repoFilter, setRepoFilter] = useState<number | null>(null);
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
+  const [hideChores, setHideChores] = useLocalStorage("tasksPage.hideChores", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
 
   useEffect(() => {
@@ -90,6 +91,16 @@ export function TasksPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Checkbox
+                id="hide-chores"
+                checked={hideChores}
+                onCheckedChange={(checked) => setHideChores(checked === true)}
+              />
+              <Label htmlFor="hide-chores" className="text-sm cursor-pointer whitespace-nowrap">
+                Hide chores
+              </Label>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Checkbox
                 id="compact-mode"
                 checked={compactMode}
                 onCheckedChange={(checked) => setCompactMode(checked === true)}
@@ -121,6 +132,7 @@ export function TasksPage() {
         titleFilter={debouncedQuery}
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
+        hideChores={hideChores}
         compactMode={compactMode}
         repoFilter={repoFilter}
       />
