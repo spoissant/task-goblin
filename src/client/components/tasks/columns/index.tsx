@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { Flame, MessageSquare, Snowflake } from "lucide-react";
+import { Flame, ListTree, MessageSquare, Snowflake } from "lucide-react";
 import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
 import { AiCell } from "./AiCell";
@@ -20,6 +20,7 @@ import {
   CommentsCell,
   HighPriorityCell,
   OnIceCell,
+  IsParentCell,
   NextCell,
   getJiraUrl,
   getPrUrl,
@@ -43,6 +44,7 @@ export {
   CommentsCell,
   HighPriorityCell,
   OnIceCell,
+  IsParentCell,
   NextCell,
   getJiraUrl,
   getPrUrl,
@@ -64,6 +66,7 @@ export interface ColumnContext {
   linkToTask?: boolean; // Whether title should link to task detail
   nextChore?: ChoreEntry;
   session?: ClaudeSession; // latest AI session for the task
+  isParent?: boolean; // task has sub-tasks or child issues
 }
 
 // Shared Column Definitions
@@ -93,6 +96,19 @@ export const COLUMNS = {
     ),
     width: "40px",
     render: (task) => <OnIceCell task={task} />,
+  },
+  isParent: {
+    key: "isParent",
+    header: (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ListTree className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent>Has sub-tasks</TooltipContent>
+      </Tooltip>
+    ),
+    width: "40px",
+    render: (_task, ctx) => <IsParentCell isParent={ctx.isParent} />,
   },
   type: {
     key: "type",
@@ -215,6 +231,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "key",
   "highPriority",
   "onIce",
+  "isParent",
   "status",
   "title",
   "next",

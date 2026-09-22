@@ -56,6 +56,29 @@ describe("Tasks endpoints", () => {
     expect(typeof data.total).toBe("number");
   });
 
+  it("flags parents with hasChildren, including completed children", async () => {
+    await request("POST", "/api/v1/tasks", { title: "Parent story" });
+    await request("POST", "/api/v1/tasks", { title: "Epic" });
+    await request("POST", "/api/v1/tasks", { title: "Leaf" });
+    sqlite.exec("UPDATE tasks SET jira_key = 'PS-1' WHERE title = 'Parent story'");
+    sqlite.exec("UPDATE tasks SET jira_key = 'PS-9' WHERE title = 'Epic'");
+    sqlite.exec("UPDATE tasks SET jira_key = 'PS-3' WHERE title = 'Leaf'");
+    // Children are Done, so they are absent from the default (non-completed) list
+    sqlite.exec(
+      "INSERT INTO tasks (title, status, created_at, updated_at, jira_key, parent_key) VALUES ('Sub', 'Done', '2026-01-01', '2026-01-01', 'PS-2', 'PS-1')"
+    );
+    sqlite.exec(
+      "INSERT INTO tasks (title, status, created_at, updated_at, jira_key, epic_key) VALUES ('Child', 'Done', '2026-01-01', '2026-01-01', 'PS-4', 'PS-9')"
+    );
+
+    const res = await request("GET", "/api/v1/tasks");
+    const data = await res.json();
+    const byKey = new Map(data.items.map((t: { jiraKey: string; hasChildren: boolean }) => [t.jiraKey, t.hasChildren]));
+    expect(byKey.get("PS-1")).toBe(true);
+    expect(byKey.get("PS-9")).toBe(true);
+    expect(byKey.get("PS-3")).toBe(false);
+  });
+
   it("creates a task", async () => {
     const res = await request("POST", "/api/v1/tasks", {
       title: "Test task",

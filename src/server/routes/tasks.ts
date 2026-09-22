@@ -164,10 +164,33 @@ export const taskRoutes: Routes = {
 
       const repoMap = await buildRepoMap(taskList);
 
+      // Which of the returned tasks are parents. Looked up across the whole
+      // table (not just this page) so the flag holds even when the children
+      // are filtered out or already completed.
+      const parentKeys = new Set<string>();
+      const jiraKeys = taskList.map((t) => t.jiraKey).filter((k): k is string => !!k);
+      if (jiraKeys.length > 0) {
+        const keyList = sql.join(jiraKeys.map((k) => sql`${k}`), sql`, `);
+        const children = await db
+          .select({ parentKey: tasks.parentKey, epicKey: tasks.epicKey })
+          .from(tasks)
+          .where(
+            or(
+              sql`${tasks.parentKey} IN (${keyList})`,
+              sql`${tasks.epicKey} IN (${keyList})`
+            )
+          );
+        for (const child of children) {
+          if (child.parentKey) parentKeys.add(child.parentKey);
+          if (child.epicKey) parentKeys.add(child.epicKey);
+        }
+      }
+
       const items = taskList.map((task) => ({
         ...task,
         pendingTodos: pendingTodosMap.get(task.id) || [],
         repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
+        hasChildren: !!task.jiraKey && parentKeys.has(task.jiraKey),
       }));
 
       // Get total count for pagination

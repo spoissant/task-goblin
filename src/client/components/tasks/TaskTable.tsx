@@ -53,6 +53,7 @@ const COMPACT_HIDDEN_COLUMNS = new Set<(typeof TABLE_COLUMNS)[number]>([
   "sprint",
   "highPriority",
   "onIce",
+  "isParent",
   "next",
   "changes",
 ]);
@@ -124,17 +125,9 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
     return true;
   });
 
-  // Keys of tasks that still have a visible sub-task or child issue below them
-  const parentKeys = new Set<string>();
-  if (hideParents) {
-    for (const t of shownTasks) {
-      if (t.parentKey) parentKeys.add(t.parentKey);
-      if (t.epicKey) parentKeys.add(t.epicKey);
-    }
-  }
-  const tasks = hideParents
-    ? shownTasks.filter((t) => !t.jiraKey || !parentKeys.has(t.jiraKey))
-    : shownTasks;
+  // Same flag the "has sub-tasks" column shows, so what "Hide parents" removes
+  // is exactly what carries the icon.
+  const tasks = hideParents ? shownTasks.filter((t) => !t.hasChildren) : shownTasks;
 
   if (isLoading) {
     return (
@@ -197,6 +190,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
               statusCategories={statusSettings?.categories}
               nextChore={choreMap.get(task.id)}
               session={sessionMap.get(task.id)}
+              isParent={task.hasChildren}
               onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               onSelectionChange={onSelectionChange ? (selected) => {
@@ -232,12 +226,13 @@ interface TaskRowProps {
   statusCategories?: StatusCategory[];
   nextChore?: ChoreEntry;
   session?: ClaudeSession;
+  isParent: boolean;
   onOpenTodos: () => void;
   isSelected: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -258,6 +253,7 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, s
     linkToTask: true,
     nextChore,
     session,
+    isParent,
   };
 
   const isDark = document.documentElement.classList.contains("dark");

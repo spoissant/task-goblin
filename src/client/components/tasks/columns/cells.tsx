@@ -6,7 +6,7 @@ import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { ChevronDown, Flame, Snowflake, Zap } from "lucide-react";
+import { ChevronDown, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
@@ -444,5 +444,19 @@ export function HighPriorityCell({ task }: { task: Task }) {
         }`}
       />
     </button>
+  );
+}
+
+// Derived flag (not editable): the task has sub-tasks or child issues.
+export function IsParentCell({ isParent }: { isParent?: boolean }) {
+  if (!isParent) return null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ListTree className="h-4 w-4 text-violet-400" />
+      </TooltipTrigger>
+      <TooltipContent>Has sub-tasks</TooltipContent>
+    </Tooltip>
   );
 }

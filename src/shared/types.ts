@@ -70,6 +70,7 @@ export interface TaskWithRepository extends Task {
 export interface TaskWithTodos extends Task {
   pendingTodos: NextTodo[];
   repository: Repository | null;
+  hasChildren: boolean; // another task points at this one via parentKey or epicKey
 }
 
 export interface Todo {
