@@ -13,7 +13,9 @@ export interface JobState {
   state: "working" | "blocked" | "done" | "failed" | "stopped" | string;
   /** Live turn activity, more current than `state`: active | idle | blocked. */
   tempo?: string;
-  inFlight?: { tasks?: number } | null;
+  inFlight?: { tasks?: number; queued?: number; kinds?: string[]; drainableMonitors?: number } | null;
+  /** Scheduled wake-up: the agent parked itself and means to come back. */
+  wake?: { at?: number | string } | null;
   detail?: string | null;
   needs?: string | null;
   output?: { result?: string | null } | null;

@@ -131,41 +131,34 @@ describe("claude sessions", () => {
     expect(commands).toContain("claude stop abcd1234");
   });
 
-  it("finishes a session whose turn ended while state.json still says working", async () => {
+  it("tells a finished turn apart from an agent parked waiting", async () => {
     await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
     await new Promise((r) => setTimeout(r, 50));
+    const idle = { state: "working", tempo: "idle", updatedAt: "2026-01-01T00:01:00.000Z" };
 
-    // tempo blocked wins over a stale `working`
-    writeState("abcd1234", {
-      state: "working",
-      tempo: "blocked",
-      inFlight: { tasks: 0 },
-      needs: "Which branch?",
-      updatedAt: new Date().toISOString(),
-    });
+    // tempo blocked wins over a stale `working`, with no delay
+    writeState("abcd1234", { ...idle, tempo: "blocked", needs: "Which branch?" });
     await pollActiveSessions();
     let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("blocked");
 
-    // idle but freshly updated: still working
-    writeState("abcd1234", {
-      state: "working",
-      tempo: "idle",
-      inFlight: { tasks: 0 },
-      detail: "pushed the merge",
-      updatedAt: new Date().toISOString(),
-    });
+    // parked on a scheduled wake-up: still working, however long it idles
+    writeState("abcd1234", { ...idle, wake: { at: Date.now() + 600_000 }, inFlight: { tasks: 0, queued: 0, kinds: [] } });
     await pollActiveSessions();
     list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("working");
 
-    // idle long enough: the run is over
+    // parked on a monitor it can drain itself: still working
+    writeState("abcd1234", { ...idle, inFlight: { tasks: 0, queued: 0, kinds: ["session_cron"] } });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
+
+    // nothing pending: the run is over on the next poll
     writeState("abcd1234", {
-      state: "working",
-      tempo: "idle",
-      inFlight: { tasks: 0 },
+      ...idle,
       detail: "pushed the merge",
-      updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      inFlight: { tasks: 0, queued: 0, kinds: [], drainableMonitors: 0 },
     });
     await pollActiveSessions();
     list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();

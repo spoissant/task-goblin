@@ -34,7 +34,6 @@ export const ACTIVE_STATES: ClaudeSessionState[] = ["queued", "preparing", "work
 export const TERMINAL_STATES: ClaudeSessionState[] = ["done", "failed", "stopped"];
 const POLLED_STATES: ClaudeSessionState[] = ["working", "blocked"];
 const MISSING_STATE_TOLERANCE = 6; // poll ticks before a missing state.json is treated as a vanished session
-const IDLE_DONE_MS = 2 * 60 * 1000; // idle this long with `state: "working"` still set → the run is over
 const REAP_IDLE_MS = 10 * 60 * 1000;
 
 export type CapacityCheck = (cwd: string) => Promise<"ok" | "queued">;
@@ -252,21 +251,32 @@ export async function pollActiveSessions(): Promise<void> {
 }
 
 /**
- * The CLI leaves `state: "working"` behind when a turn ends without the agent
- * declaring an outcome, so trust `tempo` instead: blocked means it wants
- * input, and long-idle with nothing in flight means the run is over.
+ * The CLI writes `state: "working"` with `tempo: "idle"` for two different
+ * things: a run that ended without the agent declaring an outcome, and an
+ * agent parked waiting on CI or a scheduled wake-up. Only the second can
+ * resume on its own, so the job's pending work tells them apart.
  */
 function effectiveState(job: JobState): ClaudeSessionState | null {
   const state = normalizeState(job.state);
   if (state && TERMINAL_STATES.includes(state)) return state;
   if (job.tempo === "blocked") return "blocked";
-  if (job.tempo === "idle" && !job.inFlight?.tasks && idleFor(job.updatedAt, IDLE_DONE_MS)) return "done";
+  if (job.tempo === "idle" && !willResume(job)) return "done";
   return state;
 }
 
-function idleFor(updatedAt: string | undefined, ms: number): boolean {
-  const at = updatedAt ? Date.parse(updatedAt) : NaN;
-  return Number.isFinite(at) && Date.now() - at > ms;
+/** Anything left that can wake the session back up without a human. */
+function willResume(job: JobState): boolean {
+  const flight = job.inFlight;
+  if (wakePending(job.wake)) return true;
+  if ((flight?.tasks ?? 0) - (flight?.drainableMonitors ?? 0) > 0) return true;
+  if ((flight?.queued ?? 0) > 0) return true;
+  return (flight?.kinds ?? []).includes("session_cron");
+}
+
+function wakePending(wake: JobState["wake"]): boolean {
+  if (!wake) return false;
+  const at = typeof wake.at === "string" ? Date.parse(wake.at) : wake.at;
+  return at === undefined || !Number.isFinite(at) || at > Date.now();
 }
 
 function normalizeState(state: string | undefined): ClaudeSessionState | null {
