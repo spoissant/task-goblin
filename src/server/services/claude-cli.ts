@@ -11,6 +11,9 @@ import { runCommand, type CommandResult } from "../lib/process";
 
 export interface JobState {
   state: "working" | "blocked" | "done" | "failed" | "stopped" | string;
+  /** Live turn activity, more current than `state`: active | idle | blocked. */
+  tempo?: string;
+  inFlight?: { tasks?: number } | null;
   detail?: string | null;
   needs?: string | null;
   output?: { result?: string | null } | null;

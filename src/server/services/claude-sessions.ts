@@ -11,7 +11,14 @@ import { getTaskWithRepository } from "../lib/queries";
 import { getChoreDefinition, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
-import { listAgents, readJobState, sessionLink, spawnBackground, stopSession as cliStop } from "./claude-cli";
+import {
+  listAgents,
+  readJobState,
+  sessionLink,
+  spawnBackground,
+  stopSession as cliStop,
+  type JobState,
+} from "./claude-cli";
 import {
   ensureTaskWorktree,
   getTaskWorktreeRow,
@@ -27,6 +34,7 @@ export const ACTIVE_STATES: ClaudeSessionState[] = ["queued", "preparing", "work
 export const TERMINAL_STATES: ClaudeSessionState[] = ["done", "failed", "stopped"];
 const POLLED_STATES: ClaudeSessionState[] = ["working", "blocked"];
 const MISSING_STATE_TOLERANCE = 6; // poll ticks before a missing state.json is treated as a vanished session
+const IDLE_DONE_MS = 2 * 60 * 1000; // idle this long with `state: "working"` still set → the run is over
 const REAP_IDLE_MS = 10 * 60 * 1000;
 
 export type CapacityCheck = (cwd: string) => Promise<"ok" | "queued">;
@@ -223,7 +231,7 @@ export async function pollActiveSessions(): Promise<void> {
     }
     missingStateCounts.delete(row.id);
 
-    const nextState = normalizeState(job.state);
+    const nextState = effectiveState(job);
     const updates: Partial<SessionRow> = {};
     if (nextState && nextState !== row.state) updates.state = nextState;
     if ((job.detail ?? null) !== row.detail) updates.detail = job.detail ?? null;
@@ -241,6 +249,24 @@ export async function pollActiveSessions(): Promise<void> {
 
     if (Object.keys(updates).length > 0) await updateRow(row.id, updates);
   }
+}
+
+/**
+ * The CLI leaves `state: "working"` behind when a turn ends without the agent
+ * declaring an outcome, so trust `tempo` instead: blocked means it wants
+ * input, and long-idle with nothing in flight means the run is over.
+ */
+function effectiveState(job: JobState): ClaudeSessionState | null {
+  const state = normalizeState(job.state);
+  if (state && TERMINAL_STATES.includes(state)) return state;
+  if (job.tempo === "blocked") return "blocked";
+  if (job.tempo === "idle" && !job.inFlight?.tasks && idleFor(job.updatedAt, IDLE_DONE_MS)) return "done";
+  return state;
+}
+
+function idleFor(updatedAt: string | undefined, ms: number): boolean {
+  const at = updatedAt ? Date.parse(updatedAt) : NaN;
+  return Number.isFinite(at) && Date.now() - at > ms;
 }
 
 function normalizeState(state: string | undefined): ClaudeSessionState | null {

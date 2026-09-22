@@ -131,6 +131,48 @@ describe("claude sessions", () => {
     expect(commands).toContain("claude stop abcd1234");
   });
 
+  it("finishes a session whose turn ended while state.json still says working", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    // tempo blocked wins over a stale `working`
+    writeState("abcd1234", {
+      state: "working",
+      tempo: "blocked",
+      inFlight: { tasks: 0 },
+      needs: "Which branch?",
+      updatedAt: new Date().toISOString(),
+    });
+    await pollActiveSessions();
+    let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("blocked");
+
+    // idle but freshly updated: still working
+    writeState("abcd1234", {
+      state: "working",
+      tempo: "idle",
+      inFlight: { tasks: 0 },
+      detail: "pushed the merge",
+      updatedAt: new Date().toISOString(),
+    });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
+
+    // idle long enough: the run is over
+    writeState("abcd1234", {
+      state: "working",
+      tempo: "idle",
+      inFlight: { tasks: 0 },
+      detail: "pushed the merge",
+      updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("done");
+    expect(list.items[0].firstTerminalAt).toBeTruthy();
+  });
+
   it("marks a session failed when state.json never appears and the daemon does not know it", async () => {
     await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
     await new Promise((r) => setTimeout(r, 50));
