@@ -53,6 +53,7 @@ const COMPACT_HIDDEN_COLUMNS = new Set<(typeof TABLE_COLUMNS)[number]>([
   "sprint",
   "highPriority",
   "onIce",
+  "next",
   "changes",
 ]);
 
