@@ -32,25 +32,25 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
   let onClick: (() => void) | undefined;
 
   if (!stack) {
-    icon = <CirclePlay className="h-4 w-4" />;
+    icon = <CirclePlay className="h-6 w-6" />;
     tooltip = `Boot ${task.headBranch} in the main checkout`;
     onClick = () => boot.mutate(task.id, { onError });
   } else if (stack.taskId !== task.id) {
-    icon = <CirclePlay className="h-4 w-4 opacity-30" />;
+    icon = <CirclePlay className="h-6 w-6 opacity-30" />;
     tooltip = `Dev stack is up for ${stack.branch}`;
   } else if (stack.state === "starting" || stack.state === "stopping") {
-    icon = <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />;
+    icon = <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />;
     tooltip = `${stack.state === "starting" ? "Booting…" : "Stopping…"}\n${stack.detail ?? ""}`.trimEnd();
   } else if (stack.state === "failed") {
-    icon = <CircleStop className="h-4 w-4 text-red-500" />;
+    icon = <CircleStop className="h-6 w-6 text-red-500" />;
     tooltip = `Failed: ${stack.error ?? "unknown error"}\nClick to reset (stops the stack, switches back)`;
     onClick = () => stop.mutate(task.id, { onError });
   } else if (!stack.alive) {
-    icon = <CircleStop className="h-4 w-4 text-red-500" />;
+    icon = <CircleStop className="h-6 w-6 text-red-500" />;
     tooltip = "Boot process exited (see logs/dev-stack.log)\nClick to clean up";
     onClick = () => stop.mutate(task.id, { onError });
   } else {
-    icon = <CircleStop className="h-4 w-4 text-green-600" />;
+    icon = <CircleStop className="h-6 w-6 text-green-600" />;
     tooltip = `Running at ${stack.url}\nClick to stop and switch back`;
     onClick = () => stop.mutate(task.id, { onError });
   }
