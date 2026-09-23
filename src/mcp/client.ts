@@ -89,3 +89,26 @@ export async function resolveTaskId(params: {
 
   throw new Error("One of id, jiraKey, prNumber, or branch is required");
 }
+
+// Resolve a repository name to its ID. Accepts "owner/repo", the bare repo
+// name, or the repository's alias (all case-insensitive).
+export async function resolveRepositoryId(name: string): Promise<number> {
+  const { items } = await get<ListResponse<Repository>>("/api/v1/repositories");
+  const wanted = name.trim().toLowerCase();
+
+  const matches = items.filter((r) =>
+    [`${r.owner}/${r.repo}`, r.repo, r.alias].some((v) => v?.toLowerCase() === wanted)
+  );
+
+  const known = items.map((r) => `${r.owner}/${r.repo}${r.alias ? ` (${r.alias})` : ""}`).join(", ");
+
+  if (matches.length === 0) {
+    throw new Error(`Unknown repository "${name}". Known repositories: ${known}`);
+  }
+  if (matches.length > 1) {
+    const candidates = matches.map((r) => `${r.owner}/${r.repo}`).join(", ");
+    throw new Error(`Ambiguous repository "${name}". Use owner/repo: ${candidates}`);
+  }
+
+  return matches[0]!.id;
+}

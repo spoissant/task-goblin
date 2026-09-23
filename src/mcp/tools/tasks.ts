@@ -5,6 +5,7 @@ import {
   post,
   patch,
   resolveTaskId,
+  resolveRepositoryId,
   type TaskWithRelations,
   type ListResponse,
   type Task,
@@ -162,11 +163,18 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
+        repository: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Move the task to this repository: 'owner/repo', bare repo name, or alias. null clears it. Only works while the task has no PR - once a PR exists its repository wins."
+          ),
         choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
         workingOn: z.string().nullable().optional().describe("JSON reservation e.g. '{\"choreKey\": \"request-reviews\", \"at\": \"2026-04-20T14:00:00Z\"}' or null to clear"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, choreSkips, workingOn }) => {
+    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, repository, choreSkips, workingOn }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
 
@@ -174,6 +182,9 @@ export function registerTaskTools(server: McpServer) {
         if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status;
+        if (repository !== undefined) {
+          updates.repositoryId = repository === null ? null : await resolveRepositoryId(repository);
+        }
         if (choreSkips !== undefined) updates.choreSkips = choreSkips;
         if (workingOn !== undefined) updates.workingOn = workingOn;
 
