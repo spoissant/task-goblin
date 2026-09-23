@@ -10,7 +10,6 @@ import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { ChoreSkipsEditor } from "@/client/components/tasks/ChoreSkipsEditor";
 import { SessionsSection } from "@/client/components/tasks/SessionsSection";
-import { DevStackButton } from "@/client/components/tasks/DevStackButton";
 import { TodoList } from "@/client/components/todos/TodoList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
@@ -152,7 +151,6 @@ export function TaskDetailPage() {
           Back
         </Button>
         <div className="flex gap-2">
-          <DevStackButton taskId={taskId} branch={task.headBranch} />
           {canDeploy && (
             <>
               <Select

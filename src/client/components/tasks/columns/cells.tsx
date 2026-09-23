@@ -5,6 +5,7 @@ import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
 import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
+import { DevStackToggle } from "../DevStackToggle";
 import { DeploymentBadges } from "../DeploymentBadges";
 import { ChevronDown, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
@@ -146,11 +147,16 @@ export function TitleCell({ task, linkToTask }: { task: Task; linkToTask?: boole
   );
 }
 
-export function RepoCell({ repo }: { repo?: Repository }) {
+export function RepoCell({ task, repo }: { task: Task; repo?: Repository }) {
   if (!repo) {
     return <span className="text-muted-foreground">—</span>;
   }
-  return <RepoBadge repo={repo} />;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <RepoBadge repo={repo} />
+      <DevStackToggle task={task} />
+    </span>
+  );
 }
 
 export function BranchCell({ task }: { task: Task }) {

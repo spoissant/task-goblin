@@ -1,24 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { DevStack, DevStackStatus } from "../types";
+import type { DevStack, DevStackOverview } from "../types";
 
 export const devStackKeys = {
   all: ["dev-stack"] as const,
-  task: (taskId: number) => [...devStackKeys.all, taskId] as const,
 };
 
 const BUSY_STATES = new Set(["starting", "stopping"]);
 
-export function useDevStackQuery(taskId: number) {
+/** The one dev stack and which repositories support it; shared by every row. */
+export function useDevStackOverviewQuery() {
   return useQuery({
-    queryKey: devStackKeys.task(taskId),
-    queryFn: () => api.get<DevStackStatus>(`/tasks/${taskId}/dev-stack`),
-    enabled: taskId > 0,
-    // Keep the log tail and liveness fresh while something is happening.
+    queryKey: devStackKeys.all,
+    queryFn: () => api.get<DevStackOverview>("/dev-stack"),
+    // Keep liveness fresh while a stack exists.
     refetchInterval: (query) => {
       const state = query.state.data?.stack?.state;
       if (!state) return false;
-      return BUSY_STATES.has(state) ? 2_000 : 5_000;
+      return BUSY_STATES.has(state) ? 2_000 : 10_000;
     },
   });
 }

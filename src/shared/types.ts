@@ -154,6 +154,11 @@ export interface DevStackStatus {
   stack: DevStack | null; // the one stack, whichever task owns it
 }
 
+export interface DevStackOverview {
+  supportedRepositoryIds: number[]; // repositories whose tasks may boot the stack
+  stack: DevStack | null;
+}
+
 // Background Claude Code session, one per chore run
 export type ClaudeSessionState = "queued" | "preparing" | "working" | "blocked" | "done" | "failed" | "stopped";
 

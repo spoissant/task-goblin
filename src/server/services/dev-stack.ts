@@ -16,9 +16,9 @@
  */
 import { appendFileSync, closeSync, mkdirSync, openSync } from "fs";
 import { dirname } from "path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
-import { settings } from "../../db/schema";
+import { repositories, settings } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { getTaskWithRepository } from "../lib/queries";
@@ -27,7 +27,7 @@ import { runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
-import type { DevStack, DevStackState, DevStackStatus } from "../../shared/types";
+import type { DevStack, DevStackOverview, DevStackState, DevStackStatus } from "../../shared/types";
 
 const DEV_STACK_REPO = "alumni_connect";
 /** Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs. */
@@ -161,6 +161,19 @@ async function loadTaskAndRepo(taskId: number) {
 
 function isSupported(repository: { repo: string } | null, headBranch: string | null): boolean {
   return repository?.repo === DEV_STACK_REPO && !!headBranch;
+}
+
+/** The one stack plus the repositories whose tasks may boot it (for table rows). */
+export async function getDevStackOverview(): Promise<DevStackOverview> {
+  const repos = await db
+    .select({ id: repositories.id })
+    .from(repositories)
+    .where(and(eq(repositories.repo, DEV_STACK_REPO), eq(repositories.enabled, 1)));
+  const stored = await loadStack();
+  return {
+    supportedRepositoryIds: repos.map((r) => r.id),
+    stack: stored ? await toDevStack(stored) : null,
+  };
 }
 
 export async function getDevStackStatus(taskId: number): Promise<DevStackStatus> {

@@ -1,9 +1,16 @@
 import { json } from "../response";
 import { parseId } from "../lib/validation";
-import { bootDevStack, getDevStackStatus, stopDevStack } from "../services/dev-stack";
+import { bootDevStack, getDevStackOverview, getDevStackStatus, stopDevStack } from "../services/dev-stack";
 import type { Routes } from "../router";
 
 export const devStackRoutes: Routes = {
+  // The one stack plus which repositories support it; feeds the table rows.
+  "/api/v1/dev-stack": {
+    async GET() {
+      return json(await getDevStackOverview());
+    },
+  },
+
   "/api/v1/tasks/:id/dev-stack": {
     async GET(_req, params) {
       return json(await getDevStackStatus(parseId(params.id)));

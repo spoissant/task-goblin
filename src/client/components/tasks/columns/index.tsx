@@ -146,7 +146,7 @@ export const COLUMNS = {
     key: "repo",
     header: "Repo",
     width: "120px",
-    render: (_task, ctx) => <RepoCell repo={ctx.repo} />,
+    render: (task, ctx) => <RepoCell task={task} repo={ctx.repo} />,
   },
   branch: {
     key: "branch",
