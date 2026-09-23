@@ -64,7 +64,7 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
           disabled={!onClick || pending}
           className={cn(
             "inline-flex items-center justify-center rounded p-0.5 text-muted-foreground",
-            onClick && "hover:text-foreground hover:bg-muted",
+            onClick && "cursor-pointer hover:text-foreground hover:bg-muted",
             !onClick && "cursor-default",
           )}
           aria-label={tooltip}
