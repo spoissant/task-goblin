@@ -1,4 +1,4 @@
-import { Loader2, Play, Square } from "lucide-react";
+import { CirclePlay, CircleStop, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useBootDevStack, useDevStackOverviewQuery, useStopDevStack } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
@@ -32,25 +32,25 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
   let onClick: (() => void) | undefined;
 
   if (!stack) {
-    icon = <Play className="h-3.5 w-3.5" />;
+    icon = <CirclePlay className="h-4 w-4" />;
     tooltip = `Boot ${task.headBranch} in the main checkout`;
     onClick = () => boot.mutate(task.id, { onError });
   } else if (stack.taskId !== task.id) {
-    icon = <Play className="h-3.5 w-3.5 opacity-30" />;
+    icon = <CirclePlay className="h-4 w-4 opacity-30" />;
     tooltip = `Dev stack is up for ${stack.branch}`;
   } else if (stack.state === "starting" || stack.state === "stopping") {
-    icon = <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />;
-    tooltip = stack.state === "starting" ? `Booting…\n${stack.detail ?? ""}`.trimEnd() : "Stopping…";
+    icon = <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />;
+    tooltip = `${stack.state === "starting" ? "Booting…" : "Stopping…"}\n${stack.detail ?? ""}`.trimEnd();
   } else if (stack.state === "failed") {
-    icon = <Square className="h-3.5 w-3.5 text-red-500" />;
+    icon = <CircleStop className="h-4 w-4 text-red-500" />;
     tooltip = `Failed: ${stack.error ?? "unknown error"}\nClick to reset (stops the stack, switches back)`;
     onClick = () => stop.mutate(task.id, { onError });
   } else if (!stack.alive) {
-    icon = <Square className="h-3.5 w-3.5 text-red-500" />;
+    icon = <CircleStop className="h-4 w-4 text-red-500" />;
     tooltip = "Boot process exited (see logs/dev-stack.log)\nClick to clean up";
     onClick = () => stop.mutate(task.id, { onError });
   } else {
-    icon = <Square className="h-3.5 w-3.5 text-green-600 fill-current" />;
+    icon = <CircleStop className="h-4 w-4 text-green-600" />;
     tooltip = `Running at ${stack.url}\nClick to stop and switch back`;
     onClick = () => stop.mutate(task.id, { onError });
   }

@@ -23,6 +23,7 @@ describe("dev stack", () => {
   let spawned = 0;
   let compiled = false;
   let probeStatus: number | null = null;
+  let running = 0; // containers of the main stack still running
   const LOG = process.env.DEV_STACK_LOG!;
   const COMPILED_LINE = "\n  \u001b[32m✓\u001b[39m Compiled successfully 14.97s\n";
 
@@ -36,6 +37,7 @@ describe("dev stack", () => {
     spawned = 0;
     compiled = false;
     probeStatus = null;
+    running = 0;
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
@@ -48,6 +50,8 @@ describe("dev stack", () => {
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
       if (cmd === "git" && args[0] === "status") return ok(dirty ? " M app.rb" : "");
+      if (cmd === "docker" && args[0] === "ps") return ok(Array.from({ length: running }, (_, i) => `c${i}`).join("\n"));
+      if (cmd === "/bin/zsh" && args[1]?.includes("stop-dev-server")) alive = false; // the stop command ends the bundler
       if (cmd === "git" && args[0] === "rev-parse" && args.includes("refs/heads/fix/EV-1")) {
         return localBranch ? ok("abc") : { stdout: "", stderr: "", exitCode: 1 };
       }
@@ -64,6 +68,7 @@ describe("dev stack", () => {
       isAlive: () => alive,
       probe: async () => probeStatus,
       readyPollMs: 5,
+      downTimeoutMs: 40,
     });
   });
 
@@ -147,13 +152,34 @@ describe("dev stack", () => {
     await devStackSettled();
     commands.length = 0;
 
+    running = 3;
     const stopping = await stopDevStack(1);
     expect(stopping.state).toBe("stopping");
-    alive = false; // the stop command ends the bundler
-    await devStackSettled();
+    await Bun.sleep(20);
 
+    // Containers still winding down: keep stopping, do not switch yet.
+    let { stack } = await getDevStackStatus(1);
+    expect(stack?.state).toBe("stopping");
+    expect(stack?.detail).toContain("3 container(s)");
     expect(commands[0]).toBe("/bin/zsh -lc bin/dev stop-dev-server; bin/dev dc stop");
+    expect(commands).not.toContain("git switch sprint");
+
+    running = 0;
+    await devStackSettled();
     expect(commands).toContain("git switch sprint");
     expect((await getDevStackStatus(1)).stack).toBeNull();
+  });
+
+  it("fails the stop when containers never go away", async () => {
+    ready();
+    await bootDevStack(1);
+    await devStackSettled();
+    running = 2;
+    await stopDevStack(1);
+    await devStackSettled(); // downTimeoutMs is tiny in tests
+    const { stack } = await getDevStackStatus(1);
+    expect(stack?.state).toBe("failed");
+    expect(stack?.error).toContain("2 container(s)");
+    expect(commands).not.toContain("git switch sprint");
   });
 });

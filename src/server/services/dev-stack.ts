@@ -25,7 +25,7 @@ import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { getTaskWithRepository } from "../lib/queries";
 import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit } from "../lib/git";
-import { runShell, tailOutput } from "../lib/process";
+import { runCommand, runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
@@ -69,6 +69,8 @@ export interface DevStackRuntime {
   probe(url: string): Promise<number | null>;
   /** Delay between readiness checks. */
   readyPollMs: number;
+  /** How long to wait for the main stack's containers to stop. */
+  downTimeoutMs: number;
 }
 
 const defaultRuntime: DevStackRuntime = {
@@ -100,6 +102,7 @@ const defaultRuntime: DevStackRuntime = {
     }
   },
   readyPollMs: 3_000,
+  downTimeoutMs: 3 * 60 * 1000,
 };
 
 let runtime = defaultRuntime;
@@ -326,13 +329,14 @@ export async function stopDevStack(taskId: number): Promise<DevStack> {
   const mainPath = await resolveMainPath(repository);
   const baseBranch = repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH;
 
-  const stopping: StoredStack = { ...stored, state: "stopping", detail: null, error: null };
+  const stopping: StoredStack = { ...stored, state: "stopping", detail: "Stopping the bundler and containers", error: null };
   await saveStack(stopping);
   track(runStop(stopping, mainPath, baseBranch));
   return toDevStack(stopping);
 }
 
 async function runStop(stored: StoredStack, mainPath: string, baseBranch: string): Promise<void> {
+  const fail = (error: string) => saveStack({ ...stored, state: "failed", detail: null, error });
   try {
     appendLog(`# ${now()} stop\n$ ${STOP_COMMAND}`);
     const stop = await runShell(mainPath, STOP_COMMAND, { timeoutMs: STOP_TIMEOUT_MS });
@@ -340,16 +344,51 @@ async function runStop(stored: StoredStack, mainPath: string, baseBranch: string
 
     if (stored.pid !== null) await waitForExit(stored.pid);
 
+    const leftover = await waitUntilDown(stored, mainPath);
+    if (leftover > 0) {
+      await fail(`${leftover} container(s) of the main stack are still running; see log`);
+      return;
+    }
+
+    await saveStack({ ...stored, detail: `Switching back to ${baseBranch}` });
     const switched = await runGit(mainPath, ["switch", baseBranch]);
     if (switched.exitCode !== 0) {
-      await saveStack({ ...stored, state: "failed", error: `Stack stopped but git switch ${baseBranch} failed: ${switched.stderr}` });
+      await fail(`Stack stopped but git switch ${baseBranch} failed: ${switched.stderr}`);
       return;
     }
     appendLog(`# ${now()} back on ${baseBranch}`);
     await saveStack(null);
   } catch (err) {
-    await saveStack({ ...stored, state: "failed", error: err instanceof Error ? err.message : String(err) });
+    await fail(err instanceof Error ? err.message : String(err));
   }
+}
+
+/** Running containers of the Compose project whose working dir is the main checkout. */
+async function runningMainContainers(mainPath: string): Promise<number> {
+  const result = await runCommand(
+    "docker",
+    ["ps", "-q", "--filter", `label=com.docker.compose.project.working_dir=${expandPath(mainPath)}`],
+    { cwd: process.cwd(), timeoutMs: 30_000 },
+  );
+  if (result.exitCode !== 0) return 0; // Docker down: nothing can be running
+  return result.stdout.split("\n").filter(Boolean).length;
+}
+
+/** Poll until the main stack has no running containers; returns the leftover count on timeout. */
+async function waitUntilDown(stored: StoredStack, mainPath: string): Promise<number> {
+  const deadline = Date.now() + runtime.downTimeoutMs;
+  let lastDetail: string | null = null;
+  let running = await runningMainContainers(mainPath);
+  while (running > 0 && Date.now() < deadline) {
+    const detail = `Waiting for ${running} container(s) to stop`;
+    if (detail !== lastDetail) {
+      lastDetail = detail;
+      await saveStack({ ...stored, detail });
+    }
+    await Bun.sleep(runtime.readyPollMs);
+    running = await runningMainContainers(mainPath);
+  }
+  return running;
 }
 
 async function waitForExit(pid: number): Promise<void> {
