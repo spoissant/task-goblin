@@ -143,6 +143,7 @@ export interface DevStack {
   state: DevStackState;
   pid: number | null;
   alive: boolean; // boot process still running (checked on read)
+  detail: string | null; // current boot phase while starting
   error: string | null;
   startedAt: string;
   logTail: string; // tail of logs/dev-stack.log

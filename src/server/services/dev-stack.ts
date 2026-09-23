@@ -6,8 +6,10 @@
  *
  * Only one stack exists at a time. Boot detaches the main checkout at the task
  * branch (`git switch --detach`, allowed even though a worktree owns the
- * branch) and runs BOOT_COMMAND until stopped. Stop ends the bundler and the
- * Docker stack, then switches the checkout back to its base branch.
+ * branch) and runs BOOT_COMMAND until stopped. The stack counts as up once the
+ * bundler reports a successful compile in the log AND the site answers over
+ * HTTP. Stop ends the bundler and the Docker stack, then switches the checkout
+ * back to its base branch.
  *
  * HARDCODED for alumni_connect: the boot/stop commands mirror the `hbup` zsh
  * alias and the repo's bin/dev tooling. A settings-driven version (per-repo
@@ -36,17 +38,21 @@ const BOOT_COMMAND = "bin/dev update-dependencies && bin/dev migration && bin/de
 const STOP_COMMAND = "bin/dev stop-dev-server; bin/dev dc stop";
 const FALLBACK_BASE_BRANCH = "sprint";
 const DEV_STACK_URL = "http://localhost.hvbrt.com";
+/** Printed by the Rspack dev server once the first build is served. */
+const BUNDLER_READY = /Compiled successfully/;
 
 const SETTING_KEY = "dev_stack";
-const LOG_PATH = "logs/dev-stack.log";
+const LOG_PATH = process.env.DEV_STACK_LOG ?? "logs/dev-stack.log";
 const STOP_TIMEOUT_MS = 3 * 60 * 1000;
 const EXIT_WAIT_MS = 60_000;
+const READY_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface StoredStack {
   taskId: number;
   branch: string;
   state: DevStackState;
   pid: number | null;
+  detail: string | null;
   error: string | null;
   startedAt: string;
 }
@@ -59,6 +65,10 @@ export interface DevStackRuntime {
   /** Start the long-running boot command with stdout/stderr appended to `logPath`. */
   spawn(cwd: string, logPath: string): { pid: number; exited: Promise<number> };
   isAlive(pid: number): boolean;
+  /** HTTP status of the booted site, or null when nothing answers. */
+  probe(url: string): Promise<number | null>;
+  /** Delay between readiness checks. */
+  readyPollMs: number;
 }
 
 const defaultRuntime: DevStackRuntime = {
@@ -81,6 +91,15 @@ const defaultRuntime: DevStackRuntime = {
       return false;
     }
   },
+  async probe(url) {
+    try {
+      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5_000) });
+      return res.status;
+    } catch {
+      return null;
+    }
+  },
+  readyPollMs: 3_000,
 };
 
 let runtime = defaultRuntime;
@@ -121,10 +140,9 @@ async function saveStack(stack: StoredStack | null): Promise<void> {
   broadcast("dev-stack", { taskId: stack?.taskId ?? null, state: stack?.state ?? null });
 }
 
-async function readLogTail(max = 4000): Promise<string> {
+async function readLog(): Promise<string> {
   try {
-    const text = await Bun.file(LOG_PATH).text();
-    return text.length > max ? text.slice(-max) : text;
+    return await Bun.file(LOG_PATH).text();
   } catch {
     return "";
   }
@@ -140,10 +158,11 @@ function appendLog(text: string): void {
 }
 
 async function toDevStack(stored: StoredStack): Promise<DevStack> {
+  const log = await readLog();
   return {
     ...stored,
     alive: stored.pid !== null && runtime.isAlive(stored.pid),
-    logTail: await readLogTail(),
+    logTail: log.length > 4000 ? log.slice(-4000) : log,
     url: DEV_STACK_URL,
   };
 }
@@ -204,6 +223,7 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
     branch: task.headBranch,
     state: "starting",
     pid: null,
+    detail: "Checking out the branch",
     error: null,
     startedAt: now(),
   };
@@ -213,7 +233,7 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
 }
 
 async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
-  const fail = (error: string) => saveStack({ ...stored, state: "failed", error });
+  const fail = (error: string) => saveStack({ ...stored, state: "failed", detail: null, error });
   try {
     const changed = await changedFileCount(mainPath);
     if (changed === null || changed > 0) {
@@ -239,16 +259,56 @@ async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
     mkdirSync(dirname(LOG_PATH), { recursive: true });
     await Bun.write(LOG_PATH, `# ${now()} boot ${stored.branch} (${target}) in ${mainPath}\n$ ${BOOT_COMMAND}\n`);
     const { pid, exited } = runtime.spawn(mainPath, LOG_PATH);
-    const up: StoredStack = { ...stored, state: "up", pid };
-    await saveStack(up);
-
-    void exited.then(async (code) => {
-      const current = await loadStack();
-      if (current?.pid !== pid || current.state !== "up") return; // stopped by us, or superseded
-      await saveStack({ ...current, state: "failed", error: `Boot process exited with code ${code}; see log` });
-    });
+    const booting: StoredStack = { ...stored, pid, detail: "Running hbup" };
+    await saveStack(booting);
+    watchExit(pid, exited);
+    await waitUntilReady(booting);
   } catch (err) {
     await fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** A boot process that ends on its own (while starting or up) means the stack is broken. */
+function watchExit(pid: number, exited: Promise<number>): void {
+  void exited.then(async (code) => {
+    const current = await loadStack();
+    if (current?.pid !== pid || (current.state !== "up" && current.state !== "starting")) return; // stopped by us, or superseded
+    await saveStack({ ...current, state: "failed", detail: null, error: `Boot process exited with code ${code}; see log` });
+  });
+}
+
+/**
+ * Poll until the bundler has compiled and the site answers (anything but a
+ * gateway 5xx from nginx), then mark the stack up. Gives up after
+ * READY_TIMEOUT_MS. Stops silently if the record changes underneath (stop,
+ * failure, restart).
+ */
+async function waitUntilReady(stored: StoredStack): Promise<void> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let lastDetail = stored.detail;
+  while (Date.now() < deadline) {
+    await Bun.sleep(runtime.readyPollMs);
+    const current = await loadStack();
+    if (!current || current.pid !== stored.pid || current.state !== "starting") return;
+
+    const compiled = BUNDLER_READY.test(await readLog());
+    const status = compiled ? await runtime.probe(DEV_STACK_URL) : null;
+    if (compiled && status !== null && status < 500) {
+      await saveStack({ ...current, state: "up", detail: null });
+      return;
+    }
+
+    const detail = !compiled
+      ? "Waiting for the bundler to compile"
+      : `Bundler ready, waiting for the web app (HTTP ${status ?? "no response"})`;
+    if (detail !== lastDetail) {
+      lastDetail = detail;
+      await saveStack({ ...current, detail });
+    }
+  }
+  const current = await loadStack();
+  if (current?.pid === stored.pid && current.state === "starting") {
+    await saveStack({ ...current, state: "failed", detail: null, error: "Stack did not become ready in time; see log" });
   }
 }
 
@@ -266,7 +326,7 @@ export async function stopDevStack(taskId: number): Promise<DevStack> {
   const mainPath = await resolveMainPath(repository);
   const baseBranch = repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH;
 
-  const stopping: StoredStack = { ...stored, state: "stopping", error: null };
+  const stopping: StoredStack = { ...stored, state: "stopping", detail: null, error: null };
   await saveStack(stopping);
   track(runStop(stopping, mainPath, baseBranch));
   return toDevStack(stopping);
@@ -311,7 +371,11 @@ export async function reconcileDevStack(): Promise<void> {
   const stored = await loadStack();
   if (!stored) return;
   if (stored.state === "starting") {
-    await saveStack({ ...stored, state: "failed", error: "Boot interrupted by a server restart" });
+    if (stored.pid !== null && runtime.isAlive(stored.pid)) {
+      track(waitUntilReady(stored)); // boot process survived the restart; keep watching for readiness
+    } else {
+      await saveStack({ ...stored, state: "failed", detail: null, error: "Boot interrupted by a server restart" });
+    }
   } else if (stored.state === "stopping") {
     const { repository } = await loadTaskAndRepo(stored.taskId).catch(() => ({ repository: null }));
     if (!repository) {

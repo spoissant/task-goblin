@@ -40,7 +40,7 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
     tooltip = `Dev stack is up for ${stack.branch}`;
   } else if (stack.state === "starting" || stack.state === "stopping") {
     icon = <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />;
-    tooltip = stack.state === "starting" ? "Booting…" : "Stopping…";
+    tooltip = stack.state === "starting" ? `Booting…\n${stack.detail ?? ""}`.trimEnd() : "Stopping…";
   } else if (stack.state === "failed") {
     icon = <Square className="h-3.5 w-3.5 text-red-500" />;
     tooltip = `Failed: ${stack.error ?? "unknown error"}\nClick to reset (stops the stack, switches back)`;

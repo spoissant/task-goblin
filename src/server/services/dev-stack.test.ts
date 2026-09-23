@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
 import { sqlite } from "../../db";
 import { createTestTables } from "../../test/createSchema";
+import { appendFileSync } from "fs";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import {
   bootDevStack,
@@ -20,6 +21,10 @@ describe("dev stack", () => {
   let localBranch = true;
   let alive = false;
   let spawned = 0;
+  let compiled = false;
+  let probeStatus: number | null = null;
+  const LOG = process.env.DEV_STACK_LOG!;
+  const COMPILED_LINE = "\n  \u001b[32m✓\u001b[39m Compiled successfully 14.97s\n";
 
   beforeAll(() => createTestTables(sqlite));
 
@@ -29,6 +34,8 @@ describe("dev stack", () => {
     localBranch = true;
     alive = false;
     spawned = 0;
+    compiled = false;
+    probeStatus = null;
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
@@ -50,13 +57,20 @@ describe("dev stack", () => {
       spawn() {
         spawned++;
         alive = true;
-        return { pid: 4242, exited: new Promise<number>(() => {}) };
+        // Boot truncates the log first, so the bundler line goes in here when the test wants it.
+        if (compiled) appendFileSync(LOG, COMPILED_LINE);
+        return { pid: 4000 + spawned, exited: new Promise<number>(() => {}) };
       },
       isAlive: () => alive,
+      probe: async () => probeStatus,
+      readyPollMs: 5,
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Let a pending readiness watcher notice the record is gone.
+    sqlite.exec("DELETE FROM settings");
+    await Bun.sleep(20);
     resetCommandRunner();
     setDevStackRuntime(null);
   });
@@ -66,20 +80,40 @@ describe("dev stack", () => {
     await expect(bootDevStack(3)).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
   });
 
-  it("detaches the main checkout at the local branch and starts the boot command", async () => {
+  it("detaches the main checkout at the local branch and stays booting until the site answers", async () => {
     const started = await bootDevStack(1);
     expect(started.state).toBe("starting");
-    await devStackSettled();
+    await Bun.sleep(30);
 
-    const { stack } = await getDevStackStatus(1);
-    expect(stack).toMatchObject({ taskId: 1, branch: "fix/EV-1", state: "up", pid: 4242, alive: true });
+    let { stack } = await getDevStackStatus(1);
+    expect(stack).toMatchObject({ taskId: 1, branch: "fix/EV-1", state: "starting", pid: 4001, alive: true });
+    expect(stack?.detail).toContain("bundler");
     expect(commands).toContain("git fetch origin fix/EV-1");
     expect(commands).toContain("git switch --detach fix/EV-1");
     expect(spawned).toBe(1);
+
+    // Bundler compiled but nginx still answers 502 for the web app.
+    appendFileSync(LOG, COMPILED_LINE);
+    probeStatus = 502;
+    await Bun.sleep(30);
+    ({ stack } = await getDevStackStatus(1));
+    expect(stack?.state).toBe("starting");
+    expect(stack?.detail).toContain("HTTP 502");
+
+    probeStatus = 200;
+    await devStackSettled();
+    ({ stack } = await getDevStackStatus(1));
+    expect(stack).toMatchObject({ state: "up", detail: null });
   });
+
+  const ready = () => {
+    compiled = true;
+    probeStatus = 200;
+  };
 
   it("falls back to origin when the branch only exists remotely", async () => {
     localBranch = false;
+    ready();
     await bootDevStack(1);
     await devStackSettled();
     expect(commands).toContain("git switch --detach origin/fix/EV-1");
@@ -97,6 +131,7 @@ describe("dev stack", () => {
   });
 
   it("refuses to boot while another task owns the stack", async () => {
+    ready();
     await bootDevStack(1);
     await devStackSettled();
     await expect(bootDevStack(2)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
@@ -107,6 +142,7 @@ describe("dev stack", () => {
   });
 
   it("stops the stack, switches back to the base branch and clears the record", async () => {
+    ready();
     await bootDevStack(1);
     await devStackSettled();
     commands.length = 0;
