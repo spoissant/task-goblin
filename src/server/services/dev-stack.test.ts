@@ -210,7 +210,25 @@ describe("dev stack", () => {
 
     running = 0;
     await devStackSettled();
+    expect(commands).toContain("git reset --hard");
     expect(commands).toContain("git switch sprint");
+    expect((await getDevStackStatus(1)).stack).toBeNull();
+  });
+
+  it("hard resets the checkout before switching back, even with schema.rb left dirty", async () => {
+    ready();
+    await bootDevStack(1);
+    await devStackSettled();
+    commands.length = 0;
+    dirty = true; // boot commands (bin/dev migration) leave db/schema.rb modified
+    running = 0;
+
+    await stopDevStack(1);
+    await devStackSettled();
+    const resetIndex = commands.indexOf("git reset --hard");
+    const switchIndex = commands.indexOf("git switch sprint");
+    expect(resetIndex).toBeGreaterThanOrEqual(0);
+    expect(switchIndex).toBeGreaterThan(resetIndex);
     expect((await getDevStackStatus(1)).stack).toBeNull();
   });
 

@@ -420,6 +420,13 @@ async function runStop(stored: StoredStack, mainPath: string, baseBranch: string
     }
 
     await saveStack({ ...stored, detail: `Switching back to ${baseBranch}` });
+    // The boot commands (e.g. bin/dev migration) always leave db/schema.rb
+    // modified; discard that before switching or git refuses to check out.
+    const reset = await runGit(mainPath, ["reset", "--hard"]);
+    if (reset.exitCode !== 0) {
+      await fail(`Stack stopped but git reset --hard failed: ${reset.stderr}`);
+      return;
+    }
     const switched = await runGit(mainPath, ["switch", baseBranch]);
     if (switched.exitCode !== 0) {
       await fail(`Stack stopped but git switch ${baseBranch} failed: ${switched.stderr}`);
