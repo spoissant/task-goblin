@@ -65,12 +65,52 @@ export interface DevStackRuntime {
   /** Start the long-running boot command with stdout/stderr appended to `logPath`. */
   spawn(cwd: string, logPath: string): { pid: number; exited: Promise<number> };
   isAlive(pid: number): boolean;
+  /**
+   * Best-effort SIGTERM (then SIGKILL) of pid and all its descendants.
+   * `bin/dev start` is a shell script whose dev-server supervisor respawns
+   * children on crash and doesn't forward signals, so killing just the
+   * recorded pid leaves the real work running; this walks the whole tree.
+   */
+  killTree(pid: number): Promise<void>;
   /** HTTP status of the booted site, or null when nothing answers. */
   probe(url: string): Promise<number | null>;
   /** Delay between readiness checks. */
   readyPollMs: number;
   /** How long to wait for the main stack's containers to stop. */
   downTimeoutMs: number;
+}
+
+const KILL_TREE_GRACE_MS = 2_000;
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function directChildren(pid: number): Promise<number[]> {
+  const proc = Bun.spawn(["pgrep", "-P", String(pid)], { stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+  const [stdout] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  return stdout
+    .split("\n")
+    .map((line) => Number(line.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+/** pid and every descendant, breadth-first. */
+async function processTree(pid: number): Promise<number[]> {
+  const all = [pid];
+  let frontier = [pid];
+  while (frontier.length > 0) {
+    const children = (await Promise.all(frontier.map(directChildren))).flat();
+    if (children.length === 0) break;
+    all.push(...children);
+    frontier = children;
+  }
+  return all;
 }
 
 const defaultRuntime: DevStackRuntime = {
@@ -85,12 +125,25 @@ const defaultRuntime: DevStackRuntime = {
     const exited = proc.exited.finally(() => closeSync(fd));
     return { pid: proc.pid, exited };
   },
-  isAlive(pid) {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
+  isAlive: pidAlive,
+  async killTree(pid) {
+    const pids = await processTree(pid);
+    for (const p of pids) {
+      try {
+        process.kill(p, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+    await Bun.sleep(KILL_TREE_GRACE_MS);
+    for (const p of pids) {
+      if (pidAlive(p)) {
+        try {
+          process.kill(p, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
     }
   },
   async probe(url) {
@@ -221,6 +274,14 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
   }
   if (existing && existing.state !== "failed") return toDevStack(existing);
 
+  // A previous attempt failed but may have left its process tree running
+  // (e.g. a supervisor that respawned the dev server past the recorded
+  // pid) — clean it up first so the new boot doesn't collide on the same
+  // ports.
+  if (existing && existing.pid !== null && runtime.isAlive(existing.pid)) {
+    await runtime.killTree(existing.pid);
+  }
+
   const stored: StoredStack = {
     taskId,
     branch: task.headBranch,
@@ -265,7 +326,7 @@ async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
     const booting: StoredStack = { ...stored, pid, detail: "Running hbup" };
     await saveStack(booting);
     watchExit(pid, exited);
-    await waitUntilReady(booting);
+    await waitUntilReady(booting, mainPath);
   } catch (err) {
     await fail(err instanceof Error ? err.message : String(err));
   }
@@ -284,9 +345,12 @@ function watchExit(pid: number, exited: Promise<number>): void {
  * Poll until the bundler has compiled and the site answers (anything but a
  * gateway 5xx from nginx), then mark the stack up. Gives up after
  * READY_TIMEOUT_MS. Stops silently if the record changes underneath (stop,
- * failure, restart).
+ * failure, restart). Also fails fast if the main stack's containers vanish
+ * once the bundler is compiled — a crashed bundler can trigger `bin/dev`'s
+ * own EXIT trap and tear the Docker stack down mid-boot, which otherwise
+ * leaves this loop polling a dead gateway for the full timeout.
  */
-async function waitUntilReady(stored: StoredStack): Promise<void> {
+async function waitUntilReady(stored: StoredStack, mainPath: string): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   let lastDetail = stored.detail;
   while (Date.now() < deadline) {
@@ -295,6 +359,11 @@ async function waitUntilReady(stored: StoredStack): Promise<void> {
     if (!current || current.pid !== stored.pid || current.state !== "starting") return;
 
     const compiled = BUNDLER_READY.test(await readLog());
+    if (compiled && (await runningMainContainers(mainPath)) === 0) {
+      await saveStack({ ...current, state: "failed", detail: null, error: "Docker stack is not running (crashed mid-boot?); see log" });
+      return;
+    }
+
     const status = compiled ? await runtime.probe(DEV_STACK_URL) : null;
     if (compiled && status !== null && status < 500) {
       await saveStack({ ...current, state: "up", detail: null });
@@ -396,32 +465,28 @@ async function waitForExit(pid: number): Promise<void> {
   while (runtime.isAlive(pid) && Date.now() < deadline) {
     await Bun.sleep(500);
   }
-  if (runtime.isAlive(pid)) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // already gone
-    }
-  }
+  if (runtime.isAlive(pid)) await runtime.killTree(pid);
 }
 
 /** Resume work interrupted by a server restart. */
 export async function reconcileDevStack(): Promise<void> {
   const stored = await loadStack();
   if (!stored) return;
+
+  const { repository } = await loadTaskAndRepo(stored.taskId).catch(() => ({ repository: null }));
+  if (!repository) {
+    await saveStack(null);
+    return;
+  }
+  const mainPath = await resolveMainPath(repository);
+
   if (stored.state === "starting") {
     if (stored.pid !== null && runtime.isAlive(stored.pid)) {
-      track(waitUntilReady(stored)); // boot process survived the restart; keep watching for readiness
+      track(waitUntilReady(stored, mainPath)); // boot process survived the restart; keep watching for readiness
     } else {
       await saveStack({ ...stored, state: "failed", detail: null, error: "Boot interrupted by a server restart" });
     }
   } else if (stored.state === "stopping") {
-    const { repository } = await loadTaskAndRepo(stored.taskId).catch(() => ({ repository: null }));
-    if (!repository) {
-      await saveStack(null);
-      return;
-    }
-    const mainPath = await resolveMainPath(repository);
     track(runStop(stored, mainPath, repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH));
   }
 }

@@ -23,7 +23,8 @@ describe("dev stack", () => {
   let spawned = 0;
   let compiled = false;
   let probeStatus: number | null = null;
-  let running = 0; // containers of the main stack still running
+  let running = 1; // containers of the main stack still running
+  const killTreeCalls: number[] = [];
   const LOG = process.env.DEV_STACK_LOG!;
   const COMPILED_LINE = "\n  \u001b[32m✓\u001b[39m Compiled successfully 14.97s\n";
 
@@ -37,7 +38,8 @@ describe("dev stack", () => {
     spawned = 0;
     compiled = false;
     probeStatus = null;
-    running = 0;
+    running = 1;
+    killTreeCalls.length = 0;
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
@@ -66,6 +68,10 @@ describe("dev stack", () => {
         return { pid: 4000 + spawned, exited: new Promise<number>(() => {}) };
       },
       isAlive: () => alive,
+      async killTree(pid) {
+        killTreeCalls.push(pid);
+        alive = false;
+      },
       probe: async () => probeStatus,
       readyPollMs: 5,
       downTimeoutMs: 40,
@@ -144,6 +150,44 @@ describe("dev stack", () => {
     // Booting the owner again is a no-op.
     expect((await bootDevStack(1)).state).toBe("up");
     expect(spawned).toBe(1);
+  });
+
+  it("kills a leftover process tree before rebooting a failed stack", async () => {
+    ready();
+    await bootDevStack(1);
+    await devStackSettled();
+    expect(spawned).toBe(1);
+    expect(alive).toBe(true);
+
+    // Simulate a crash whose EXIT trap killed Docker but left the dev-server
+    // supervisor tree running past the recorded pid.
+    sqlite.exec(
+      `UPDATE settings SET value = '${JSON.stringify({
+        taskId: 1,
+        branch: "fix/EV-1",
+        state: "failed",
+        pid: 4001,
+        detail: null,
+        error: "boom",
+        startedAt: "2026-01-01T00:00:00.000Z",
+      })}' WHERE key = 'dev_stack'`,
+    );
+
+    await bootDevStack(1);
+    await devStackSettled();
+    expect(killTreeCalls).toEqual([4001]);
+    expect(spawned).toBe(2);
+  });
+
+  it("fails fast when the docker stack disappears once the bundler compiles", async () => {
+    compiled = true;
+    probeStatus = null; // gateway never comes back
+    running = 0; // containers already torn down
+    await bootDevStack(1);
+    await devStackSettled();
+    const { stack } = await getDevStackStatus(1);
+    expect(stack?.state).toBe("failed");
+    expect(stack?.error).toContain("not running");
   });
 
   it("stops the stack, switches back to the base branch and clears the record", async () => {
