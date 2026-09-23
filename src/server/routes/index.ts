@@ -10,6 +10,7 @@ import { deployRoutes } from "./deploy";
 import { syncBranchRoutes } from "./sync-branch";
 import { worktreeRoutes } from "./worktrees";
 import { taskWorktreeRoutes } from "./task-worktrees";
+import { devStackRoutes } from "./dev-stack";
 import { sessionRoutes } from "./sessions";
 import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
@@ -37,6 +38,7 @@ export const routes: Routes = {
   ...syncBranchRoutes,
   ...worktreeRoutes,
   ...taskWorktreeRoutes,
+  ...devStackRoutes,
   ...sessionRoutes,
   ...teamChannelRoutes,
   ...choreRoutes,

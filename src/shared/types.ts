@@ -134,6 +134,26 @@ export interface TaskWorktreeStatus extends TaskWorktree {
   changedFiles: number | null; // live git status count; null when unavailable
 }
 
+// Dev stack: the single local stack booted from a task branch in the repo's main checkout
+export type DevStackState = "starting" | "up" | "stopping" | "failed";
+
+export interface DevStack {
+  taskId: number;
+  branch: string;
+  state: DevStackState;
+  pid: number | null;
+  alive: boolean; // boot process still running (checked on read)
+  error: string | null;
+  startedAt: string;
+  logTail: string; // tail of logs/dev-stack.log
+  url: string; // where the booted app is served
+}
+
+export interface DevStackStatus {
+  supported: boolean; // this task's repository can boot a dev stack
+  stack: DevStack | null; // the one stack, whichever task owns it
+}
+
 // Background Claude Code session, one per chore run
 export type ClaudeSessionState = "queued" | "preparing" | "working" | "blocked" | "done" | "failed" | "stopped";
 

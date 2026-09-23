@@ -42,6 +42,7 @@ export function autoBroadcast(pathname: string) {
   if (pathname.includes("/todos")) entity = "todo";
   else if (pathname.includes("/settings")) entity = "setting";
   else if (pathname.includes("/sessions")) entity = "session";
+  else if (pathname.includes("/dev-stack")) entity = "dev-stack";
   else if (pathname.includes("/worktree")) entity = "worktree";
   else if (
     pathname.includes("/tasks") ||

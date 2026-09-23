@@ -7,6 +7,7 @@ const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
   setting: [["settings"], ["statusCategories"]],
   session: [["sessions"], ["tasks"]],
   worktree: [["worktree"]],
+  "dev-stack": [["dev-stack"]],
 };
 
 export function useRealtimeUpdates() {
