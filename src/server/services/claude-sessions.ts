@@ -13,6 +13,7 @@ import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
   listAgents,
+  pendingQuestion,
   readJobState,
   sessionLink,
   spawnBackground,
@@ -277,7 +278,7 @@ export async function pollActiveSessions(): Promise<void> {
   let agents: Awaited<ReturnType<typeof listAgents>> | null = null;
 
   for (const row of rows) {
-    const job = await readJobState(row.shortId!);
+    let job = await readJobState(row.shortId!);
     if (!job) {
       const misses = (missingStateCounts.get(row.id) ?? 0) + 1;
       missingStateCounts.set(row.id, misses);
@@ -290,6 +291,12 @@ export async function pollActiveSessions(): Promise<void> {
       continue;
     }
     missingStateCounts.delete(row.id);
+
+    // WORKAROUND (see pendingQuestion): remove once the CLI marks these prompts blocked.
+    if (job.tempo === "active" && job.linkScanPath) {
+      const question = await pendingQuestion(job.linkScanPath);
+      if (question) job = { ...job, tempo: "blocked", needs: question };
+    }
 
     const nextState = effectiveState(job);
     const updates: Partial<SessionRow> = {};

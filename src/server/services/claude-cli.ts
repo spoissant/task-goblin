@@ -25,6 +25,8 @@ export interface JobState {
   name?: string;
   updatedAt?: string;
   firstTerminalAt?: string | null;
+  /** The session's transcript (.jsonl). */
+  linkScanPath?: string;
 }
 
 export interface AgentEntry {
@@ -96,6 +98,42 @@ export async function readJobState(shortId: string): Promise<JobState | null> {
     const file = Bun.file(`${jobsDir()}/${shortId}/state.json`);
     if (!(await file.exists())) return null;
     return (await file.json()) as JobState;
+  } catch {
+    return null;
+  }
+}
+
+const TRANSCRIPT_TAIL_BYTES = 64 * 1024;
+
+/**
+ * WORKAROUND until the CLI reports it itself: a background session parked on
+ * an unanswered AskUserQuestion keeps `tempo: "active"` and no `needs` in
+ * state.json (seen on 2.1.281), so it looks like it is still working. Read the
+ * transcript tail instead: if the last message is an AskUserQuestion call with
+ * no answer yet, return its question. Delete this once state.json flips to
+ * blocked for these prompts.
+ */
+export async function pendingQuestion(transcriptPath: string): Promise<string | null> {
+  try {
+    const file = Bun.file(transcriptPath);
+    if (!(await file.exists())) return null;
+    const text = await file.slice(Math.max(0, file.size - TRANSCRIPT_TAIL_BYTES)).text();
+    const lines = text.split("\n").filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let entry: { type?: string; message?: { content?: unknown } };
+      try {
+        entry = JSON.parse(lines[i]);
+      } catch {
+        continue; // the partial first line of the tail
+      }
+      if (entry.type === "user") return null; // answered, or a new prompt
+      if (entry.type !== "assistant") continue;
+      const content = Array.isArray(entry.message?.content) ? entry.message.content : [];
+      const ask = content.find((c) => c?.type === "tool_use" && c.name === "AskUserQuestion");
+      if (!ask) return null;
+      return ask.input?.questions?.[0]?.question ?? "Answer the session's question";
+    }
+    return null;
   } catch {
     return null;
   }

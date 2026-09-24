@@ -178,6 +178,33 @@ describe("claude sessions", () => {
     expect(list.items[0].firstTerminalAt).toBeTruthy();
   });
 
+  it("treats an unanswered AskUserQuestion as blocked despite an active tempo", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+    const transcript = `${JOBS_DIR}/transcript.jsonl`;
+    const ask = {
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: [{ question: "Send it?" }] } }],
+      },
+    };
+    const writeTranscript = (...entries: unknown[]) =>
+      writeFileSync(transcript, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    writeState("abcd1234", { state: "working", tempo: "active", linkScanPath: transcript });
+
+    writeTranscript(ask, { type: "attachment" });
+    await pollActiveSessions();
+    let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("blocked");
+    expect(list.items[0].needs).toBe("Send it?");
+
+    // answered: back to working
+    writeTranscript(ask, { type: "user", message: { content: [{ type: "tool_result" }] } });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
+  });
+
   it("marks a session failed when state.json never appears and the daemon does not know it", async () => {
     await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
     await new Promise((r) => setTimeout(r, 50));
