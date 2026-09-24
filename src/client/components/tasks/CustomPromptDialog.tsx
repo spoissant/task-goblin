@@ -53,7 +53,7 @@ interface CustomPromptDialogProps {
 export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: CustomPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<SessionModel>("opus");
-  const [effort, setEffort] = useState<SessionEffort>("high");
+  const [effort, setEffort] = useState<SessionEffort>("medium");
   const startSession = useStartSession();
   const chorePrompt = chore?.prompt ?? null;
 
