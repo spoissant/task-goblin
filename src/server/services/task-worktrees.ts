@@ -131,6 +131,19 @@ export async function startTaskWorktreePreparation(taskId: number): Promise<Task
 async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: string): Promise<TaskWorktreeRow> {
   const existing = await getTaskWorktreeRow(task.id);
   if (existing) {
+    const path = worktreePathFor(mainPath, worktreeKeyFor(task));
+    if (existing.repositoryId !== repository.id || existing.path !== path) {
+      // Task moved to another repository: point the row at the new checkout.
+      return updateRow(existing.id, {
+        repositoryId: repository.id,
+        path,
+        branch: task.headBranch,
+        state: "preparing",
+        error: null,
+        setupLog: null,
+        readyAt: null,
+      });
+    }
     if (existing.state === "ready") return existing;
     return updateRow(existing.id, { state: "preparing", error: null });
   }

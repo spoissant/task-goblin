@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, mkdtempSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { sqlite } from "../../db";
 import { createTestTables } from "../../test/createSchema";
 import { createRouter, type Routes } from "../router";
@@ -6,7 +9,7 @@ import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { parseWorktreeList } from "../lib/git";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { worktreePathFor, worktreeKeyFor } from "./task-worktrees";
+import { ensureTaskWorktree, getTaskWorktreeRow, worktreePathFor, worktreeKeyFor } from "./task-worktrees";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 
@@ -120,5 +123,24 @@ describe("task worktree routes", () => {
     const status = await request("GET", "/api/v1/tasks/1/worktree");
     expect(status.status).toBe(200);
     expect(await status.json()).toBeNull();
+  });
+
+  it("repoints a stale worktree row when the task moved to another repository", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
+    mkdirSync(main);
+    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, error, created_at, updated_at)
+      VALUES (1, 2, '/elsewhere/front-monorepo.EV-1', 'failed', 'old error', ${ts}, ${ts})`);
+    const porcelain = `worktree ${main}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${main}.EV-1\nHEAD def\ndetached\n`;
+    setCommandRunner(async (_cmd, args) => ok(args.includes("list") ? porcelain : ""));
+
+    await ensureTaskWorktree(1);
+
+    const row = await getTaskWorktreeRow(1);
+    expect(row?.repositoryId).toBe(1);
+    expect(row?.path).toBe(`${main}.EV-1`);
+    expect(row?.state).toBe("ready");
+    expect(row?.error).toBeNull();
   });
 });
