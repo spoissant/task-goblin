@@ -22,6 +22,7 @@ export function TasksPage() {
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
+  const [hideIdle, setHideIdle] = useLocalStorage("tasksPage.hideIdle", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
 
   const [bulkChoreTarget, setBulkChoreTarget] = useState<(PromptChore & { taskId: number }) | undefined>(undefined);
@@ -114,6 +115,16 @@ export function TasksPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Checkbox
+                id="hide-idle"
+                checked={hideIdle}
+                onCheckedChange={(checked) => setHideIdle(checked === true)}
+              />
+              <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
+                Hide idle
+              </Label>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Checkbox
                 id="compact-mode"
                 checked={compactMode}
                 onCheckedChange={(checked) => setCompactMode(checked === true)}
@@ -146,6 +157,7 @@ export function TasksPage() {
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
         hideParents={hideParents}
+        hideIdle={hideIdle}
         compactMode={compactMode}
         repoFilter={repoFilter}
       />
