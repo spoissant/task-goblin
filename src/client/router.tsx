@@ -5,6 +5,7 @@ import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { CompletedPage } from "./pages/CompletedPage";
 
 import { ReviewsPage } from "./pages/ReviewsPage";
+import { SessionsPage } from "./pages/SessionsPage";
 import { StandupPage } from "./pages/StandupPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
       {
         path: "reviews",
         element: <ReviewsPage />,
+      },
+      {
+        path: "sessions",
+        element: <SessionsPage />,
       },
       {
         path: "standup",

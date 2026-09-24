@@ -198,6 +198,11 @@ export interface ClaudeSession {
   updatedAt: string;
 }
 
+/** A session listed across tasks, carrying its task's title. */
+export interface RecentClaudeSession extends ClaudeSession {
+  taskTitle: string;
+}
+
 export interface RepositoryGuess {
   repositoryId: number | null;
   reason: "title-keyword" | "jira-project" | "only-enabled-repo" | null;

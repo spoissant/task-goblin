@@ -8,6 +8,7 @@ import {
   ChevronRight,
   GitPullRequestArrow,
   Mic,
+  Bot,
 } from "lucide-react";
 import {
   Tooltip,
@@ -20,6 +21,7 @@ const navItems = [
   { to: "/", icon: ListChecks, label: "Tasks" },
   { to: "/reviews", icon: GitPullRequestArrow, label: "Reviews" },
   { to: "/completed", icon: CheckCircle, label: "Completed" },
+  { to: "/sessions", icon: Bot, label: "AI Sessions" },
   { to: "/standup", icon: Mic, label: "Standup" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

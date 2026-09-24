@@ -6,6 +6,7 @@ import { getTaskOrThrow } from "../lib/queries";
 import {
   getSession,
   listLatestSessions,
+  listRecentSessions,
   listTaskSessions,
   startChoreSession,
   startCustomSession,
@@ -20,6 +21,15 @@ export const sessionRoutes: Routes = {
   "/api/v1/sessions": {
     async GET() {
       const items = (await listLatestSessions()).map(toApi);
+      return json({ items, total: items.length });
+    },
+  },
+
+  // Newest sessions across all tasks, for the sessions page.
+  "/api/v1/sessions/recent": {
+    async GET(req) {
+      const limit = Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit")) || 50, 1), 200);
+      const items = (await listRecentSessions(limit)).map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
       return json({ items, total: items.length });
     },
   },

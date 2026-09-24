@@ -4,7 +4,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessions } from "../../db/schema";
+import { claudeSessions, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getTaskWithRepository } from "../lib/queries";
@@ -83,6 +83,17 @@ export async function listLatestSessions(): Promise<SessionRow[]> {
     .from(claudeSessions)
     .where(sql`${claudeSessions.id} IN (SELECT MAX(id) FROM claude_sessions GROUP BY task_id)`)
     .orderBy(desc(claudeSessions.id));
+}
+
+/** Newest sessions across all tasks, with the task title, for the sessions page. */
+export async function listRecentSessions(limit: number): Promise<(SessionRow & { taskTitle: string })[]> {
+  const rows = await db
+    .select({ session: claudeSessions, taskTitle: tasks.title })
+    .from(claudeSessions)
+    .innerJoin(tasks, eq(tasks.id, claudeSessions.taskId))
+    .orderBy(desc(claudeSessions.id))
+    .limit(limit);
+  return rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle }));
 }
 
 async function findActiveSession(taskId: number): Promise<SessionRow | null> {

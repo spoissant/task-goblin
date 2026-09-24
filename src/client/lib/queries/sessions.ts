@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { ClaudeSession, ListResponse, SessionEffort, SessionModel } from "../types";
+import type { ClaudeSession, ListResponse, RecentClaudeSession, SessionEffort, SessionModel } from "../types";
 import { taskKeys } from "./tasks";
 
 export const sessionKeys = {
   all: ["sessions"] as const,
   latest: () => [...sessionKeys.all, "latest"] as const,
+  recent: () => [...sessionKeys.all, "recent"] as const,
   task: (taskId: number) => [...sessionKeys.all, "task", taskId] as const,
 };
 
@@ -14,6 +15,14 @@ export function useLatestSessionsQuery() {
   return useQuery({
     queryKey: sessionKeys.latest(),
     queryFn: () => api.get<ListResponse<ClaudeSession>>("/sessions"),
+  });
+}
+
+/** Newest sessions across all tasks, for the sessions page. */
+export function useRecentSessionsQuery() {
+  return useQuery({
+    queryKey: sessionKeys.recent(),
+    queryFn: () => api.get<ListResponse<RecentClaudeSession>>("/sessions/recent?limit=50"),
   });
 }
 

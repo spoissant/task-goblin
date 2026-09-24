@@ -1,35 +1,12 @@
-import { ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/client/lib/api";
 import { useTaskSessionsQuery } from "@/client/lib/queries/sessions";
 import { useRemoveTaskWorktree, useTaskWorktreeQuery } from "@/client/lib/queries/worktrees";
-import type { ClaudeSessionState } from "@/client/lib/types";
 import { Button } from "@/client/components/ui/button";
 import { CopyChip } from "@/client/components/ui/copy-chip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/client/components/ui/table";
+import { SessionsTable } from "./SessionsTable";
 import { cn } from "@/client/lib/utils";
-
-const STATE_CLASS: Record<ClaudeSessionState, string> = {
-  queued: "text-muted-foreground",
-  preparing: "text-muted-foreground",
-  working: "text-blue-500",
-  blocked: "text-yellow-600",
-  done: "text-green-600",
-  failed: "text-red-500",
-  stopped: "text-muted-foreground",
-};
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
 
 /** Worktree status and the history of AI sessions for a task. */
 export function SessionsSection({ taskId }: { taskId: number }) {
@@ -91,49 +68,7 @@ export function SessionsSection({ taskId }: { taskId: number }) {
         </div>
       )}
 
-      {items.length > 0 && (
-        <div className="rounded-lg border bg-card overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Chore</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Detail</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="text-sm">{s.choreName}</TableCell>
-                  <TableCell className={cn("text-sm font-medium", STATE_CLASS[s.state])}>{s.state}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-md truncate" title={s.needs ?? s.detail ?? s.error ?? ""}>
-                    {s.needs ?? s.detail ?? s.error ?? s.result ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatTime(s.createdAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      {s.link && (
-                        <a
-                          href={s.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline inline-flex items-center gap-1 text-xs"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          claude.ai
-                        </a>
-                      )}
-                      {s.shortId && <CopyChip value={`claude attach ${s.shortId}`}>attach {s.shortId}</CopyChip>}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      {items.length > 0 && <SessionsTable sessions={items} />}
     </div>
   );
 }
