@@ -1,7 +1,10 @@
 import { Link } from "react-router";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState } from "@/client/lib/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
+import { useRespawnSession } from "@/client/lib/queries/sessions";
+import { canRespawn } from "./columns/AiCell";
 import {
   Table,
   TableBody,
@@ -31,6 +34,13 @@ type SessionRow = ClaudeSession & { taskTitle?: string };
 
 /** AI sessions table; `showTask` adds a column linking to each session's task. */
 export function SessionsTable({ sessions, showTask = false }: { sessions: SessionRow[]; showTask?: boolean }) {
+  const respawnSession = useRespawnSession();
+  const respawn = (id: number) =>
+    respawnSession.mutate(id, {
+      onSuccess: () => toast.success("Session respawned"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
+    });
+
   return (
     <div className="rounded-lg border bg-card overflow-x-auto">
       <Table>
@@ -72,6 +82,18 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
                       <ExternalLink className="h-3 w-3" />
                       claude.ai
                     </a>
+                  )}
+                  {canRespawn(s) && (
+                    <button
+                      type="button"
+                      onClick={() => respawn(s.id)}
+                      disabled={respawnSession.isPending}
+                      title={`claude respawn ${s.shortId}`}
+                      className="text-blue-600 hover:underline inline-flex items-center gap-1 text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Respawn
+                    </button>
                   )}
                   {s.shortId && <CopyChip value={`claude attach ${s.shortId}`}>attach {s.shortId}</CopyChip>}
                 </div>

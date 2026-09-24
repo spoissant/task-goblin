@@ -8,6 +8,7 @@ import {
   reconcileOnStartup,
   setCapacityCheck,
   startQueued,
+  syncProcessLiveness,
 } from "./claude-sessions";
 import { ensureStackCapacity, sweepIdleStacks } from "./docker-stacks";
 import { reapCompletedWorktrees } from "./task-worktrees";
@@ -47,6 +48,7 @@ export function startClaudeRuntime(): void {
       await sweepIdleStacks();
       await reapCompletedWorktrees();
       await reapIdleProcesses();
+      await syncProcessLiveness();
       await startQueued();
     } catch (err) {
       console.error("[claude] sweep failed", err);

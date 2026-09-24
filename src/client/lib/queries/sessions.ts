@@ -64,3 +64,13 @@ export function useStopSession() {
     },
   });
 }
+
+export function useRespawnSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<ClaudeSession>(`/sessions/${id}/respawn`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+    },
+  });
+}

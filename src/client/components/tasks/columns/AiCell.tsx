@@ -8,15 +8,17 @@ import {
   Loader2,
   MessageSquare,
   PenLine,
+  RotateCcw,
   Sparkles,
   Square,
   Terminal,
+  Unplug,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState, Task } from "@/client/lib/types";
 import { resolveChorePrompt, useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
-import { useStopSession } from "@/client/lib/queries/sessions";
+import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +48,13 @@ export function isSessionActive(session: ClaudeSession | undefined): boolean {
   return !!session && ACTIVE_SESSION_STATES.includes(session.state);
 }
 
+/** The session's process is gone (reaped, stopped, or lost by the daemon) but its conversation is kept. */
+export function canRespawn(session: ClaudeSession | undefined): boolean {
+  return !!session?.shortId && !!session.processStoppedAt && !["queued", "preparing"].includes(session.state);
+}
+
+const DISCONNECTED_UI = { label: "Disconnected", icon: Unplug, className: "text-red-500" };
+
 /** States the column skips: the session is over and said nothing worth keeping. */
 const SETTLED_STATES: ClaudeSessionState[] = ["done", "stopped"];
 
@@ -67,6 +76,7 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   const { data: defsData } = useChoreDefinitionsQuery();
   const definitions = defsData?.items ?? [];
   const stopSession = useStopSession();
+  const respawnSession = useRespawnSession();
   // Both hold a PromptTarget, so `undefined` means "closed" and `null` means
   // "open with a blank prompt".
   const [promptTarget, setPromptTarget] = useState<PromptTarget | undefined>(undefined);
@@ -77,7 +87,7 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   // next-chore label. Its links stay in the menu below, and the task's
   // Sessions section still shows every state.
   const shown = session && !SETTLED_STATES.includes(session.state) ? session : undefined;
-  const ui = shown ? STATE_UI[shown.state] : null;
+  const ui = shown ? (active && canRespawn(shown) ? DISCONNECTED_UI : STATE_UI[shown.state]) : null;
   const Icon = ui?.icon ?? Sparkles;
 
   // Every start goes through the prompt dialog, so the command can be tweaked
@@ -98,6 +108,14 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
     stopSession.mutate(session.id, {
       onSuccess: () => toast.success("Session stopped"),
       onError: () => toast.error("Failed to stop session"),
+    });
+  };
+
+  const respawn = () => {
+    if (!session) return;
+    respawnSession.mutate(session.id, {
+      onSuccess: () => toast.success("Session respawned"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
     });
   };
 
@@ -183,6 +201,12 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
                   <DropdownMenuItem onClick={copyAttach}>
                     <Terminal className="h-3.5 w-3.5 mr-2" />
                     Copy <span className="font-mono ml-1">claude attach {session.shortId}</span>
+                  </DropdownMenuItem>
+                )}
+                {canRespawn(session) && (
+                  <DropdownMenuItem onClick={respawn} disabled={respawnSession.isPending}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                    Respawn session
                   </DropdownMenuItem>
                 )}
                 {active && (

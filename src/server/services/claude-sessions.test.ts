@@ -6,7 +6,7 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { pollActiveSessions, reapIdleProcesses } from "./claude-sessions";
+import { pollActiveSessions, reapIdleProcesses, syncProcessLiveness } from "./claude-sessions";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
@@ -119,6 +119,40 @@ describe("claude sessions", () => {
     expect(commands.filter((c) => c === "claude stop abcd1234")).toHaveLength(1);
     await reapIdleProcesses();
     expect(commands.filter((c) => c === "claude stop abcd1234")).toHaveLength(1);
+  });
+
+  it("detects a dead process, respawns it, and spares recently active sessions from the reaper", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+    const id = (await (await request("GET", "/api/v1/tasks/1/sessions")).json()).items[0].id;
+    const recent = new Date().toISOString();
+    writeState("abcd1234", { state: "done", tempo: "idle", updatedAt: recent, firstTerminalAt: "2026-01-01T00:00:00.000Z" });
+    await pollActiveSessions();
+
+    // finished long ago but touched just now (chat or respawn): not reaped
+    await reapIdleProcesses();
+    expect(commands.filter((c) => c === "claude stop abcd1234")).toHaveLength(0);
+
+    let pid: number | null = null;
+    setCommandRunner(async (cmd, args) => {
+      commands.push([cmd, ...args].join(" "));
+      if (args[0] === "agents") return ok(JSON.stringify([{ id: "abcd1234", kind: "background", cwd: "/", startedAt: 0, sessionId: "s", pid }]));
+      if (args[0] === "respawn") pid = 42;
+      return ok();
+    });
+
+    await syncProcessLiveness();
+    let row = await (await request("GET", `/api/v1/sessions/${id}`)).json();
+    expect(row.processStoppedAt).not.toBeNull();
+
+    const res = await request("POST", `/api/v1/sessions/${id}/respawn`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).processStoppedAt).toBeNull();
+    expect(commands).toContain("claude respawn abcd1234");
+
+    await syncProcessLiveness();
+    row = await (await request("GET", `/api/v1/sessions/${id}`)).json();
+    expect(row.processStoppedAt).toBeNull();
   });
 
   it("stops a working session", async () => {

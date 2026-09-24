@@ -153,3 +153,8 @@ export async function listAgents(): Promise<AgentEntry[]> {
 export function stopSession(shortId: string): Promise<CommandResult> {
   return runCommand("claude", ["stop", shortId], { cwd: homedir(), timeoutMs: 30_000 });
 }
+
+/** Restart a background session whose process is gone; its conversation is kept. */
+export function respawnSession(shortId: string): Promise<CommandResult> {
+  return runCommand("claude", ["respawn", shortId], { cwd: homedir(), timeoutMs: 30_000 });
+}

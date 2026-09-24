@@ -15,6 +15,7 @@ import {
   listAgents,
   pendingQuestion,
   readJobState,
+  respawnSession as cliRespawn,
   sessionLink,
   spawnBackground,
   stopSession as cliStop,
@@ -275,6 +276,40 @@ export async function stopSession(id: number): Promise<SessionRow> {
   });
 }
 
+/** Restart a session whose process was stopped or died, e.g. by the idle reaper. */
+export async function respawnSession(id: number): Promise<SessionRow> {
+  const row = await getSession(id);
+  if (!row.shortId) throw new AppError("Session never started a process", 400, "NO_PROCESS");
+  const result = await cliRespawn(row.shortId);
+  if (result.exitCode !== 0) {
+    const output = (result.stderr || result.stdout).trim();
+    throw new AppError(`claude respawn failed${output ? `: ${output}` : ""}`, 502, "RESPAWN_FAILED");
+  }
+  return updateRow(id, { processStoppedAt: null });
+}
+
+/**
+ * Mirror each session's process liveness into `processStoppedAt`, so the UI can
+ * offer a respawn when the daemon lost it (reboot, CLI update, reaper) and
+ * clear it when it was respawned from a terminal.
+ */
+export async function syncProcessLiveness(): Promise<void> {
+  const rows = await db
+    .select()
+    .from(claudeSessions)
+    .where(and(isNotNull(claudeSessions.shortId), inArray(claudeSessions.state, [...POLLED_STATES, ...TERMINAL_STATES])));
+  if (rows.length === 0) return;
+  // `--all` lists dead sessions too, so an empty list means the CLI failed: do not guess.
+  const agents = await listAgents();
+  if (agents.length === 0) return;
+  const alive = new Set(agents.filter((a) => a.pid).map((a) => a.id));
+  for (const row of rows) {
+    const running = alive.has(row.shortId!);
+    if (running && row.processStoppedAt) await updateRow(row.id, { processStoppedAt: null });
+    if (!running && !row.processStoppedAt) await updateRow(row.id, { processStoppedAt: now() });
+  }
+}
+
 // Consecutive polls where state.json was missing, per session id.
 const missingStateCounts = new Map<number, number>();
 
@@ -375,7 +410,11 @@ function normalizeState(state: string | undefined): ClaudeSessionState | null {
   }
 }
 
-/** Stop finished sessions' processes once they have been idle long enough. */
+/**
+ * Stop finished sessions' processes once they have been idle long enough.
+ * Idle is read from state.json, not the row: a done session can still be
+ * chatted with, or respawned, and the row stops tracking it once done.
+ */
 export async function reapIdleProcesses(): Promise<void> {
   const cutoff = new Date(Date.now() - REAP_IDLE_MS).toISOString();
   const rows = await db
@@ -390,6 +429,8 @@ export async function reapIdleProcesses(): Promise<void> {
       ),
     );
   for (const row of rows) {
+    const job = await readJobState(row.shortId!);
+    if (job && ((job.tempo ?? "idle") !== "idle" || (job.updatedAt ?? "") >= cutoff)) continue;
     await cliStop(row.shortId!);
     await db
       .update(claudeSessions)

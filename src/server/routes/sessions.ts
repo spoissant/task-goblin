@@ -8,6 +8,7 @@ import {
   listLatestSessions,
   listRecentSessions,
   listTaskSessions,
+  respawnSession,
   startChoreSession,
   startCustomSession,
   stopSession,
@@ -43,6 +44,12 @@ export const sessionRoutes: Routes = {
   "/api/v1/sessions/:id/stop": {
     async POST(_req, params) {
       return json(toApi(await stopSession(parseId(params.id))));
+    },
+  },
+
+  "/api/v1/sessions/:id/respawn": {
+    async POST(_req, params) {
+      return json(toApi(await respawnSession(parseId(params.id))));
     },
   },
 
