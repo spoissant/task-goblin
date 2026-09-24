@@ -1,14 +1,15 @@
 /**
  * Background Claude Code sessions per task: one fresh session per chore run,
  * never resumed. Continuity lives in the worktree, Task Goblin and the PR.
+ * PR reviews from the Reviews page are the exception: no task, keyed by PR URL.
  */
 import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessions, tasks } from "../../db/schema";
+import { claudeSessions, repositories, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getTaskWithRepository } from "../lib/queries";
-import { CUSTOM_CHORE, getChoreDefinition, resolvePrompt } from "../lib/chores";
+import { CUSTOM_CHORE, REVIEW_CHORE, getChoreDefinition, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
@@ -82,16 +83,29 @@ export async function listLatestSessions(): Promise<SessionRow[]> {
   return db
     .select()
     .from(claudeSessions)
-    .where(sql`${claudeSessions.id} IN (SELECT MAX(id) FROM claude_sessions GROUP BY task_id)`)
+    .where(
+      sql`${claudeSessions.id} IN (SELECT MAX(id) FROM claude_sessions WHERE task_id IS NOT NULL GROUP BY task_id)`,
+    )
     .orderBy(desc(claudeSessions.id));
 }
 
-/** Newest sessions across all tasks, with the task title, for the sessions page. */
-export async function listRecentSessions(limit: number): Promise<(SessionRow & { taskTitle: string })[]> {
+/** Newest session per reviewed PR, for the Reviews page. */
+export async function listLatestReviewSessions(): Promise<SessionRow[]> {
+  return db
+    .select()
+    .from(claudeSessions)
+    .where(
+      sql`${claudeSessions.id} IN (SELECT MAX(id) FROM claude_sessions WHERE pr_url IS NOT NULL GROUP BY pr_url)`,
+    )
+    .orderBy(desc(claudeSessions.id));
+}
+
+/** Newest sessions across all tasks and PR reviews, with the task title, for the sessions page. */
+export async function listRecentSessions(limit: number): Promise<(SessionRow & { taskTitle: string | null })[]> {
   const rows = await db
     .select({ session: claudeSessions, taskTitle: tasks.title })
     .from(claudeSessions)
-    .innerJoin(tasks, eq(tasks.id, claudeSessions.taskId))
+    .leftJoin(tasks, eq(tasks.id, claudeSessions.taskId))
     .orderBy(desc(claudeSessions.id))
     .limit(limit);
   return rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle }));
@@ -151,6 +165,57 @@ export async function startCustomSession(taskId: number, input: CustomSessionInp
     model: input.model ?? null,
     effort: input.effort ?? null,
   });
+}
+
+const PR_URL_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
+
+/**
+ * Review a colleague's PR in its repo's main checkout, with no task. Any
+ * number can run at once; only one per PR.
+ */
+export async function startReviewSession(prUrl: string): Promise<SessionRow> {
+  const match = prUrl.trim().match(PR_URL_RE);
+  if (!match) throw new AppError("prUrl must be a GitHub pull request URL", 400, "VALIDATION_ERROR");
+  const [url, owner, repo, number] = match;
+
+  const repoRows = await db
+    .select()
+    .from(repositories)
+    .where(and(sql`lower(${repositories.owner}) = ${owner.toLowerCase()}`, sql`lower(${repositories.repo}) = ${repo.toLowerCase()}`));
+  const repository = repoRows[0];
+  if (!repository) throw new AppError(`Repository ${owner}/${repo} is not configured`, 400, "NO_REPOSITORY");
+  const cwd = await resolveMainPath(repository);
+
+  const active = await db
+    .select()
+    .from(claudeSessions)
+    .where(and(eq(claudeSessions.prUrl, url), inArray(claudeSessions.state, ACTIVE_STATES)))
+    .limit(1);
+  if (active[0]) {
+    throw new AppError(`Session ${active[0].id} is already ${active[0].state} on this PR`, 409, "SESSION_ACTIVE");
+  }
+
+  const timestamp = now();
+  const rows = await db
+    .insert(claudeSessions)
+    .values({
+      taskId: null,
+      prUrl: url,
+      repositoryId: repository.id,
+      choreKey: REVIEW_CHORE.key,
+      choreName: REVIEW_CHORE.name,
+      prompt: `${REVIEW_CHORE.prompt} ${url}`,
+      cwd,
+      name: `${repository.alias ?? repository.repo}#${number} · ${REVIEW_CHORE.name}`,
+      state: "preparing",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .returning();
+  const row = rows[0];
+  broadcast("session", { taskId: null, id: row.id, state: row.state });
+  void runStart(row.id);
+  return row;
 }
 
 type ChoreLike = { key: string; name: string; cwd: "task" | "main" };
@@ -224,6 +289,10 @@ export async function runStart(sessionId: number): Promise<void> {
 
     let cwd = row.cwd;
     if (chore.cwd === "task") {
+      if (row.taskId === null) {
+        await updateRow(sessionId, { state: "failed", error: `${chore.name} needs a task` });
+        return;
+      }
       const worktree = await ensureTaskWorktree(row.taskId);
       if (worktree.state !== "ready") {
         await updateRow(sessionId, {
@@ -247,7 +316,8 @@ async function spawnGated(sessionId: number, cwd: string): Promise<void> {
   const row = await getRow(sessionId);
   if (!row || (row.state !== "preparing" && row.state !== "queued")) return; // stopped meanwhile
 
-  if ((await capacityCheck(cwd)) === "queued") {
+  // The cap guards task Docker stacks; a task-less PR review never boots one.
+  if (row.taskId !== null && (await capacityCheck(cwd)) === "queued") {
     if (row.state !== "queued") await updateRow(sessionId, { state: "queued", cwd });
     return;
   }

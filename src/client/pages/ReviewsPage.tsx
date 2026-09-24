@@ -1,8 +1,11 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/lib/queries";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
+import { useLatestSessionsQuery, useReviewSessionsQuery } from "@/client/lib/queries/sessions";
+import { ReviewCell } from "@/client/components/reviews/ReviewCell";
+import { isSessionActive } from "@/client/components/tasks/columns/AiCell";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
@@ -28,12 +31,10 @@ import {
   SignalMedium,
   SignalHigh,
   Flame,
-  PencilLine,
 } from "lucide-react";
-import type { ReviewRequest, Repository } from "@/client/lib/types";
+import type { ClaudeSession, ReviewRequest, Repository } from "@/client/lib/types";
 import { categorizePrSize } from "@/shared/pr-size";
 import type { PrSize } from "@/shared/types";
-import { toast } from "sonner";
 
 function formatRelativeTime(dateString: string): string {
   const now = Date.now();
@@ -207,6 +208,30 @@ export function ReviewsPage() {
     );
   }, [visibleItems]);
 
+  // Review column: task-less sessions for others' PRs, the task's code-review
+  // chore for your own.
+  const { data: reviewSessions } = useReviewSessionsQuery();
+  const { data: taskSessions } = useLatestSessionsQuery();
+  const sessionFor = useMemo(() => {
+    const byPr = new Map<string, ClaudeSession>();
+    for (const s of reviewSessions?.items ?? []) if (s.prUrl) byPr.set(s.prUrl, s);
+    const byTask = new Map<number, ClaudeSession>();
+    for (const s of taskSessions?.items ?? []) {
+      if (s.taskId !== null && s.choreKey === "code-review-pr") byTask.set(s.taskId, s);
+    }
+    return (request: ReviewRequest) =>
+      scope === "mine" ? (request.taskId != null ? byTask.get(request.taskId) : undefined) : byPr.get(request.url);
+  }, [reviewSessions, taskSessions, scope]);
+
+  // A review that just finished has likely posted a draft: refetch so its badge shows.
+  const activeReviewIds = useRef(new Set<number>());
+  useEffect(() => {
+    const active = new Set((reviewSessions?.items ?? []).filter(isSessionActive).map((s) => s.id));
+    const finished = [...activeReviewIds.current].some((id) => !active.has(id));
+    activeReviewIds.current = active;
+    if (finished) queryClient.invalidateQueries({ queryKey: reviewKeys.requests("others") });
+  }, [reviewSessions, queryClient]);
+
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all });
   };
@@ -277,7 +302,7 @@ export function ReviewsPage() {
                       <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
                       <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
                     </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+                    <ReviewTable items={prs} repoBySlug={repoBySlug} sessionFor={sessionFor} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
                   </div>
                 );
               })}
@@ -285,7 +310,7 @@ export function ReviewsPage() {
           )}
 
           {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
+            <ReviewTable items={flatItems} repoBySlug={repoBySlug} sessionFor={sessionFor} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
           )}
         </TooltipProvider>
       )}
@@ -296,6 +321,7 @@ export function ReviewsPage() {
 interface ReviewTableProps {
   items: ReviewRequest[];
   repoBySlug: Map<string, Repository>;
+  sessionFor: (request: ReviewRequest) => ClaudeSession | undefined;
   showSize: boolean;
   scope: ReviewScope;
   jiraHost?: string | null;
@@ -305,7 +331,7 @@ interface ReviewTableProps {
   onToggleHighPriority: (key: string) => void;
 }
 
-function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers, vips, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
+function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost, teamMembers, vips, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
   const isMine = scope === "mine";
   return (
     <Table>
@@ -320,7 +346,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers
           {isMine && <TableHead className="w-[110px]">Jira</TableHead>}
           <TableHead className="w-[80px]">PR</TableHead>
           <TableHead>Title</TableHead>
-          <TableHead className="w-[80px]">Chores</TableHead>
+          <TableHead className="w-[110px]">Review</TableHead>
           <TableHead className="w-[150px]">Repo</TableHead>
           <TableHead className="w-[120px]">Author</TableHead>
           <TableHead className="w-[120px]">Created</TableHead>
@@ -336,6 +362,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers
             key={prKey(request)}
             request={request}
             repoBySlug={repoBySlug}
+            session={sessionFor(request)}
             showSize={showSize}
             scope={scope}
             jiraHost={jiraHost}
@@ -353,6 +380,7 @@ function ReviewTable({ items, repoBySlug, showSize, scope, jiraHost, teamMembers
 interface ReviewRequestRowProps {
   request: ReviewRequest;
   repoBySlug: Map<string, Repository>;
+  session?: ClaudeSession;
   showSize: boolean;
   scope: ReviewScope;
   jiraHost?: string | null;
@@ -369,7 +397,7 @@ const VIP_ROW = `bg-rose-50/60 hover:bg-rose-100/70 dark:bg-rose-950/30 dark:hov
 
 const TEAM_ROW = `bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500`;
 
-function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTeammate, isVip, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraHost, isTeammate, isVip, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
   const isMine = scope === "mine";
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
   return (
@@ -455,44 +483,26 @@ function ReviewRequestRow({ request, repoBySlug, showSize, scope, jiraHost, isTe
 
       {/* Title */}
       <TableCell className="max-w-[400px]">
-        <div className="flex items-center gap-2">
-          <a
-            href={request.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline truncate block"
-            title={request.title}
-          >
-            {request.title}
-          </a>
-          {!isMine && request.hasPendingReview && (
-            <Badge
-              variant="outline"
-              className="shrink-0 gap-1 text-[10px] px-1.5 py-0 border-violet-400 bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-100 dark:border-violet-500"
-              title="You have an unsubmitted draft review on this PR"
-            >
-              <PencilLine className="h-3 w-3" />
-              Draft review
-            </Badge>
-          )}
-        </div>
+        <a
+          href={request.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:underline truncate block"
+          title={request.title}
+        >
+          {request.title}
+        </a>
       </TableCell>
 
-      {/* Chores */}
+      {/* Review */}
       <TableCell>
-        <div className="inline-flex items-stretch rounded overflow-hidden bg-muted text-muted-foreground">
-          <button
-            type="button"
-            className="px-1.5 py-0.5 text-xs font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground"
-            onClick={() => {
-              const prompt = `/chore-code-review-pr ${request.url}`;
-              navigator.clipboard.writeText(prompt);
-              toast.success("Copied: " + prompt);
-            }}
-          >
-            Code Review
-          </button>
-        </div>
+        <ReviewCell
+          session={session}
+          start={isMine ? (request.taskId != null ? { taskId: request.taskId } : null) : { prUrl: request.url }}
+          disabledReason={isMine && request.taskId == null ? "No task for this PR" : undefined}
+          hasDraft={!isMine && request.hasPendingReview}
+          prUrl={request.url}
+        />
       </TableCell>
 
       {/* Repository */}

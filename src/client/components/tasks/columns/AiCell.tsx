@@ -34,7 +34,7 @@ import { CustomPromptDialog, type PromptChore } from "../CustomPromptDialog";
 
 export const ACTIVE_SESSION_STATES: ClaudeSessionState[] = ["queued", "preparing", "working", "blocked"];
 
-const STATE_UI: Record<ClaudeSessionState, { label: string; icon: typeof Loader2; className: string }> = {
+export const STATE_UI: Record<ClaudeSessionState, { label: string; icon: typeof Loader2; className: string }> = {
   queued: { label: "Queued", icon: Clock, className: "text-muted-foreground" },
   preparing: { label: "Preparing", icon: Loader2, className: "text-muted-foreground animate-spin" },
   working: { label: "Working", icon: Loader2, className: "text-yellow-500 animate-spin" },
@@ -53,7 +53,7 @@ export function canRespawn(session: ClaudeSession | undefined): boolean {
   return !!session?.shortId && !!session.processStoppedAt && !["queued", "preparing"].includes(session.state);
 }
 
-const DISCONNECTED_UI = { label: "Disconnected", icon: Unplug, className: "text-red-500" };
+export const DISCONNECTED_UI = { label: "Disconnected", icon: Unplug, className: "text-red-500" };
 
 /** States the column skips: the session is over and said nothing worth keeping. */
 const SETTLED_STATES: ClaudeSessionState[] = ["done", "stopped"];

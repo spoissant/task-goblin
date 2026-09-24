@@ -7,6 +7,7 @@ export const sessionKeys = {
   all: ["sessions"] as const,
   latest: () => [...sessionKeys.all, "latest"] as const,
   recent: () => [...sessionKeys.all, "recent"] as const,
+  reviews: () => [...sessionKeys.all, "reviews"] as const,
   task: (taskId: number) => [...sessionKeys.all, "task", taskId] as const,
 };
 
@@ -23,6 +24,30 @@ export function useRecentSessionsQuery() {
   return useQuery({
     queryKey: sessionKeys.recent(),
     queryFn: () => api.get<ListResponse<RecentClaudeSession>>("/sessions/recent?limit=50"),
+  });
+}
+
+/** Newest task-less review session per PR, for the Reviews page. */
+export function useReviewSessionsQuery() {
+  return useQuery({
+    queryKey: sessionKeys.reviews(),
+    queryFn: () => api.get<ListResponse<ClaudeSession>>("/review-sessions"),
+  });
+}
+
+/** A colleague's PR by URL, or one of your own PRs through its task's code-review chore. */
+export type StartReviewInput = { prUrl: string } | { taskId: number };
+
+export function useStartReviewSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StartReviewInput) =>
+      "prUrl" in input
+        ? api.post<ClaudeSession>("/review-sessions", { prUrl: input.prUrl })
+        : api.post<ClaudeSession>(`/tasks/${input.taskId}/sessions`, { choreKey: "code-review-pr" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+    },
   });
 }
 

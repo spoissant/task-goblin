@@ -6,7 +6,7 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { pollActiveSessions, reapIdleProcesses, syncProcessLiveness } from "./claude-sessions";
+import { pollActiveSessions, reapIdleProcesses, setCapacityCheck, syncProcessLiveness } from "./claude-sessions";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
@@ -66,6 +66,52 @@ describe("claude sessions", () => {
     const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "nope" });
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe("UNKNOWN_CHORE");
+  });
+
+  it("starts task-less PR reviews in the main checkout, in parallel, one per PR", async () => {
+    // a full Docker stack cap must not hold back reviews: they never boot a stack
+    setCapacityCheck(async () => "queued");
+    let spawns = 0;
+    setCommandRunner(async (cmd, args) => {
+      commands.push([cmd, ...args].join(" "));
+      if (cmd === "claude" && args[0] === "--bg") return ok(`backgrounded · 0000000${++spawns}`);
+      return ok("[]");
+    });
+    try {
+      const bad = await request("POST", "/api/v1/review-sessions", { prUrl: "https://example.com/x" });
+      expect(bad.status).toBe(400);
+      const unknown = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/other/pull/1" });
+      expect((await unknown.json()).error.code).toBe("NO_REPOSITORY");
+
+      const res = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
+      expect(res.status).toBe(202);
+      const created = await res.json();
+      expect(created.taskId).toBeNull();
+      expect(created.prUrl).toBe("https://github.com/HB/alumni_connect/pull/42");
+      expect(created.cwd).toBe(MAIN_PATH);
+      expect(created.prompt).toBe("/chore-code-review-pr https://github.com/HB/alumni_connect/pull/42");
+
+      const second = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/alumni_connect/pull/43" });
+      expect(second.status).toBe(202);
+      const dup = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
+      expect(dup.status).toBe(409);
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(commands.filter((c) => c.startsWith("claude --bg"))).toEqual([
+        "claude --bg --rc --name alumni_connect#42 · Code review /chore-code-review-pr https://github.com/HB/alumni_connect/pull/42",
+        "claude --bg --rc --name alumni_connect#43 · Code review /chore-code-review-pr https://github.com/hb/alumni_connect/pull/43",
+      ]);
+
+      const list = await (await request("GET", "/api/v1/review-sessions")).json();
+      expect(list.items.map((s: { state: string }) => s.state)).toEqual(["working", "working"]);
+      // task views ignore them
+      expect((await (await request("GET", "/api/v1/sessions")).json()).items).toHaveLength(0);
+      const recent = await (await request("GET", "/api/v1/sessions/recent")).json();
+      expect(recent.items).toHaveLength(2);
+      expect(recent.items[0].taskTitle).toBeNull();
+    } finally {
+      setCapacityCheck(async () => "ok");
+    }
   });
 
   it("starts a main-checkout chore, polls it to done, and reaps it", async () => {

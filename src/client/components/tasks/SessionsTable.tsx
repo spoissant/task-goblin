@@ -30,7 +30,7 @@ function formatTime(iso: string): string {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-type SessionRow = ClaudeSession & { taskTitle?: string };
+type SessionRow = ClaudeSession & { taskTitle?: string | null };
 
 /** AI sessions table; `showTask` adds a column linking to each session's task. */
 export function SessionsTable({ sessions, showTask = false }: { sessions: SessionRow[]; showTask?: boolean }) {
@@ -59,10 +59,18 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
             <TableRow key={s.id}>
               <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatTime(s.createdAt)}</TableCell>
               {showTask && (
-                <TableCell className="text-sm max-w-xs truncate" title={s.taskTitle}>
-                  <Link to={`/tasks/${s.taskId}`} className="hover:underline">
-                    {s.taskTitle ?? `#${s.taskId}`}
-                  </Link>
+                <TableCell className="text-sm max-w-xs truncate" title={s.taskTitle ?? s.prUrl ?? undefined}>
+                  {s.taskId !== null ? (
+                    <Link to={`/tasks/${s.taskId}`} className="hover:underline">
+                      {s.taskTitle ?? `#${s.taskId}`}
+                    </Link>
+                  ) : s.prUrl ? (
+                    <a href={s.prUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      {s.name}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
               )}
               <TableCell className="text-sm">{s.choreName}</TableCell>

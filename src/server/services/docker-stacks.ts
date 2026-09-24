@@ -77,6 +77,7 @@ async function activityByTask(taskIds: number[]): Promise<Map<number, Activity>>
     .from(claudeSessions)
     .where(inArray(claudeSessions.taskId, taskIds));
   for (const row of rows) {
+    if (row.taskId === null) continue; // unreachable: filtered by taskIds; narrows the type
     const current = map.get(row.taskId) ?? { working: false, lastActivityMs: 0 };
     const ts = Math.max(Date.parse(row.updatedAt), row.claudeUpdatedAt ? Date.parse(row.claudeUpdatedAt) : 0);
     map.set(row.taskId, {

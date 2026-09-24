@@ -134,7 +134,7 @@ const CHORES: ChoreDefinition[] = [
     key: "code-review-pr",
     name: "Code review my PR",
     condition: "status category = Code Review AND isDraft = true",
-    prompt: "/chore-code-review-pr {{taskId}}",
+    prompt: "/chore-code-review-my-pr {{taskId}}",
     categories: ["Code Review"],
     match: (t) => t.isDraft === 1,
   },
@@ -208,8 +208,16 @@ export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jira
  */
 export const CUSTOM_CHORE = { number: 0, key: "custom", name: "Custom prompt", prompt: "", cwd: "task" } as const;
 
+/**
+ * Pseudo-chore for reviewing a colleague's PR from the Reviews page. Runs in
+ * the repo's main checkout without a task: the skill reads the PR from git
+ * objects, so several reviews can share that folder.
+ */
+export const REVIEW_CHORE = { number: 0, key: "review-pr", name: "Code review", prompt: "/chore-code-review-pr", cwd: "main" } as const;
+
 export function getChoreDefinition(key: string) {
   if (key === CUSTOM_CHORE.key) return CUSTOM_CHORE;
+  if (key === REVIEW_CHORE.key) return REVIEW_CHORE;
   const chore = CHORES.find((c) => c.key === key);
   if (!chore) return null;
   return { number: chore.number, key: chore.key, name: chore.name, prompt: chore.prompt, cwd: chore.cwd ?? "task" } as const;

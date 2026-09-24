@@ -110,7 +110,8 @@ export const taskWorktrees = sqliteTable("task_worktrees", {
 // 3d. Claude sessions - background Claude Code sessions, one row per chore run
 export const claudeSessions = sqliteTable("claude_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }), // null for PR reviews started from the Reviews page
+  prUrl: text("pr_url"), // PR reviewed by a task-less review session
   repositoryId: integer("repository_id").references(() => repositories.id),
   choreKey: text("chore_key").notNull(),
   choreName: text("chore_name").notNull(),
@@ -134,6 +135,7 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
   index("idx_claude_sessions_task_id").on(table.taskId),
+  index("idx_claude_sessions_pr_url").on(table.prUrl),
   index("idx_claude_sessions_state").on(table.state),
 ]);
 

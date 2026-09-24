@@ -173,7 +173,8 @@ export type SessionEffort = (typeof SESSION_EFFORTS)[number];
 
 export interface ClaudeSession {
   id: number;
-  taskId: number;
+  taskId: number | null; // null for PR reviews started from the Reviews page
+  prUrl: string | null;
   repositoryId: number | null;
   choreKey: string;
   choreName: string;
@@ -198,9 +199,9 @@ export interface ClaudeSession {
   updatedAt: string;
 }
 
-/** A session listed across tasks, carrying its task's title. */
+/** A session listed across tasks, carrying its task's title (null for PR reviews). */
 export interface RecentClaudeSession extends ClaudeSession {
-  taskTitle: string;
+  taskTitle: string | null;
 }
 
 export interface RepositoryGuess {

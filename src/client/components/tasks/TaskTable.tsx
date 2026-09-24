@@ -81,7 +81,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   // Latest AI session per task
   const sessionMap = useMemo(() => {
     const map = new Map<number, ClaudeSession>();
-    for (const s of sessionsData?.items ?? []) map.set(s.taskId, s);
+    for (const s of sessionsData?.items ?? []) if (s.taskId !== null) map.set(s.taskId, s);
     return map;
   }, [sessionsData?.items]);
 

@@ -5,12 +5,14 @@ import { parseId } from "../lib/validation";
 import { getTaskOrThrow } from "../lib/queries";
 import {
   getSession,
+  listLatestReviewSessions,
   listLatestSessions,
   listRecentSessions,
   listTaskSessions,
   respawnSession,
   startChoreSession,
   startCustomSession,
+  startReviewSession,
   stopSession,
   toApi,
 } from "../services/claude-sessions";
@@ -32,6 +34,20 @@ export const sessionRoutes: Routes = {
       const limit = Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit")) || 50, 1), 200);
       const items = (await listRecentSessions(limit)).map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
       return json({ items, total: items.length });
+    },
+  },
+
+  // Task-less PR reviews for the Reviews page: newest session per PR, and start one.
+  "/api/v1/review-sessions": {
+    async GET() {
+      const items = (await listLatestReviewSessions()).map(toApi);
+      return json({ items, total: items.length });
+    },
+
+    async POST(req) {
+      const body = await getBody(req);
+      if (typeof body.prUrl !== "string" || !body.prUrl) throw new ValidationError("prUrl is required");
+      return json(toApi(await startReviewSession(body.prUrl)), 202);
     },
   },
 
