@@ -5,7 +5,6 @@ import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
-import { ChoreLegend } from "@/client/components/layout/ChoreLegend";
 import { type ChoreDefinition } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -22,7 +21,6 @@ export function TasksPage() {
   const [repoFilter, setRepoFilter] = useState<number | null>(null);
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
-  const [hideChores, setHideChores] = useLocalStorage("tasksPage.hideChores", false);
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
 
@@ -92,16 +90,6 @@ export function TasksPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Checkbox
-                id="hide-chores"
-                checked={hideChores}
-                onCheckedChange={(checked) => setHideChores(checked === true)}
-              />
-              <Label htmlFor="hide-chores" className="text-sm cursor-pointer whitespace-nowrap">
-                Hide chores
-              </Label>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
                 id="hide-parents"
                 checked={hideParents}
                 onCheckedChange={(checked) => setHideParents(checked === true)}
@@ -143,14 +131,12 @@ export function TasksPage() {
         titleFilter={debouncedQuery}
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
-        hideChores={hideChores}
         hideParents={hideParents}
         compactMode={compactMode}
         repoFilter={repoFilter}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
-      <ChoreLegend />
     </div>
   );
 }

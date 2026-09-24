@@ -54,7 +54,6 @@ const COMPACT_HIDDEN_COLUMNS = new Set<(typeof TABLE_COLUMNS)[number]>([
   "highPriority",
   "onIce",
   "isParent",
-  "next",
   "changes",
 ]);
 
@@ -64,13 +63,12 @@ interface TaskTableProps {
   titleFilter?: string;
   hideLowPriority?: boolean;
   hideOnIce?: boolean;
-  hideChores?: boolean;
   hideParents?: boolean;
   compactMode?: boolean;
   repoFilter?: number | null;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, hideChores, hideParents, compactMode, repoFilter }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, hideOnIce, hideParents, compactMode, repoFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -113,7 +111,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
 
   const visibleColumns = TABLE_COLUMNS.filter((key) => {
     if (compactMode && COMPACT_HIDDEN_COLUMNS.has(key)) return false;
-    if (hideChores && key === "next") return false;
     return true;
   });
 

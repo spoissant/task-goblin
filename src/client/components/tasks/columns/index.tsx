@@ -21,7 +21,6 @@ import {
   HighPriorityCell,
   OnIceCell,
   IsParentCell,
-  NextCell,
   getJiraUrl,
   getPrUrl,
 } from "./cells";
@@ -45,7 +44,6 @@ export {
   HighPriorityCell,
   OnIceCell,
   IsParentCell,
-  NextCell,
   getJiraUrl,
   getPrUrl,
 };
@@ -204,12 +202,6 @@ export const COLUMNS = {
     width: "50px",
     render: (task, ctx) => <CommentsCell task={task} prUrl={ctx.prUrl} />,
   },
-  next: {
-    key: "next",
-    header: "Chores",
-    width: "110px",
-    render: (task, ctx) => <NextCell task={task} nextChore={ctx.nextChore} />,
-  },
   ai: {
     key: "ai",
     header: "AI",
@@ -234,7 +226,6 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "isParent",
   "status",
   "title",
-  "next",
   "ai",
   "repo",
   "branch",
