@@ -8,8 +8,9 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { parseWorktreeList } from "../lib/git";
-import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
+import { resetCommandRunner, setCommandRunner, type CommandOptions, type CommandResult } from "../lib/process";
 import { ensureTaskWorktree, getTaskWorktreeRow, worktreePathFor, worktreeKeyFor } from "./task-worktrees";
+import { mergeSingleTask } from "./task-merge";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 
@@ -142,5 +143,40 @@ describe("task worktree routes", () => {
     expect(row?.path).toBe(`${main}.EV-1`);
     expect(row?.state).toBe("ready");
     expect(row?.error).toBeNull();
+  });
+
+  it("tears down the stack of a deleted task even when its worktree folder is gone", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
+    mkdirSync(main);
+    sqlite.exec(`UPDATE repositories SET teardown_command = 'bin/dev worktree-cleanup {{composeProject}}' WHERE id = 1`);
+    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+      VALUES (1, 1, '${main}.EV-1', 'ready', ${ts}, ${ts})`);
+    const calls: { args: string[]; opts: CommandOptions }[] = [];
+    setCommandRunner(async (_cmd, args, opts) => {
+      calls.push({ args, opts });
+      return ok();
+    });
+
+    const res = await request("DELETE", "/api/v1/tasks/1");
+
+    expect(res.status).toBe(204);
+    const teardown = calls.find((c) => c.args.some((a) => a.includes("worktree-cleanup")));
+    expect(teardown?.args).toContain("bin/dev worktree-cleanup alumni_connect_ev_1");
+    expect(teardown?.opts.cwd).toBe(main);
+    expect(await getTaskWorktreeRow(1)).toBeNull();
+  });
+
+  it("moves the source task's worktree to the target on merge", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
+      VALUES (6, 'PR for EV-4', 'open', ${ts}, ${ts}, 1, 20, 'open')`);
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+      VALUES (6, 1, '/repo/alumni_connect.task-6', 'ready', ${ts}, ${ts})`);
+
+    await mergeSingleTask(4, 6);
+
+    expect((await getTaskWorktreeRow(4))?.path).toBe("/repo/alumni_connect.task-6");
   });
 });

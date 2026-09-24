@@ -278,10 +278,13 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
     const mainPath = repository ? await getWorktreePath(repository.id) : null;
     const expanded = expandPath(row.path);
 
-    if (repository?.teardownCommand && existsSync(expanded)) {
+    // Teardown only needs the compose project name, so run it from the main
+    // checkout when the worktree directory is already gone (deleted by hand).
+    const cwd = existsSync(expanded) ? row.path : mainPath;
+    if (repository?.teardownCommand && cwd) {
       const project = await composeProjectFor(row.path);
       const command = repository.teardownCommand.replaceAll("{{composeProject}}", project);
-      const teardown = await runShell(row.path, command, { timeoutMs: TEARDOWN_TIMEOUT_MS });
+      const teardown = await runShell(cwd, command, { timeoutMs: TEARDOWN_TIMEOUT_MS });
       if (teardown.exitCode !== 0) {
         console.warn(`[worktree] teardown failed for task ${row.taskId}: ${tailOutput(teardown, 500)}`);
       }
@@ -303,6 +306,16 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
   } catch (err) {
     await updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/**
+ * Tear down a task's worktree before the task row is deleted, since the
+ * cascade would otherwise drop the row and leak its Docker stack. A dirty
+ * worktree keeps its directory (git refuses) but still loses its stack.
+ */
+export async function teardownBeforeTaskDelete(taskId: number): Promise<void> {
+  const row = await getTaskWorktreeRow(taskId);
+  if (row) await finishRemoval(row, false);
 }
 
 /**

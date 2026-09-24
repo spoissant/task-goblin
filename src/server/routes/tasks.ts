@@ -26,6 +26,7 @@ async function validateManualStatus(status: string) {
     );
   }
 }
+import { teardownBeforeTaskDelete } from "../services/task-worktrees";
 import type { Routes } from "../router";
 
 export const taskRoutes: Routes = {
@@ -340,6 +341,7 @@ export const taskRoutes: Routes = {
       const id = parseId(params.id);
 
       await getTaskOrThrow(id);
+      await teardownBeforeTaskDelete(id);
 
       // Cascade delete: todos
       await db

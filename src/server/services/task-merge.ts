@@ -1,6 +1,6 @@
 import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos } from "../../db/schema";
+import { tasks, todos, taskWorktrees } from "../../db/schema";
 import { json } from "../response";
 import { ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -8,6 +8,7 @@ import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import { getNotCompletedCondition } from "../lib/task-status";
 import { getTaskOrThrow } from "../lib/queries";
+import { getTaskWorktreeRow, teardownBeforeTaskDelete } from "./task-worktrees";
 import type { Routes } from "../router";
 
 export interface AutoMatchPair {
@@ -134,6 +135,10 @@ export async function mergeSingleTask(
     }
   }
 
+  // The source's worktree moves to the target below; if the target already has
+  // one, tear the source's down now so deleting the source doesn't leak it.
+  if (await getTaskWorktreeRow(targetId)) await teardownBeforeTaskDelete(sourceId);
+
   // Wrap all merge operations in a transaction for consistency
   const result = await db.transaction(async (tx) => {
     // Update target with merged fields
@@ -148,6 +153,11 @@ export async function mergeSingleTask(
       .update(todos)
       .set({ taskId: targetId })
       .where(eq(todos.taskId, sourceId));
+
+    await tx
+      .update(taskWorktrees)
+      .set({ taskId: targetId })
+      .where(eq(taskWorktrees.taskId, sourceId));
 
     // Delete source task
     await tx.delete(tasks).where(eq(tasks.id, sourceId));
