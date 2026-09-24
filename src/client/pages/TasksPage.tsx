@@ -1,17 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
-import { type ChoreDefinition } from "@/client/lib/queries";
+import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
+import { type ChoreDefinition, useTasksQuery } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { Plus, Search, X } from "lucide-react";
-import { toast } from "sonner";
 
 export function TasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -24,17 +24,30 @@ export function TasksPage() {
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
 
+  const [bulkChoreTarget, setBulkChoreTarget] = useState<(PromptChore & { taskId: number }) | undefined>(undefined);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleCopyChorePromptForSelection = (chore: ChoreDefinition) => {
+  // Same query + filters as TaskTable, so this reads from the shared cache instead of refetching.
+  const { data: tasksData } = useTasksQuery({ title: debouncedQuery });
+  const selectedTasks = useMemo(
+    () => (tasksData?.items ?? []).filter((t) => selectedIds.has(t.id)),
+    [tasksData?.items, selectedIds],
+  );
+  const sameRepo =
+    selectedTasks.length <= 1 ||
+    selectedTasks.every((t) => t.repositoryId !== null && t.repositoryId === selectedTasks[0].repositoryId);
+
+  const handleRunChoreForSelection = (chore: ChoreDefinition) => {
+    // Runs inside a single session attached to the first selected task; no need for a "shared" session.
+    const firstTaskId = Array.from(selectedIds)[0];
+    if (firstTaskId === undefined) return;
     const ids = Array.from(selectedIds).join(" ");
     const prompt = chore.prompt.replace("{{taskId}}", ids).replace("{{jiraKey}}", "");
-    navigator.clipboard.writeText(prompt).then(() => {
-      toast.success("Copied to clipboard");
-    });
+    setBulkChoreTarget({ number: chore.number, key: chore.key, name: chore.name, prompt, taskId: firstTaskId });
   };
 
   return (
@@ -44,8 +57,9 @@ export function TasksPage() {
           <div className="flex-1">
             <BulkActionsBar
               selectedIds={Array.from(selectedIds)}
+              sameRepo={sameRepo}
               onClearSelection={() => setSelectedIds(new Set())}
-              onCopyChorePrompt={handleCopyChorePromptForSelection}
+              onRunChore={handleRunChoreForSelection}
             />
           </div>
         ) : (
@@ -137,6 +151,12 @@ export function TasksPage() {
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
+      <CustomPromptDialog
+        open={bulkChoreTarget !== undefined}
+        onOpenChange={(open) => !open && setBulkChoreTarget(undefined)}
+        taskId={bulkChoreTarget?.taskId ?? 0}
+        chore={bulkChoreTarget ?? null}
+      />
     </div>
   );
 }

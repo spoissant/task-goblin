@@ -18,6 +18,7 @@ interface ChoreDefinition {
   excludeCategories?: string[]; // category names whose tasks must never match this chore
   match: (task: TaskRow, repo: RepoRow | null, pendingTodos: number) => boolean;
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
+  requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
 }
 
@@ -160,6 +161,7 @@ const CHORES: ChoreDefinition[] = [
     categories: null,
     excludeCategories: ["Ready to Merge"],
     supportsBulk: true,
+    requiresSameRepo: true,
     cwd: "main",
     match: (t, repo) =>
       parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
@@ -182,13 +184,14 @@ const CHORES: ChoreDefinition[] = [
 ];
 
 export function getChoreDefinitions() {
-  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk }) => ({
+  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo }) => ({
     number,
     key,
     name,
     condition,
     prompt,
     supportsBulk: supportsBulk ?? false,
+    requiresSameRepo: requiresSameRepo ?? false,
   }));
 }
 

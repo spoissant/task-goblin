@@ -8,6 +8,7 @@ export interface ChoreDefinition {
   condition: string;
   prompt: string;
   supportsBulk: boolean;
+  requiresSameRepo: boolean;
 }
 
 export interface ChoreTask {
