@@ -158,7 +158,12 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
   const expanded = expandPath(row.path);
 
   await worktreePrune(mainPath);
-  const registered = (await worktreeList(mainPath)).find((wt) => wt.path === expanded);
+  let registered;
+  try {
+    registered = (await worktreeList(mainPath)).find((wt) => wt.path === expanded);
+  } catch (err) {
+    return updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
 
   if (row.state === "ready" && registered && existsSync(expanded)) {
     return row;
@@ -190,7 +195,7 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
     row = await updateRow(row.id, { setupLog: log });
   }
 
-  const current = (await worktreeList(mainPath)).find((wt) => wt.path === expanded);
+  const current = (await worktreeList(mainPath).catch(() => [])).find((wt) => wt.path === expanded);
   return updateRow(row.id, {
     state: "ready",
     branch: current?.branch ?? null,

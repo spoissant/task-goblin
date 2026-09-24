@@ -62,7 +62,8 @@ export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
 
 export async function worktreeList(mainPath: string): Promise<WorktreeEntry[]> {
   const result = await runGit(mainPath, ["worktree", "list", "--porcelain"]);
-  if (result.exitCode !== 0) return [];
+  // Throw rather than return []: an empty list would read as "not registered".
+  if (result.exitCode !== 0) throw new Error(`git worktree list failed: ${result.stderr || `exit ${result.exitCode}`}`);
   return parseWorktreeList(result.stdout);
 }
 
