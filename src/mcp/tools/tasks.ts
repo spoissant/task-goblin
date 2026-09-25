@@ -47,7 +47,10 @@ export function registerTaskTools(server: McpServer) {
     "list_tasks",
     {
       description:
-        "List tasks with optional filters. Returns paginated results.",
+        "List tasks, paginated. Returns { items, total }; page with offset until you have total. " +
+        "Completed tasks are excluded unless completed=true. status and statuses match the raw task status name " +
+        "(case-insensitive), not a status category. With completed=true only title, limit and offset apply; " +
+        "the other filters are ignored.",
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
         statuses: z.string().optional().describe("Comma-separated list of status names to filter by (e.g. 'Code Review,Ready to Merge')"),
@@ -150,7 +153,11 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool(
     "update_task",
     {
-      description: "Update an existing task by ID, Jira key, PR number, or branch name",
+      description:
+        "Update an existing task, located by ID, Jira key, PR number, or branch name. Only the fields you pass change; " +
+        "returns the full task. status is rejected for Jira-linked tasks (Jira owns it) and must be one of the configured " +
+        "statuses. choreSkips replaces the whole skip map, so include existing skips you want to keep. To reserve a task " +
+        "for a chore, use reserve_task / release_task: writing workingOn here skips the atomic reservation check.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),

@@ -28,4 +28,4 @@ Response formats:
 2. If missing, **apply the SQL manually**: `sqlite3 task-goblin.db < drizzle/<migration>.sql`
 
 ## MCP Server
-Standalone process (`bun run mcp`) providing programmatic access for AI agents. Consumes the REST API. Can: list/read tasks, append notes, manage todos, update plan files.
+Standalone process (`bun run mcp`) providing programmatic access for AI agents. Consumes the REST API. Can: list/read/create/update tasks, trigger syncs, manage todos, list chores, and reserve/release tasks for chores.
