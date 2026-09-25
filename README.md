@@ -88,7 +88,7 @@ bun test <file>      # Run single test file
 
 ## MCP Server
 
-Task Goblin exposes an MCP server for AI agent integration. The server provides 5 tools:
+Task Goblin exposes an MCP server for AI agent integration. The server provides tools including:
 
 | Tool | Description |
 |------|-------------|
@@ -97,6 +97,8 @@ Task Goblin exposes an MCP server for AI agent integration. The server provides 
 | `list_todos` | List todos with optional filters (taskId, done) |
 | `create_todo` | Create a new todo item (optionally linked to a task) |
 | `toggle_todo` | Toggle a todo's completion status |
+| `list_team_channels` | List GitHub team → Slack channel mappings for review requests |
+| `get_pr_changes_by_category` | Get a PR's size and frontend/backend/other file split |
 
 ### Setup
 
