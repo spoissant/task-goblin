@@ -135,11 +135,15 @@ export interface TaskWorktreeStatus extends TaskWorktree {
 }
 
 // Dev stack: the single local stack booted from a task branch in the repo's main checkout
+/** Who the dev stack is booted for: a task, or a PR that has no task. */
+export type DevStackOwner = { taskId: number } | { prUrl: string };
+
 export type DevStackState = "starting" | "up" | "stopping" | "failed";
 
 export interface DevStack {
-  taskId: number;
-  branch: string;
+  taskId: number | null;
+  prUrl: string | null; // owner when booted from a PR without a task (Reviews page)
+  branch: string; // task branch, or "repo#N" for a PR
   state: DevStackState;
   pid: number | null;
   alive: boolean; // boot process still running (checked on read)
@@ -152,7 +156,7 @@ export interface DevStack {
 
 export interface DevStackStatus {
   supported: boolean; // this task's repository can boot a dev stack
-  stack: DevStack | null; // the one stack, whichever task owns it
+  stack: DevStack | null; // the one stack, whichever task or PR owns it
 }
 
 export interface DevStackRefresh {
@@ -161,7 +165,7 @@ export interface DevStackRefresh {
 }
 
 export interface DevStackOverview {
-  supportedRepositoryIds: number[]; // repositories whose tasks may boot the stack
+  supportedRepositoryIds: number[]; // repositories whose tasks and PRs may boot the stack
   stack: DevStack | null;
 }
 

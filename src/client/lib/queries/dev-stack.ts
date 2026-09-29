@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { DevStack, DevStackOverview, DevStackRefresh } from "../types";
+import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh } from "../types";
 
 export const devStackKeys = {
   all: ["dev-stack"] as const,
@@ -22,10 +22,20 @@ export function useDevStackOverviewQuery() {
   });
 }
 
+// Task stacks live under the task; task-less PR stacks are addressed by URL.
+const bootStack = (owner: DevStackOwner) =>
+  "taskId" in owner ? api.post<DevStack>(`/tasks/${owner.taskId}/dev-stack`) : api.post<DevStack>("/dev-stack/pr", owner);
+const stopStack = (owner: DevStackOwner) =>
+  "taskId" in owner ? api.delete<DevStack>(`/tasks/${owner.taskId}/dev-stack`) : api.post<DevStack>("/dev-stack/pr/stop", owner);
+const refreshStack = (owner: DevStackOwner) =>
+  "taskId" in owner
+    ? api.post<DevStackRefresh>(`/tasks/${owner.taskId}/dev-stack/refresh`)
+    : api.post<DevStackRefresh>("/dev-stack/pr/refresh", owner);
+
 export function useBootDevStack() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: number) => api.post<DevStack>(`/tasks/${taskId}/dev-stack`),
+    mutationFn: bootStack,
     onSettled: () => queryClient.invalidateQueries({ queryKey: devStackKeys.all }),
   });
 }
@@ -33,13 +43,13 @@ export function useBootDevStack() {
 export function useStopDevStack() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: number) => api.delete<DevStack>(`/tasks/${taskId}/dev-stack`),
+    mutationFn: stopStack,
     onSettled: () => queryClient.invalidateQueries({ queryKey: devStackKeys.all }),
   });
 }
 
 export function useRefreshDevStack() {
   return useMutation({
-    mutationFn: (taskId: number) => api.post<DevStackRefresh>(`/tasks/${taskId}/dev-stack/refresh`),
+    mutationFn: refreshStack,
   });
 }

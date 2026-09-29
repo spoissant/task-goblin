@@ -44,6 +44,15 @@ export async function getTaskWithRepository(taskId: number) {
   );
 }
 
+/** The configured repository for a GitHub owner/repo (case-insensitive), or null. */
+export async function findRepository(owner: string, repo: string) {
+  const rows = await db
+    .select()
+    .from(repositories)
+    .where(sql`lower(${repositories.owner}) = ${owner.toLowerCase()} AND lower(${repositories.repo}) = ${repo.toLowerCase()}`);
+  return rows[0] ?? null;
+}
+
 /**
  * Build a Map of repository ID → repository for a list of tasks.
  */

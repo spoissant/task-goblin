@@ -3,27 +3,34 @@ import { toast } from "sonner";
 import { useBootDevStack, useDevStackOverviewQuery, useRefreshDevStack, useStopDevStack } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
-import type { Task } from "@/client/lib/types";
+import type { DevStack, DevStackOwner } from "@/client/lib/types";
 
 interface DevStackToggleProps {
-  task: Pick<Task, "id" | "repositoryId" | "headBranch">;
+  owner: DevStackOwner;
+  repositoryId: number | null;
+  /** Branch (or PR) shown in tooltips; null hides the toggle. */
+  label: string | null;
+}
+
+function isOwner(stack: DevStack, owner: DevStackOwner): boolean {
+  return "taskId" in owner ? stack.taskId === owner.taskId : stack.prUrl === owner.prUrl;
 }
 
 /**
  * Play/stop for the single local dev stack, shown next to the repo badge.
- * Play detaches the main checkout at the task branch and runs the stack;
+ * Play detaches the main checkout at the task branch (or a PR's head) and runs the stack;
  * stop tears it down and returns to the base branch. While up, refresh moves
  * the detached checkout to the branch's latest commit. Hidden for repositories
  * without dev stack support (see server/services/dev-stack.ts).
  */
-export function DevStackToggle({ task }: DevStackToggleProps) {
+export function DevStackToggle({ owner, repositoryId, label }: DevStackToggleProps) {
   const { data } = useDevStackOverviewQuery();
   const boot = useBootDevStack();
   const stop = useStopDevStack();
   const refresh = useRefreshDevStack();
 
-  if (!data || task.repositoryId === null || !task.headBranch) return null;
-  if (!data.supportedRepositoryIds.includes(task.repositoryId)) return null;
+  if (!data || repositoryId === null || !label) return null;
+  if (!data.supportedRepositoryIds.includes(repositoryId)) return null;
 
   const stack = data.stack;
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Dev stack request failed");
@@ -36,9 +43,9 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
 
   if (!stack) {
     icon = <CirclePlay className="h-6 w-6" />;
-    tooltip = `Boot ${task.headBranch} in the main checkout`;
-    onClick = () => boot.mutate(task.id, { onError });
-  } else if (stack.taskId !== task.id) {
+    tooltip = `Boot ${label} in the main checkout`;
+    onClick = () => boot.mutate(owner, { onError });
+  } else if (!isOwner(stack, owner)) {
     icon = <CirclePlay className="h-6 w-6 opacity-30" />;
     tooltip = `Dev stack is up for ${stack.branch}`;
   } else if (stack.state === "starting" || stack.state === "stopping") {
@@ -47,20 +54,20 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
   } else if (stack.state === "failed") {
     icon = <CircleStop className="h-6 w-6 text-red-500" />;
     tooltip = `Failed: ${stack.error ?? "unknown error"}\nClick to reset (stops the stack, switches back)`;
-    onClick = () => stop.mutate(task.id, { onError });
+    onClick = () => stop.mutate(owner, { onError });
   } else if (!stack.alive) {
     icon = <CircleStop className="h-6 w-6 text-red-500" />;
     tooltip = "Boot process exited (see logs/dev-stack.log)\nClick to clean up";
-    onClick = () => stop.mutate(task.id, { onError });
+    onClick = () => stop.mutate(owner, { onError });
   } else {
     icon = <CircleStop className="h-6 w-6 text-green-600" />;
     tooltip = `Running at ${stack.url}\nClick to stop and switch back`;
-    onClick = () => stop.mutate(task.id, { onError });
+    onClick = () => stop.mutate(owner, { onError });
     canRefresh = true;
   }
 
   const onRefresh = () =>
-    refresh.mutate(task.id, {
+    refresh.mutate(owner, {
       onError,
       onSuccess: ({ from, to }) =>
         toast.success(from === to ? `Already at the latest commit (${to})` : `Dev stack moved ${from} → ${to}`),

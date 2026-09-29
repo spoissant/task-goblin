@@ -8,7 +8,8 @@ import { db } from "../../db";
 import { claudeSessions, repositories, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
-import { getTaskWithRepository } from "../lib/queries";
+import { findRepository, getTaskWithRepository } from "../lib/queries";
+import { parsePrUrl } from "../lib/validation";
 import { CUSTOM_CHORE, REVIEW_CHORE, getChoreDefinition, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
@@ -167,22 +168,14 @@ export async function startCustomSession(taskId: number, input: CustomSessionInp
   });
 }
 
-const PR_URL_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
-
 /**
  * Review a colleague's PR in its repo's main checkout, with no task. Any
  * number can run at once; only one per PR.
  */
 export async function startReviewSession(prUrl: string): Promise<SessionRow> {
-  const match = prUrl.trim().match(PR_URL_RE);
-  if (!match) throw new AppError("prUrl must be a GitHub pull request URL", 400, "VALIDATION_ERROR");
-  const [url, owner, repo, number] = match;
+  const { url, owner, repo, number } = parsePrUrl(prUrl);
 
-  const repoRows = await db
-    .select()
-    .from(repositories)
-    .where(and(sql`lower(${repositories.owner}) = ${owner.toLowerCase()}`, sql`lower(${repositories.repo}) = ${repo.toLowerCase()}`));
-  const repository = repoRows[0];
+  const repository = await findRepository(owner, repo);
   if (!repository) throw new AppError(`Repository ${owner}/${repo} is not configured`, 400, "NO_REPOSITORY");
   const cwd = await resolveMainPath(repository);
 

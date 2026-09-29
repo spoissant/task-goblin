@@ -173,7 +173,7 @@ export function RepoCell({ task, repo }: { task: Task; repo?: Repository }) {
   return (
     <span className="inline-flex items-center gap-1">
       <RepoBadge repo={repo} />
-      <DevStackToggle task={task} />
+      <DevStackToggle owner={{ taskId: task.id }} repositoryId={task.repositoryId} label={task.headBranch} />
     </span>
   );
 }

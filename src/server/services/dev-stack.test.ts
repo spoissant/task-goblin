@@ -88,16 +88,16 @@ describe("dev stack", () => {
   });
 
   it("is unsupported outside alumni_connect", async () => {
-    expect((await getDevStackStatus(3)).supported).toBe(false);
-    await expect(bootDevStack(3)).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+    expect((await getDevStackStatus({ taskId: 3 })).supported).toBe(false);
+    await expect(bootDevStack({ taskId: 3 })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
   });
 
   it("detaches the main checkout at the local branch and stays booting until the site answers", async () => {
-    const started = await bootDevStack(1);
+    const started = await bootDevStack({ taskId: 1 });
     expect(started.state).toBe("starting");
     await Bun.sleep(30);
 
-    let { stack } = await getDevStackStatus(1);
+    let { stack } = await getDevStackStatus({ taskId: 1 });
     expect(stack).toMatchObject({ taskId: 1, branch: "fix/EV-1", state: "starting", pid: 4001, alive: true });
     expect(stack?.detail).toContain("bundler");
     expect(commands).toContain("git fetch origin fix/EV-1");
@@ -108,13 +108,13 @@ describe("dev stack", () => {
     appendFileSync(LOG, COMPILED_LINE);
     probeStatus = 502;
     await Bun.sleep(30);
-    ({ stack } = await getDevStackStatus(1));
+    ({ stack } = await getDevStackStatus({ taskId: 1 }));
     expect(stack?.state).toBe("starting");
     expect(stack?.detail).toContain("HTTP 502");
 
     probeStatus = 200;
     await devStackSettled();
-    ({ stack } = await getDevStackStatus(1));
+    ({ stack } = await getDevStackStatus({ taskId: 1 }));
     expect(stack).toMatchObject({ state: "up", detail: null });
   });
 
@@ -126,16 +126,41 @@ describe("dev stack", () => {
   it("falls back to origin when the branch only exists remotely", async () => {
     localBranch = false;
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     expect(commands).toContain("git switch --detach origin/fix/EV-1");
   });
 
+  it("boots, refreshes and stops a PR without a task at its pull head", async () => {
+    ready();
+    const pr = { prUrl: "https://github.com/hb/alumni_connect/pull/42" };
+    await bootDevStack(pr);
+    await devStackSettled();
+    expect((await getDevStackStatus(pr)).stack).toMatchObject({ taskId: null, prUrl: pr.prUrl, branch: "alumni_connect#42", state: "up" });
+    expect(commands).toContain("git fetch origin pull/42/head");
+    expect(commands).toContain("git switch --detach FETCH_HEAD");
+    await expect(bootDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+
+    commands.length = 0;
+    await refreshDevStack(pr);
+    expect(commands).toContain("git switch --detach --discard-changes FETCH_HEAD");
+
+    running = 0;
+    await stopDevStack(pr);
+    await devStackSettled();
+    expect(commands).toContain("git switch sprint");
+    expect((await getDevStackStatus(pr)).stack).toBeNull();
+  });
+
+  it("is unsupported for PRs outside alumni_connect", async () => {
+    await expect(bootDevStack({ prUrl: "https://github.com/hb/front-monorepo/pull/7" })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+  });
+
   it("refuses a dirty main checkout", async () => {
     dirty = true;
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
-    const { stack } = await getDevStackStatus(1);
+    const { stack } = await getDevStackStatus({ taskId: 1 });
     expect(stack?.state).toBe("failed");
     expect(stack?.error).toContain("changed files");
     expect(commands.some((c) => c.startsWith("git switch"))).toBe(false);
@@ -144,18 +169,18 @@ describe("dev stack", () => {
 
   it("refuses to boot while another task owns the stack", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
-    await expect(bootDevStack(2)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
-    await expect(stopDevStack(2)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+    await expect(bootDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+    await expect(stopDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
     // Booting the owner again is a no-op.
-    expect((await bootDevStack(1)).state).toBe("up");
+    expect((await bootDevStack({ taskId: 1 })).state).toBe("up");
     expect(spawned).toBe(1);
   });
 
   it("kills a leftover process tree before rebooting a failed stack", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     expect(spawned).toBe(1);
     expect(alive).toBe(true);
@@ -174,7 +199,7 @@ describe("dev stack", () => {
       })}' WHERE key = 'dev_stack'`,
     );
 
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     expect(killTreeCalls).toEqual([4001]);
     expect(spawned).toBe(2);
@@ -184,26 +209,26 @@ describe("dev stack", () => {
     compiled = true;
     probeStatus = null; // gateway never comes back
     running = 0; // containers already torn down
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
-    const { stack } = await getDevStackStatus(1);
+    const { stack } = await getDevStackStatus({ taskId: 1 });
     expect(stack?.state).toBe("failed");
     expect(stack?.error).toContain("not running");
   });
 
   it("stops the stack, switches back to the base branch and clears the record", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     commands.length = 0;
 
     running = 3;
-    const stopping = await stopDevStack(1);
+    const stopping = await stopDevStack({ taskId: 1 });
     expect(stopping.state).toBe("stopping");
     await Bun.sleep(20);
 
     // Containers still winding down: keep stopping, do not switch yet.
-    let { stack } = await getDevStackStatus(1);
+    let { stack } = await getDevStackStatus({ taskId: 1 });
     expect(stack?.state).toBe("stopping");
     expect(stack?.detail).toContain("3 container(s)");
     expect(commands[0]).toBe("/bin/zsh -lc bin/dev stop-dev-server; bin/dev dc stop");
@@ -213,55 +238,55 @@ describe("dev stack", () => {
     await devStackSettled();
     expect(commands).toContain("git reset --hard");
     expect(commands).toContain("git switch sprint");
-    expect((await getDevStackStatus(1)).stack).toBeNull();
+    expect((await getDevStackStatus({ taskId: 1 })).stack).toBeNull();
   });
 
   it("hard resets the checkout before switching back, even with schema.rb left dirty", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     commands.length = 0;
     dirty = true; // boot commands (bin/dev migration) leave db/schema.rb modified
     running = 0;
 
-    await stopDevStack(1);
+    await stopDevStack({ taskId: 1 });
     await devStackSettled();
     const resetIndex = commands.indexOf("git reset --hard");
     const switchIndex = commands.indexOf("git switch sprint");
     expect(resetIndex).toBeGreaterThanOrEqual(0);
     expect(switchIndex).toBeGreaterThan(resetIndex);
-    expect((await getDevStackStatus(1)).stack).toBeNull();
+    expect((await getDevStackStatus({ taskId: 1 })).stack).toBeNull();
   });
 
   it("refreshes a running stack to the latest branch commit without restarting it", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     commands.length = 0;
 
-    await refreshDevStack(1);
+    await refreshDevStack({ taskId: 1 });
     expect(commands).toContain("git fetch origin fix/EV-1");
     expect(commands).toContain("git switch --detach --discard-changes fix/EV-1");
     expect(spawned).toBe(1);
-    expect((await getDevStackStatus(1)).stack?.state).toBe("up");
+    expect((await getDevStackStatus({ taskId: 1 })).stack?.state).toBe("up");
   });
 
   it("refuses to refresh a stack that is not up or belongs to another task", async () => {
-    await expect(refreshDevStack(1)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await bootDevStack(1); // stays starting: never compiles
+    await expect(refreshDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await bootDevStack({ taskId: 1 }); // stays starting: never compiles
     await Bun.sleep(20);
-    await expect(refreshDevStack(1)).rejects.toMatchObject({ code: "DEV_STACK_NOT_UP" });
-    await expect(refreshDevStack(2)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+    await expect(refreshDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "DEV_STACK_NOT_UP" });
+    await expect(refreshDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
   });
 
   it("fails the stop when containers never go away", async () => {
     ready();
-    await bootDevStack(1);
+    await bootDevStack({ taskId: 1 });
     await devStackSettled();
     running = 2;
-    await stopDevStack(1);
+    await stopDevStack({ taskId: 1 });
     await devStackSettled(); // downTimeoutMs is tiny in tests
-    const { stack } = await getDevStackStatus(1);
+    const { stack } = await getDevStackStatus({ taskId: 1 });
     expect(stack?.state).toBe("failed");
     expect(stack?.error).toContain("2 container(s)");
     expect(commands).not.toContain("git switch sprint");

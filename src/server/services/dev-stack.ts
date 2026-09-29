@@ -4,9 +4,11 @@
  * one per task worktree (a full alumni_connect stack is ~20 containers and its
  * own volumes, see docs/gitworktree.md in that repo).
  *
- * Only one stack exists at a time. Boot detaches the main checkout at the task
- * branch (`git switch --detach`, allowed even though a worktree owns the
- * branch) and runs BOOT_COMMAND until stopped. The stack counts as up once the
+ * Only one stack exists at a time, owned by a task or by a PR URL (a
+ * colleague's PR from the Reviews page, which has no task). Boot detaches the
+ * main checkout at the task branch (`git switch --detach`, allowed even though
+ * a worktree owns the branch) or at the PR's `pull/N/head`, and runs
+ * BOOT_COMMAND until stopped. The stack counts as up once the
  * bundler reports a successful compile in the log AND the site answers over
  * HTTP. Stop ends the bundler and the Docker stack, then switches the checkout
  * back to its base branch.
@@ -23,13 +25,14 @@ import { db } from "../../db";
 import { repositories, settings } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
-import { getTaskWithRepository } from "../lib/queries";
+import { findRepository, getTaskWithRepository } from "../lib/queries";
+import { parsePrUrl } from "../lib/validation";
 import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit } from "../lib/git";
 import { runCommand, runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
-import type { DevStack, DevStackOverview, DevStackRefresh, DevStackState, DevStackStatus } from "../../shared/types";
+import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh, DevStackState, DevStackStatus } from "../../shared/types";
 
 const DEV_STACK_REPO = "alumni_connect";
 /** Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs. */
@@ -48,8 +51,9 @@ const EXIT_WAIT_MS = 60_000;
 const READY_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface StoredStack {
-  taskId: number;
-  branch: string;
+  taskId: number | null;
+  prUrl?: string | null; // set instead of taskId for a PR; absent on records from before PR boots
+  branch: string; // task branch, or "repo#N" for a PR
   state: DevStackState;
   pid: number | null;
   detail: string | null;
@@ -217,6 +221,7 @@ async function toDevStack(stored: StoredStack): Promise<DevStack> {
   const log = await readLog();
   return {
     ...stored,
+    prUrl: stored.prUrl ?? null,
     alive: stored.pid !== null && runtime.isAlive(stored.pid),
     logTail: log.length > 4000 ? log.slice(-4000) : log,
     url: DEV_STACK_URL,
@@ -227,15 +232,29 @@ async function toDevStack(stored: StoredStack): Promise<DevStack> {
 // Public API
 // ---------------------------------------------------------------------------
 
-async function loadTaskAndRepo(taskId: number) {
-  const result = await getTaskWithRepository(taskId);
-  if (!result) throw new NotFoundError("Task", taskId);
+/** The owner's repository and the branch label it boots (null when a task has no branch). */
+async function resolveOwner(owner: DevStackOwner) {
+  if ("prUrl" in owner) {
+    const pr = parsePrUrl(owner.prUrl);
+    const repository = await findRepository(pr.owner, pr.repo);
+    return { taskId: null, prUrl: pr.url, branch: `${pr.repo}#${pr.number}`, repository };
+  }
+  const result = await getTaskWithRepository(owner.taskId);
+  if (!result) throw new NotFoundError("Task", owner.taskId);
   const { repository, ...task } = result;
-  return { task, repository };
+  return { taskId: task.id, prUrl: null, branch: task.headBranch, repository };
 }
 
-function isSupported(repository: { repo: string } | null, headBranch: string | null): boolean {
-  return repository?.repo === DEV_STACK_REPO && !!headBranch;
+function ownerOf(stored: StoredStack): DevStackOwner {
+  return stored.prUrl ? { prUrl: stored.prUrl } : { taskId: stored.taskId! };
+}
+
+function owns(stored: StoredStack, owner: DevStackOwner): boolean {
+  return "prUrl" in owner ? stored.prUrl === parsePrUrl(owner.prUrl).url : stored.taskId === owner.taskId;
+}
+
+function isSupported(repository: { repo: string } | null, branch: string | null): boolean {
+  return repository?.repo === DEV_STACK_REPO && !!branch;
 }
 
 /** The one stack plus the repositories whose tasks may boot it (for table rows). */
@@ -251,25 +270,25 @@ export async function getDevStackOverview(): Promise<DevStackOverview> {
   };
 }
 
-export async function getDevStackStatus(taskId: number): Promise<DevStackStatus> {
-  const { task, repository } = await loadTaskAndRepo(taskId);
+export async function getDevStackStatus(owner: DevStackOwner): Promise<DevStackStatus> {
+  const { branch, repository } = await resolveOwner(owner);
   const stored = await loadStack();
   return {
-    supported: isSupported(repository, task.headBranch),
+    supported: isSupported(repository, branch),
     stack: stored ? await toDevStack(stored) : null,
   };
 }
 
-/** Detach the main checkout at the task branch and start the stack in the background. */
-export async function bootDevStack(taskId: number): Promise<DevStack> {
-  const { task, repository } = await loadTaskAndRepo(taskId);
-  if (!repository || !task.headBranch || !isSupported(repository, task.headBranch)) {
-    throw new AppError(`Dev stack is only available for ${DEV_STACK_REPO} tasks with a branch`, 400, "DEV_STACK_UNSUPPORTED");
+/** Detach the main checkout at the owner's branch and start the stack in the background. */
+export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
+  const { taskId, prUrl, branch, repository } = await resolveOwner(owner);
+  if (!repository || !branch || !isSupported(repository, branch)) {
+    throw new AppError(`Dev stack is only available for ${DEV_STACK_REPO} tasks with a branch or PRs`, 400, "DEV_STACK_UNSUPPORTED");
   }
   const mainPath = await resolveMainPath(repository);
 
   const existing = await loadStack();
-  if (existing && existing.taskId !== taskId) {
+  if (existing && !owns(existing, owner)) {
     throw new AppError(`Dev stack is already up for ${existing.branch}`, 409, "DEV_STACK_BUSY");
   }
   if (existing && existing.state !== "failed") return toDevStack(existing);
@@ -284,7 +303,8 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
 
   const stored: StoredStack = {
     taskId,
-    branch: task.headBranch,
+    prUrl,
+    branch,
     state: "starting",
     pid: null,
     detail: "Checking out the branch",
@@ -296,8 +316,16 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
   return toDevStack(stored);
 }
 
-/** Fetch the branch, then prefer the local ref (worktree commits land there) over origin. */
-async function resolveTarget(mainPath: string, branch: string): Promise<string | null> {
+/**
+ * A PR's head as GitHub serves it, or a task branch, fetched first and then
+ * preferring the local ref (worktree commits land there) over origin.
+ */
+async function resolveTarget(mainPath: string, stored: StoredStack): Promise<string | null> {
+  if (stored.prUrl) {
+    const fetched = await fetchRef(mainPath, `pull/${parsePrUrl(stored.prUrl).number}/head`);
+    return fetched.exitCode === 0 ? "FETCH_HEAD" : null;
+  }
+  const branch = stored.branch;
   await fetchRef(mainPath, branch);
   if (await localBranchExists(mainPath, branch)) return branch;
   if (await remoteBranchExists(mainPath, branch)) return `origin/${branch}`;
@@ -313,9 +341,9 @@ async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
       return;
     }
 
-    const target = await resolveTarget(mainPath, stored.branch);
+    const target = await resolveTarget(mainPath, stored);
     if (!target) {
-      await fail(`Branch ${stored.branch} not found locally or on origin`);
+      await fail(`${stored.branch} not found locally or on origin`);
       return;
     }
 
@@ -399,20 +427,20 @@ async function shortHead(mainPath: string): Promise<string> {
  * (db/schema.rb from the boot migration) are discarded, like on stop.
  * New migrations are not run.
  */
-export async function refreshDevStack(taskId: number): Promise<DevStackRefresh> {
+export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRefresh> {
   const stored = await loadStack();
   if (!stored) throw new NotFoundError("Dev stack");
-  if (stored.taskId !== taskId) {
+  if (!owns(stored, owner)) {
     throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
 
-  const { repository } = await loadTaskAndRepo(taskId);
-  if (!repository) throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
+  const { repository } = await resolveOwner(owner);
+  if (!repository) throw new AppError("No configured repository for the dev stack", 400, "NO_REPOSITORY");
   const mainPath = await resolveMainPath(repository);
 
-  const target = await resolveTarget(mainPath, stored.branch);
-  if (!target) throw new AppError(`Branch ${stored.branch} not found locally or on origin`, 404, "BRANCH_NOT_FOUND");
+  const target = await resolveTarget(mainPath, stored);
+  if (!target) throw new AppError(`${stored.branch} not found locally or on origin`, 404, "BRANCH_NOT_FOUND");
 
   const from = await shortHead(mainPath);
   const switched = await runGit(mainPath, ["switch", "--detach", "--discard-changes", target]);
@@ -424,17 +452,17 @@ export async function refreshDevStack(taskId: number): Promise<DevStackRefresh> 
   return { from, to };
 }
 
-/** Stop the stack of this task and return the main checkout to its base branch, in the background. */
-export async function stopDevStack(taskId: number): Promise<DevStack> {
+/** Stop the stack of this owner and return the main checkout to its base branch, in the background. */
+export async function stopDevStack(owner: DevStackOwner): Promise<DevStack> {
   const stored = await loadStack();
   if (!stored) throw new NotFoundError("Dev stack");
-  if (stored.taskId !== taskId) {
+  if (!owns(stored, owner)) {
     throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state === "stopping") return toDevStack(stored);
 
-  const { repository } = await loadTaskAndRepo(taskId);
-  if (!repository) throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
+  const { repository } = await resolveOwner(owner);
+  if (!repository) throw new AppError("No configured repository for the dev stack", 400, "NO_REPOSITORY");
   const mainPath = await resolveMainPath(repository);
   const baseBranch = repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH;
 
@@ -520,7 +548,7 @@ export async function reconcileDevStack(): Promise<void> {
   const stored = await loadStack();
   if (!stored) return;
 
-  const { repository } = await loadTaskAndRepo(stored.taskId).catch(() => ({ repository: null }));
+  const { repository } = await resolveOwner(ownerOf(stored)).catch(() => ({ repository: null }));
   if (!repository) {
     await saveStack(null);
     return;

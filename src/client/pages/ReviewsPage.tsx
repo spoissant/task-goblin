@@ -10,6 +10,7 @@ import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/setting
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
+import { DevStackToggle } from "@/client/components/tasks/DevStackToggle";
 import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
@@ -508,7 +509,14 @@ function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraH
       {/* Repository */}
       <TableCell>
         {repo ? (
-          <RepoBadge repo={repo} />
+          <span className="inline-flex items-center gap-1">
+            <RepoBadge repo={repo} />
+            <DevStackToggle
+              owner={{ prUrl: request.url }}
+              repositoryId={repo.id}
+              label={`${request.repo.repo}#${request.prNumber}`}
+            />
+          </span>
         ) : (
           <Badge variant="outline" className="text-xs">
             {request.repo.repo}
