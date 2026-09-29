@@ -98,7 +98,7 @@ export const taskWorktrees = sqliteTable("task_worktrees", {
   taskId: integer("task_id").notNull().unique().references(() => tasks.id, { onDelete: "cascade" }),
   repositoryId: integer("repository_id").notNull().references(() => repositories.id),
   path: text("path").notNull(), // may start with ~ like worktrees.path
-  branch: text("branch"), // null while detached (before the start-task skill creates a branch)
+  branch: text("branch"), // null only for worktrees created detached before wt managed them
   state: text("state").notNull(), // preparing | ready | failed | dirty | removing
   setupLog: text("setup_log"), // tail of setup/teardown output
   error: text("error"),

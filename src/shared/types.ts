@@ -121,7 +121,7 @@ export interface TaskWorktree {
   taskId: number;
   repositoryId: number;
   path: string;
-  branch: string | null; // null while detached
+  branch: string | null; // null only for older worktrees created detached
   state: TaskWorktreeState;
   setupLog: string | null;
   error: string | null;

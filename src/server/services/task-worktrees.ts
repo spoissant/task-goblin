@@ -9,16 +9,8 @@ import { now } from "../lib/timestamp";
 import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import { getCompletedCondition } from "../lib/task-status";
 import { runShell, tailOutput } from "../lib/process";
-import {
-  changedFileCount,
-  fetchRef,
-  localBranchExists,
-  remoteBranchExists,
-  worktreeAdd,
-  worktreeList,
-  worktreePrune,
-  worktreeRemove,
-} from "../lib/git";
+import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, worktreePrune } from "../lib/git";
+import { wtPreStart, wtRemove, wtSwitch } from "../lib/wt";
 import { broadcast } from "../lib/sse";
 
 type TaskRow = typeof tasks.$inferSelect;
@@ -29,10 +21,14 @@ const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
 const TEARDOWN_TIMEOUT_MS = 5 * 60 * 1000;
 export const ACTIVE_SESSION_STATES = ["queued", "preparing", "working", "blocked"] as const;
 
-/** Sibling directory of the main checkout: `<main>.<KEY>`, keeping the `~` form. */
-export function worktreePathFor(mainPath: string, key: string): string {
+/**
+ * Where wt puts the worktree of `branch`: a sibling of the main checkout,
+ * `<main>.<branch>` with `/` sanitized, keeping the `~` form. Only a
+ * placeholder until wt reports the real path.
+ */
+export function worktreePathFor(mainPath: string, branch: string): string {
   const trimmed = mainPath.replace(/\/+$/, "");
-  return `${dirname(trimmed)}/${basename(trimmed)}.${key}`;
+  return `${dirname(trimmed)}/${basename(trimmed)}.${branch.replaceAll("/", "-")}`;
 }
 
 /** Docker Compose project name the repo tooling derives from a worktree directory. */
@@ -48,9 +44,15 @@ export async function composeProjectFor(worktreePath: string): Promise<string> {
   return basename(expanded).toLowerCase().replace(/[^a-z0-9]/g, "_");
 }
 
-/** Key used in the worktree directory name: Jira key when present, else task-<id>. */
-export function worktreeKeyFor(task: Pick<TaskRow, "id" | "jiraKey">): string {
-  return task.jiraKey ?? `task-${task.id}`;
+/**
+ * Branch the worktree checks out: the task's PR branch when it has one, else
+ * `<fix|feat|chore>/<KEY>` by Jira issue type (same rule as the start-task skill).
+ */
+export function branchNameFor(task: Pick<TaskRow, "id" | "jiraKey" | "type" | "headBranch">): string {
+  if (task.headBranch) return task.headBranch;
+  const type = task.type?.toLowerCase();
+  const prefix = type === "bug" || type === "incident" ? "fix" : type === "story" ? "feat" : "chore";
+  return `${prefix}/${task.jiraKey ?? `task-${task.id}`}`;
 }
 
 /** Resolve the repository's main checkout path or throw the usual guard errors. */
@@ -133,10 +135,11 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
   if (existing) {
     if (existing.repositoryId !== repository.id) {
       // Task moved to another repository: point the row at the new checkout.
+      const branch = branchNameFor(task);
       return updateRow(existing.id, {
         repositoryId: repository.id,
-        path: worktreePathFor(mainPath, worktreeKeyFor(task)),
-        branch: task.headBranch,
+        path: worktreePathFor(mainPath, branch),
+        branch,
         state: "preparing",
         error: null,
         setupLog: null,
@@ -147,13 +150,14 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
     return updateRow(existing.id, { state: "preparing", error: null });
   }
   const timestamp = now();
+  const branch = branchNameFor(task);
   const rows = await db
     .insert(taskWorktrees)
     .values({
       taskId: task.id,
       repositoryId: repository.id,
-      path: worktreePathFor(mainPath, worktreeKeyFor(task)),
-      branch: task.headBranch,
+      path: worktreePathFor(mainPath, branch),
+      branch,
       state: "preparing",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -167,32 +171,8 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
   const { task, repository } = await loadTaskAndRepo(taskId);
   const mainPath = await resolveMainPath(repository);
   let row = await upsertPreparing(task, repository, mainPath);
-  let expanded = expandPath(row.path);
 
-  await worktreePrune(mainPath);
-  let worktrees;
-  try {
-    worktrees = await worktreeList(mainPath);
-  } catch (err) {
-    return updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
-  }
-  let registered = worktrees.find((wt) => wt.path === expanded);
-
-  // Git allows a branch in one worktree only: reuse one made outside Task Goblin.
-  const elsewhere = !registered && task.headBranch ? worktrees.find((wt) => wt.branch === task.headBranch) : undefined;
-  if (elsewhere) {
-    if (elsewhere === worktrees[0]) {
-      return updateRow(row.id, {
-        state: "failed",
-        error: `Branch ${task.headBranch} is checked out in the main checkout; switch it to another branch first`,
-      });
-    }
-    row = await updateRow(row.id, { path: elsewhere.path });
-    expanded = elsewhere.path;
-    registered = elsewhere;
-  }
-
-  if (row.state === "ready" && registered && existsSync(expanded)) {
+  if (row.state === "ready" && existsSync(expandPath(row.path))) {
     return row;
   }
   if (row.state === "ready") {
@@ -200,55 +180,44 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
     row = await updateRow(row.id, { state: "preparing", error: null });
   }
 
-  if (!registered) {
-    if (existsSync(expanded)) {
-      return updateRow(row.id, {
-        state: "failed",
-        error: `Directory exists but is not a registered worktree: ${row.path}`,
-      });
-    }
-    const added = await addWorktree(mainPath, expanded, task, repository);
-    if (added.exitCode !== 0) {
-      return updateRow(row.id, { state: "failed", error: added.stderr || "git worktree add failed" });
-    }
+  // wt checks out an existing branch (local or origin) or reuses the worktree
+  // that already has it; a new branch starts from the repository's base.
+  const branch = task.headBranch ?? row.branch ?? branchNameFor(task);
+  await fetchRef(mainPath, branch);
+  const exists = (await localBranchExists(mainPath, branch)) || (await remoteBranchExists(mainPath, branch));
+  let base: string | undefined;
+  if (!exists) {
+    const baseBranch = repository.defaultBaseBranch ?? task.baseBranch ?? "main";
+    await fetchRef(mainPath, baseBranch);
+    base = `origin/${baseBranch}`;
   }
+  const switched = await wtSwitch(mainPath, branch, base);
+  if (!switched.path) {
+    return updateRow(row.id, { state: "failed", error: tailOutput(switched.result, 500) || "wt switch failed" });
+  }
+  if (switched.path === expandPath(mainPath)) {
+    return updateRow(row.id, {
+      state: "failed",
+      error: `Branch ${branch} is checked out in the main checkout; switch it to another branch first`,
+    });
+  }
+  row = await updateRow(row.id, { path: switched.path, branch });
 
+  // Setup: the repository's wt pre-start hooks, then its extra setup command.
+  const hooks = await wtPreStart(row.path, SETUP_TIMEOUT_MS);
+  let log = tailOutput(hooks);
+  if (hooks.exitCode !== 0) {
+    return updateRow(row.id, { state: "failed", setupLog: log, error: `wt pre-start hooks failed (exit ${hooks.exitCode})` });
+  }
   if (repository.setupCommand) {
     const setup = await runShell(row.path, repository.setupCommand, { timeoutMs: SETUP_TIMEOUT_MS });
-    const log = tailOutput(setup);
+    log = [log, tailOutput(setup)].filter(Boolean).join("\n");
     if (setup.exitCode !== 0) {
       return updateRow(row.id, { state: "failed", setupLog: log, error: `Setup command failed (exit ${setup.exitCode})` });
     }
-    row = await updateRow(row.id, { setupLog: log });
   }
 
-  const current = (await worktreeList(mainPath).catch(() => [])).find((wt) => wt.path === expanded);
-  return updateRow(row.id, {
-    state: "ready",
-    branch: current?.branch ?? null,
-    error: null,
-    readyAt: now(),
-  });
-}
-
-/**
- * Check out the task branch when it exists (locally or on origin); otherwise
- * start detached at the repository's base branch and let the start-task skill
- * name the branch.
- */
-async function addWorktree(mainPath: string, path: string, task: TaskRow, repository: RepoRow) {
-  if (task.headBranch) {
-    await fetchRef(mainPath, task.headBranch);
-    if (await localBranchExists(mainPath, task.headBranch)) {
-      return worktreeAdd(mainPath, path, { branch: task.headBranch });
-    }
-    if (await remoteBranchExists(mainPath, task.headBranch)) {
-      return worktreeAdd(mainPath, path, { newBranch: task.headBranch, from: `origin/${task.headBranch}` });
-    }
-  }
-  const base = repository.defaultBaseBranch ?? task.baseBranch ?? "main";
-  await fetchRef(mainPath, base);
-  return worktreeAdd(mainPath, path, { detachAt: `origin/${base}` });
+  return updateRow(row.id, { state: "ready", setupLog: log || null, error: null, readyAt: now() });
 }
 
 export async function getTaskWorktreeStatus(taskId: number) {
@@ -306,9 +275,10 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
 
     if (mainPath) {
       if (existsSync(expanded)) {
-        const removed = await worktreeRemove(mainPath, expanded, force);
+        // wt runs the repository's pre-remove hooks (e.g. Docker teardown) first.
+        const removed = await wtRemove(mainPath, expanded, force, TEARDOWN_TIMEOUT_MS);
         if (removed.exitCode !== 0) {
-          await updateRow(row.id, { state: "failed", error: removed.stderr || "git worktree remove failed" });
+          await updateRow(row.id, { state: "failed", error: tailOutput(removed, 500) || "wt remove failed" });
           return;
         }
       }

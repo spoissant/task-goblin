@@ -7,41 +7,36 @@ import { createTestTables } from "../../test/createSchema";
 import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
-import { parseWorktreeList } from "../lib/git";
 import { resetCommandRunner, setCommandRunner, type CommandOptions, type CommandResult } from "../lib/process";
-import { ensureTaskWorktree, getTaskWorktreeRow, worktreePathFor, worktreeKeyFor } from "./task-worktrees";
+import { branchNameFor, ensureTaskWorktree, getTaskWorktreeRow, worktreePathFor } from "./task-worktrees";
 import { mergeSingleTask } from "./task-merge";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 
+/** wt subcommand of a fake-runner call, e.g. "switch"; null for non-wt calls. */
+const wtCommand = (args: string[]): string | null => {
+  if (args[1] !== 'command wt "$@"') return null;
+  const rest = args.slice(3);
+  return rest[0] === "-C" ? rest[2] : rest[0];
+};
+
 describe("worktree helpers", () => {
-  it("names the worktree as a sibling of the main checkout", () => {
-    expect(worktreePathFor("~/Code/hivebrite/alumni_connect/alumni_connect", "EV-3769")).toBe(
-      "~/Code/hivebrite/alumni_connect/alumni_connect.EV-3769",
+  it("predicts wt's sibling path for a branch", () => {
+    expect(worktreePathFor("~/Code/hivebrite/alumni_connect/alumni_connect", "fix/EV-3769")).toBe(
+      "~/Code/hivebrite/alumni_connect/alumni_connect.fix-EV-3769",
     );
-    expect(worktreePathFor("/repo/front-monorepo/", "PS-1")).toBe("/repo/front-monorepo.PS-1");
+    expect(worktreePathFor("/repo/front-monorepo/", "feat/PS-1")).toBe("/repo/front-monorepo.feat-PS-1");
   });
 
-  it("falls back to the task id when there is no Jira key", () => {
-    expect(worktreeKeyFor({ id: 42, jiraKey: null })).toBe("task-42");
-    expect(worktreeKeyFor({ id: 42, jiraKey: "EV-1" })).toBe("EV-1");
-  });
-
-  it("parses git worktree list --porcelain", () => {
-    const porcelain = [
-      "worktree /a/main",
-      "HEAD abc",
-      "branch refs/heads/sprint",
-      "",
-      "worktree /a/main.EV-1",
-      "HEAD def",
-      "detached",
-      "",
-    ].join("\n");
-    expect(parseWorktreeList(porcelain)).toEqual([
-      { path: "/a/main", branch: "sprint" },
-      { path: "/a/main.EV-1", branch: null },
-    ]);
+  it("names the branch by Jira issue type", () => {
+    const task = { id: 42, jiraKey: "EV-1", type: null, headBranch: null };
+    expect(branchNameFor({ ...task, type: "Bug" })).toBe("fix/EV-1");
+    expect(branchNameFor({ ...task, type: "Incident" })).toBe("fix/EV-1");
+    expect(branchNameFor({ ...task, type: "Story" })).toBe("feat/EV-1");
+    expect(branchNameFor({ ...task, type: "Task" })).toBe("chore/EV-1");
+    expect(branchNameFor({ ...task, type: "Sub-task" })).toBe("chore/EV-1");
+    expect(branchNameFor({ ...task, jiraKey: null })).toBe("chore/task-42");
+    expect(branchNameFor({ ...task, type: "Bug", headBranch: "feat/pr-branch" })).toBe("feat/pr-branch");
   });
 });
 
@@ -126,37 +121,46 @@ describe("task worktree routes", () => {
     expect(await status.json()).toBeNull();
   });
 
-  it("repoints a stale worktree row when the task moved to another repository", async () => {
+  /** Main checkout registered for repo 1, plus a runner that fakes git and wt. */
+  function setupRepo(opts: { branchExists: boolean; wtPath?: (main: string) => string; hooksExit?: number }) {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
     sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, error, created_at, updated_at)
-      VALUES (1, 2, '/elsewhere/front-monorepo.EV-1', 'failed', 'old error', ${ts}, ${ts})`);
-    const porcelain = `worktree ${main}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${main}.EV-1\nHEAD def\ndetached\n`;
-    setCommandRunner(async (_cmd, args) => ok(args.includes("list") ? porcelain : ""));
+    const calls: { args: string[]; opts: CommandOptions }[] = [];
+    setCommandRunner(async (_cmd, args, runOpts) => {
+      calls.push({ args, opts: runOpts });
+      const wt = wtCommand(args);
+      if (wt === "switch") return ok(JSON.stringify({ path: opts.wtPath?.(main) ?? `${main}.wt` }));
+      if (wt === "hook") return { stdout: "hooks ran", stderr: "", exitCode: opts.hooksExit ?? 0 };
+      if (args[0] === "rev-parse") return { stdout: "", stderr: "", exitCode: opts.branchExists ? 0 : 1 };
+      return ok();
+    });
+    return { main, calls, wtCalls: () => calls.filter((c) => wtCommand(c.args)).map((c) => c.args.slice(3)) };
+  }
+
+  it("creates a new branch from the base with wt, then runs its pre-start hooks", async () => {
+    const { main, wtCalls } = setupRepo({ branchExists: false });
+    sqlite.exec(`UPDATE repositories SET default_base_branch = 'sprint' WHERE id = 1`);
+    sqlite.exec(`UPDATE tasks SET type = 'Bug' WHERE id = 1`);
 
     await ensureTaskWorktree(1);
 
     const row = await getTaskWorktreeRow(1);
-    expect(row?.repositoryId).toBe(1);
-    expect(row?.path).toBe(`${main}.EV-1`);
     expect(row?.state).toBe("ready");
-    expect(row?.error).toBeNull();
+    expect(row?.path).toBe(`${main}.wt`);
+    expect(row?.branch).toBe("fix/EV-1");
+    expect(row?.setupLog).toBe("hooks ran");
+    expect(wtCalls()).toEqual([
+      ["switch", "fix/EV-1", "--no-hooks", "--no-cd", "--yes", "--format", "json", "--create", "--base", "origin/sprint"],
+      ["hook", "pre-start", "--yes"],
+    ]);
   });
 
-  it("reuses a worktree made elsewhere that already has the task branch", async () => {
-    const ts = "'2026-01-01T00:00:00.000Z'";
-    const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
-    mkdirSync(main);
+  it("checks out an existing task branch and reuses the ready worktree afterwards", async () => {
+    const { main, wtCalls } = setupRepo({ branchExists: true, wtPath: (m) => `${m}.by-hand` });
+    mkdirSync(`${main}.by-hand`);
     sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
-    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
-    const porcelain = `worktree ${main}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${main}.by-hand\nHEAD def\nbranch refs/heads/feat/x\n`;
-    const calls: string[][] = [];
-    setCommandRunner(async (_cmd, args) => {
-      calls.push(args);
-      return ok(args.includes("list") ? porcelain : "");
-    });
 
     await ensureTaskWorktree(1);
     await ensureTaskWorktree(1);
@@ -164,7 +168,61 @@ describe("task worktree routes", () => {
     const row = await getTaskWorktreeRow(1);
     expect(row?.path).toBe(`${main}.by-hand`);
     expect(row?.state).toBe("ready");
-    expect(calls.some((a) => a.includes("add"))).toBe(false);
+    expect(wtCalls().filter((a) => a[0] === "switch")).toEqual([
+      ["switch", "feat/x", "--no-hooks", "--no-cd", "--yes", "--format", "json"],
+    ]);
+  });
+
+  it("repoints a stale worktree row when the task moved to another repository", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const { main } = setupRepo({ branchExists: false });
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, error, created_at, updated_at)
+      VALUES (1, 2, '/elsewhere/front-monorepo.EV-1', 'failed', 'old error', ${ts}, ${ts})`);
+
+    await ensureTaskWorktree(1);
+
+    const row = await getTaskWorktreeRow(1);
+    expect(row?.repositoryId).toBe(1);
+    expect(row?.path).toBe(`${main}.wt`);
+    expect(row?.state).toBe("ready");
+    expect(row?.error).toBeNull();
+  });
+
+  it("fails when the branch is checked out in the main checkout", async () => {
+    setupRepo({ branchExists: true, wtPath: (m) => m });
+    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+
+    await ensureTaskWorktree(1);
+
+    const row = await getTaskWorktreeRow(1);
+    expect(row?.state).toBe("failed");
+    expect(row?.error).toContain("checked out in the main checkout");
+  });
+
+  it("fails with the hook output when pre-start hooks fail, and skips the setup command", async () => {
+    const { calls } = setupRepo({ branchExists: false, hooksExit: 2 });
+    sqlite.exec(`UPDATE repositories SET setup_command = 'pnpm install' WHERE id = 1`);
+
+    await ensureTaskWorktree(1);
+
+    const row = await getTaskWorktreeRow(1);
+    expect(row?.state).toBe("failed");
+    expect(row?.setupLog).toBe("hooks ran");
+    expect(calls.some((c) => c.args.includes("pnpm install"))).toBe(false);
+  });
+
+  it("removes an existing worktree with wt", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const { main, wtCalls } = setupRepo({ branchExists: true });
+    mkdirSync(`${main}.fix-EV-1`);
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+      VALUES (1, 1, '${main}.fix-EV-1', 'ready', ${ts}, ${ts})`);
+
+    const res = await request("DELETE", "/api/v1/tasks/1");
+
+    expect(res.status).toBe(204);
+    expect(wtCalls()).toEqual([["-C", `${main}.fix-EV-1`, "remove", "--foreground", "--yes"]]);
+    expect(await getTaskWorktreeRow(1)).toBeNull();
   });
 
   it("tears down the stack of a deleted task even when its worktree folder is gone", async () => {
