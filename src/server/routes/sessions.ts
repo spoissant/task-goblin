@@ -1,3 +1,5 @@
+import { mkdir } from "fs/promises";
+import { tmpdir } from "os";
 import { json } from "../response";
 import { ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
@@ -51,6 +53,20 @@ export const sessionRoutes: Routes = {
     },
   },
 
+  // A pasted image for a prompt: saved to a temp file whose path goes into the
+  // prompt text, so the session reads it like any other file.
+  "/api/v1/sessions/images": {
+    async POST(req) {
+      const ext = IMAGE_TYPES[req.headers.get("content-type") ?? ""];
+      if (!ext) throw new ValidationError(`Content-Type must be one of: ${Object.keys(IMAGE_TYPES).join(", ")}`);
+      const dir = `${tmpdir()}/task-goblin-images`;
+      await mkdir(dir, { recursive: true });
+      const path = `${dir}/${crypto.randomUUID()}.${ext}`;
+      await Bun.write(path, await req.arrayBuffer());
+      return json({ path }, 201);
+    },
+  },
+
   "/api/v1/sessions/:id": {
     async GET(_req, params) {
       return json(toApi(await getSession(parseId(params.id))));
@@ -97,6 +113,13 @@ export const sessionRoutes: Routes = {
       return json(toApi(row), 202);
     },
   },
+};
+
+const IMAGE_TYPES: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
 };
 
 function optionalEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T | null {

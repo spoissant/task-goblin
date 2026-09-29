@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/client/lib/types";
 import { ApiError } from "@/client/lib/api";
+import { handleResponse } from "@/shared/api";
 import { useStartSession } from "@/client/lib/queries/sessions";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
@@ -30,6 +31,16 @@ const EFFORT_LABELS: Record<SessionEffort, string> = {
   max: "Max",
 };
 
+/** Save a pasted image on the server; returns the file path to put in the prompt. */
+async function uploadImage(file: File): Promise<string> {
+  const response = await fetch("/api/v1/sessions/images", {
+    method: "POST",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  return (await handleResponse<{ path: string }>(response)).path;
+}
+
 /** A chore to pre-fill the dialog with, with its command already resolved. */
 export interface PromptChore {
   number: number;
@@ -54,6 +65,8 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: Custom
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<SessionModel>("opus");
   const [effort, setEffort] = useState<SessionEffort>("medium");
+  const [uploading, setUploading] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const startSession = useStartSession();
   const chorePrompt = chore?.prompt ?? null;
 
@@ -61,6 +74,28 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: Custom
   useEffect(() => {
     if (open) setPrompt(chorePrompt ? `${chorePrompt}\n` : "");
   }, [open, chorePrompt]);
+
+  // Pasted screenshots are uploaded and replaced by their file path at the cursor.
+  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    e.preventDefault();
+    const { selectionStart, selectionEnd } = e.currentTarget;
+    setUploading((n) => n + 1);
+    try {
+      const paths = await Promise.all(images.map(uploadImage));
+      const text = paths.map((p) => `[Image: ${p}]`).join(" ");
+      setPrompt((prev) => prev.slice(0, selectionStart) + text + prev.slice(selectionEnd));
+      requestAnimationFrame(() => {
+        const cursor = selectionStart + text.length;
+        textareaRef.current?.setSelectionRange(cursor, cursor);
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload image");
+    } finally {
+      setUploading((n) => n - 1);
+    }
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +119,7 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: Custom
       <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
         Cancel
       </Button>
-      <Button type="submit" form="custom-prompt-form" disabled={!prompt.trim() || startSession.isPending}>
+      <Button type="submit" form="custom-prompt-form" disabled={!prompt.trim() || uploading > 0 || startSession.isPending}>
         {startSession.isPending ? "Starting..." : "Start session"}
       </Button>
     </>
@@ -139,13 +174,16 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: Custom
           <div className="space-y-2">
             <Label htmlFor="custom-prompt">Prompt</Label>
             <Textarea
+              ref={textareaRef}
               id="custom-prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="What should Claude do on this task?"
+              onPaste={onPaste}
+              placeholder="What should Claude do on this task? Paste screenshots to attach them."
               rows={6}
               autoFocus
             />
+            {uploading > 0 && <p className="text-xs text-muted-foreground">Uploading image...</p>}
           </div>
         </div>
       </form>
