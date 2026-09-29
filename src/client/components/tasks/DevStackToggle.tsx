@@ -25,14 +25,25 @@ function isOwner(stack: DevStack, owner: DevStackOwner): boolean {
  */
 export function DevStackToggle({ owner, repositoryId, label }: DevStackToggleProps) {
   const { data } = useDevStackOverviewQuery();
-  const boot = useBootDevStack();
-  const stop = useStopDevStack();
-  const refresh = useRefreshDevStack();
 
   if (!data || repositoryId === null || !label) return null;
   if (!data.supportedRepositoryIds.includes(repositoryId)) return null;
 
-  const stack = data.stack;
+  return <DevStackButtons owner={owner} label={label} stack={data.stack} />;
+}
+
+interface DevStackButtonsProps {
+  owner: DevStackOwner;
+  label: string;
+  stack: DevStack | null;
+}
+
+/** The play/stop and refresh buttons, without the repository support check. */
+export function DevStackButtons({ owner, label, stack }: DevStackButtonsProps) {
+  const boot = useBootDevStack();
+  const stop = useStopDevStack();
+  const refresh = useRefreshDevStack();
+
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Dev stack request failed");
   const pending = boot.isPending || stop.isPending || refresh.isPending;
 

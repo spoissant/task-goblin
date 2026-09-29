@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 import { Sidebar } from "./Sidebar";
+import { DevStackOverlay } from "./DevStackOverlay";
 import { Toaster } from "@/client/components/ui/sonner";
 import { cn } from "@/client/lib/utils";
 import { useRealtimeUpdates } from "@/client/lib/useRealtimeUpdates";
@@ -25,6 +26,7 @@ export function RootLayout() {
           <Outlet />
         </main>
       </div>
+      <DevStackOverlay />
       <Toaster />
     </div>
   );
