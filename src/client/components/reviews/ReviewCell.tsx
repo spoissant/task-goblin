@@ -47,6 +47,23 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
     });
   };
 
+  // Its Remote Control link is dead until the process is back: respawn, then
+  // open it. The tab opens now so the click still counts as a user gesture.
+  const respawnAndOpen = (href: string) => {
+    if (!session) return;
+    const tab = window.open("", "_blank");
+    respawnSession.mutate(session.id, {
+      onSuccess: () => {
+        if (tab) tab.location.href = href;
+        else window.open(href, "_blank", "noopener,noreferrer");
+      },
+      onError: (err) => {
+        tab?.close();
+        toast.error(err instanceof Error ? err.message : "Failed to respawn session");
+      },
+    });
+  };
+
   const link = (label: React.ReactNode, className: string, href: string) => (
     <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
       {label}
@@ -79,14 +96,29 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
     );
   } else if (hasDraft) {
     // No session means the draft was written elsewhere: open it on GitHub instead.
-    tooltip = session?.link ? "Draft review posted: open the session" : "Unsubmitted draft review: open on GitHub";
-    content = link(
+    const disconnected = !!session?.link && canRespawn(session);
+    tooltip = disconnected
+      ? "Draft review posted: session disconnected, click to respawn and open it"
+      : session?.link
+        ? "Draft review posted: open the session"
+        : "Unsubmitted draft review: open on GitHub";
+    const label = (
       <>
         <PencilLine className="h-3 w-3" />
         Draft review
-      </>,
-      DRAFT_PILL,
-      session?.link ?? `${prUrl}/files`,
+      </>
+    );
+    content = disconnected ? (
+      <button
+        type="button"
+        className={cn(DRAFT_PILL, "cursor-pointer")}
+        onClick={() => respawnAndOpen(session!.link!)}
+        disabled={respawnSession.isPending}
+      >
+        {label}
+      </button>
+    ) : (
+      link(label, DRAFT_PILL, session?.link ?? `${prUrl}/files`)
     );
   } else if (session?.state === "failed") {
     tooltip = `${session.error ?? session.detail ?? "The review failed"}\nClick to retry`;
