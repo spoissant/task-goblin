@@ -1,6 +1,6 @@
 import { json } from "../response";
 import { parseId } from "../lib/validation";
-import { bootDevStack, getDevStackOverview, getDevStackStatus, stopDevStack } from "../services/dev-stack";
+import { bootDevStack, getDevStackOverview, getDevStackStatus, refreshDevStack, stopDevStack } from "../services/dev-stack";
 import type { Routes } from "../router";
 
 export const devStackRoutes: Routes = {
@@ -24,6 +24,13 @@ export const devStackRoutes: Routes = {
     // Stop the stack and return the main checkout to its base branch.
     async DELETE(_req, params) {
       return json(await stopDevStack(parseId(params.id)), 202);
+    },
+  },
+
+  // Move the running stack's checkout to the latest commit of the task branch.
+  "/api/v1/tasks/:id/dev-stack/refresh": {
+    async POST(_req, params) {
+      return json(await refreshDevStack(parseId(params.id)));
     },
   },
 };

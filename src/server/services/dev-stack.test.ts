@@ -7,6 +7,7 @@ import {
   bootDevStack,
   devStackSettled,
   getDevStackStatus,
+  refreshDevStack,
   setDevStackRuntime,
   stopDevStack,
 } from "./dev-stack";
@@ -230,6 +231,27 @@ describe("dev stack", () => {
     expect(resetIndex).toBeGreaterThanOrEqual(0);
     expect(switchIndex).toBeGreaterThan(resetIndex);
     expect((await getDevStackStatus(1)).stack).toBeNull();
+  });
+
+  it("refreshes a running stack to the latest branch commit without restarting it", async () => {
+    ready();
+    await bootDevStack(1);
+    await devStackSettled();
+    commands.length = 0;
+
+    await refreshDevStack(1);
+    expect(commands).toContain("git fetch origin fix/EV-1");
+    expect(commands).toContain("git switch --detach --discard-changes fix/EV-1");
+    expect(spawned).toBe(1);
+    expect((await getDevStackStatus(1)).stack?.state).toBe("up");
+  });
+
+  it("refuses to refresh a stack that is not up or belongs to another task", async () => {
+    await expect(refreshDevStack(1)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await bootDevStack(1); // stays starting: never compiles
+    await Bun.sleep(20);
+    await expect(refreshDevStack(1)).rejects.toMatchObject({ code: "DEV_STACK_NOT_UP" });
+    await expect(refreshDevStack(2)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
   });
 
   it("fails the stop when containers never go away", async () => {

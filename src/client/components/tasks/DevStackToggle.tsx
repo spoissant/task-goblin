@@ -1,6 +1,6 @@
-import { CirclePlay, CircleStop, Loader2 } from "lucide-react";
+import { CirclePlay, CircleStop, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { useBootDevStack, useDevStackOverviewQuery, useStopDevStack } from "@/client/lib/queries/dev-stack";
+import { useBootDevStack, useDevStackOverviewQuery, useRefreshDevStack, useStopDevStack } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
 import type { Task } from "@/client/lib/types";
@@ -12,24 +12,27 @@ interface DevStackToggleProps {
 /**
  * Play/stop for the single local dev stack, shown next to the repo badge.
  * Play detaches the main checkout at the task branch and runs the stack;
- * stop tears it down and returns to the base branch. Hidden for repositories
+ * stop tears it down and returns to the base branch. While up, refresh moves
+ * the detached checkout to the branch's latest commit. Hidden for repositories
  * without dev stack support (see server/services/dev-stack.ts).
  */
 export function DevStackToggle({ task }: DevStackToggleProps) {
   const { data } = useDevStackOverviewQuery();
   const boot = useBootDevStack();
   const stop = useStopDevStack();
+  const refresh = useRefreshDevStack();
 
   if (!data || task.repositoryId === null || !task.headBranch) return null;
   if (!data.supportedRepositoryIds.includes(task.repositoryId)) return null;
 
   const stack = data.stack;
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Dev stack request failed");
-  const pending = boot.isPending || stop.isPending;
+  const pending = boot.isPending || stop.isPending || refresh.isPending;
 
   let icon: React.ReactNode;
   let tooltip: string;
   let onClick: (() => void) | undefined;
+  let canRefresh = false;
 
   if (!stack) {
     icon = <CirclePlay className="h-6 w-6" />;
@@ -53,26 +56,54 @@ export function DevStackToggle({ task }: DevStackToggleProps) {
     icon = <CircleStop className="h-6 w-6 text-green-600" />;
     tooltip = `Running at ${stack.url}\nClick to stop and switch back`;
     onClick = () => stop.mutate(task.id, { onError });
+    canRefresh = true;
   }
 
+  const onRefresh = () =>
+    refresh.mutate(task.id, {
+      onError,
+      onSuccess: ({ from, to }) =>
+        toast.success(from === to ? `Already at the latest commit (${to})` : `Dev stack moved ${from} → ${to}`),
+    });
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={!onClick || pending}
-          className={cn(
-            "inline-flex items-center justify-center rounded p-0.5 text-muted-foreground",
-            onClick && "cursor-pointer hover:text-foreground hover:bg-muted",
-            !onClick && "cursor-default",
-          )}
-          aria-label={tooltip}
-        >
-          {icon}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs whitespace-pre-line">{tooltip}</TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={!onClick || pending}
+            className={cn(
+              "inline-flex items-center justify-center rounded p-0.5 text-muted-foreground",
+              onClick && "cursor-pointer hover:text-foreground hover:bg-muted",
+              !onClick && "cursor-default",
+            )}
+            aria-label={tooltip}
+          >
+            {icon}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs whitespace-pre-line">{tooltip}</TooltipContent>
+      </Tooltip>
+      {canRefresh && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={pending}
+              className="inline-flex cursor-pointer items-center justify-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Refresh to the latest commit"
+            >
+              <RefreshCw className={cn("h-5 w-5", refresh.isPending && "animate-spin")} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs whitespace-pre-line">
+            {"Move the checkout to the latest commit of the branch\nKeeps the stack running; new migrations are not run"}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </>
   );
 }

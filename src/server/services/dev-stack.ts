@@ -29,7 +29,7 @@ import { runCommand, runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
-import type { DevStack, DevStackOverview, DevStackState, DevStackStatus } from "../../shared/types";
+import type { DevStack, DevStackOverview, DevStackRefresh, DevStackState, DevStackStatus } from "../../shared/types";
 
 const DEV_STACK_REPO = "alumni_connect";
 /** Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs. */
@@ -296,6 +296,14 @@ export async function bootDevStack(taskId: number): Promise<DevStack> {
   return toDevStack(stored);
 }
 
+/** Fetch the branch, then prefer the local ref (worktree commits land there) over origin. */
+async function resolveTarget(mainPath: string, branch: string): Promise<string | null> {
+  await fetchRef(mainPath, branch);
+  if (await localBranchExists(mainPath, branch)) return branch;
+  if (await remoteBranchExists(mainPath, branch)) return `origin/${branch}`;
+  return null;
+}
+
 async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
   const fail = (error: string) => saveStack({ ...stored, state: "failed", detail: null, error });
   try {
@@ -305,11 +313,8 @@ async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
       return;
     }
 
-    await fetchRef(mainPath, stored.branch);
-    let target: string;
-    if (await localBranchExists(mainPath, stored.branch)) target = stored.branch;
-    else if (await remoteBranchExists(mainPath, stored.branch)) target = `origin/${stored.branch}`;
-    else {
+    const target = await resolveTarget(mainPath, stored.branch);
+    if (!target) {
       await fail(`Branch ${stored.branch} not found locally or on origin`);
       return;
     }
@@ -382,6 +387,41 @@ async function waitUntilReady(stored: StoredStack, mainPath: string): Promise<vo
   if (current?.pid === stored.pid && current.state === "starting") {
     await saveStack({ ...current, state: "failed", detail: null, error: "Stack did not become ready in time; see log" });
   }
+}
+
+async function shortHead(mainPath: string): Promise<string> {
+  return (await runGit(mainPath, ["rev-parse", "--short", "HEAD"])).stdout.trim();
+}
+
+/**
+ * Move the running stack's detached checkout to the branch's latest commit,
+ * leaving the stack up so the bundler and Rails reload in place. Local changes
+ * (db/schema.rb from the boot migration) are discarded, like on stop.
+ * New migrations are not run.
+ */
+export async function refreshDevStack(taskId: number): Promise<DevStackRefresh> {
+  const stored = await loadStack();
+  if (!stored) throw new NotFoundError("Dev stack");
+  if (stored.taskId !== taskId) {
+    throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
+  }
+  if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
+
+  const { repository } = await loadTaskAndRepo(taskId);
+  if (!repository) throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
+  const mainPath = await resolveMainPath(repository);
+
+  const target = await resolveTarget(mainPath, stored.branch);
+  if (!target) throw new AppError(`Branch ${stored.branch} not found locally or on origin`, 404, "BRANCH_NOT_FOUND");
+
+  const from = await shortHead(mainPath);
+  const switched = await runGit(mainPath, ["switch", "--detach", "--discard-changes", target]);
+  if (switched.exitCode !== 0) {
+    throw new AppError(switched.stderr || `git switch --detach ${target} failed`, 500, "DEV_STACK_REFRESH_FAILED");
+  }
+  const to = await shortHead(mainPath);
+  appendLog(`# ${now()} refresh ${stored.branch} (${target}): ${from} -> ${to}`);
+  return { from, to };
 }
 
 /** Stop the stack of this task and return the main checkout to its base branch, in the background. */

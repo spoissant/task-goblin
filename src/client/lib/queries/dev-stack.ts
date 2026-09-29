@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { DevStack, DevStackOverview } from "../types";
+import type { DevStack, DevStackOverview, DevStackRefresh } from "../types";
 
 export const devStackKeys = {
   all: ["dev-stack"] as const,
@@ -35,5 +35,11 @@ export function useStopDevStack() {
   return useMutation({
     mutationFn: (taskId: number) => api.delete<DevStack>(`/tasks/${taskId}/dev-stack`),
     onSettled: () => queryClient.invalidateQueries({ queryKey: devStackKeys.all }),
+  });
+}
+
+export function useRefreshDevStack() {
+  return useMutation({
+    mutationFn: (taskId: number) => api.post<DevStackRefresh>(`/tasks/${taskId}/dev-stack/refresh`),
   });
 }

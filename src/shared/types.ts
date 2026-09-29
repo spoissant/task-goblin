@@ -155,6 +155,11 @@ export interface DevStackStatus {
   stack: DevStack | null; // the one stack, whichever task owns it
 }
 
+export interface DevStackRefresh {
+  from: string; // short sha before the refresh
+  to: string; // short sha after; equal to `from` when already up to date
+}
+
 export interface DevStackOverview {
   supportedRepositoryIds: number[]; // repositories whose tasks may boot the stack
   stack: DevStack | null;
