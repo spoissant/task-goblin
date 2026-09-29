@@ -131,12 +131,11 @@ export async function startTaskWorktreePreparation(taskId: number): Promise<Task
 async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: string): Promise<TaskWorktreeRow> {
   const existing = await getTaskWorktreeRow(task.id);
   if (existing) {
-    const path = worktreePathFor(mainPath, worktreeKeyFor(task));
-    if (existing.repositoryId !== repository.id || existing.path !== path) {
+    if (existing.repositoryId !== repository.id) {
       // Task moved to another repository: point the row at the new checkout.
       return updateRow(existing.id, {
         repositoryId: repository.id,
-        path,
+        path: worktreePathFor(mainPath, worktreeKeyFor(task)),
         branch: task.headBranch,
         state: "preparing",
         error: null,
@@ -168,14 +167,29 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
   const { task, repository } = await loadTaskAndRepo(taskId);
   const mainPath = await resolveMainPath(repository);
   let row = await upsertPreparing(task, repository, mainPath);
-  const expanded = expandPath(row.path);
+  let expanded = expandPath(row.path);
 
   await worktreePrune(mainPath);
-  let registered;
+  let worktrees;
   try {
-    registered = (await worktreeList(mainPath)).find((wt) => wt.path === expanded);
+    worktrees = await worktreeList(mainPath);
   } catch (err) {
     return updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+  let registered = worktrees.find((wt) => wt.path === expanded);
+
+  // Git allows a branch in one worktree only: reuse one made outside Task Goblin.
+  const elsewhere = !registered && task.headBranch ? worktrees.find((wt) => wt.branch === task.headBranch) : undefined;
+  if (elsewhere) {
+    if (elsewhere === worktrees[0]) {
+      return updateRow(row.id, {
+        state: "failed",
+        error: `Branch ${task.headBranch} is checked out in the main checkout; switch it to another branch first`,
+      });
+    }
+    row = await updateRow(row.id, { path: elsewhere.path });
+    expanded = elsewhere.path;
+    registered = elsewhere;
   }
 
   if (row.state === "ready" && registered && existsSync(expanded)) {

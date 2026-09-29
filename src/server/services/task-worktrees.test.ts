@@ -145,6 +145,28 @@ describe("task worktree routes", () => {
     expect(row?.error).toBeNull();
   });
 
+  it("reuses a worktree made elsewhere that already has the task branch", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
+    mkdirSync(main);
+    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
+    const porcelain = `worktree ${main}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${main}.by-hand\nHEAD def\nbranch refs/heads/feat/x\n`;
+    const calls: string[][] = [];
+    setCommandRunner(async (_cmd, args) => {
+      calls.push(args);
+      return ok(args.includes("list") ? porcelain : "");
+    });
+
+    await ensureTaskWorktree(1);
+    await ensureTaskWorktree(1);
+
+    const row = await getTaskWorktreeRow(1);
+    expect(row?.path).toBe(`${main}.by-hand`);
+    expect(row?.state).toBe("ready");
+    expect(calls.some((a) => a.includes("add"))).toBe(false);
+  });
+
   it("tears down the stack of a deleted task even when its worktree folder is gone", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
