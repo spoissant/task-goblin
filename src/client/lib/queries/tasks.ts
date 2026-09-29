@@ -121,6 +121,19 @@ export function useAssignPr() {
   });
 }
 
+// Manually assign a Jira key to a PR task
+export function useAssignJira() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, key }: { id: number; key: string }) =>
+      api.post<Task>(`/tasks/${id}/assign-jira`, { key }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
 // Merge two orphan tasks (jira + pr)
 export function useMergeTasks() {
   const queryClient = useQueryClient();

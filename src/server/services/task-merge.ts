@@ -2,13 +2,15 @@ import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, todos, taskWorktrees } from "../../db/schema";
 import { json } from "../response";
-import { ValidationError } from "../lib/errors";
+import { AppError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import { getNotCompletedCondition } from "../lib/task-status";
 import { getTaskOrThrow } from "../lib/queries";
 import { getTaskWorktreeRow, teardownBeforeTaskDelete } from "./task-worktrees";
+import { syncJiraItemByKey, JiraApiError } from "./jira-sync";
+import { JiraConfigError } from "../lib/jira-client";
 import type { Routes } from "../router";
 
 export interface AutoMatchPair {
@@ -119,6 +121,7 @@ export async function mergeSingleTask(
   // If target is PR task, copy Jira fields from source
   else if (target.prNumber && !target.jiraKey) {
     mergedFields.jiraKey = jiraTask.jiraKey;
+    mergedFields.status = jiraTask.status;
     mergedFields.type = jiraTask.type;
     mergedFields.assignee = jiraTask.assignee;
     mergedFields.priority = jiraTask.priority;
@@ -141,13 +144,6 @@ export async function mergeSingleTask(
 
   // Wrap all merge operations in a transaction for consistency
   const result = await db.transaction(async (tx) => {
-    // Update target with merged fields
-    const updated = await tx
-      .update(tasks)
-      .set(mergedFields)
-      .where(eq(tasks.id, targetId))
-      .returning();
-
     // Move todos from source to target
     await tx
       .update(todos)
@@ -159,8 +155,15 @@ export async function mergeSingleTask(
       .set({ taskId: targetId })
       .where(eq(taskWorktrees.taskId, sourceId));
 
-    // Delete source task
+    // Delete source before updating target: jira_key is unique, so the target
+    // can't take the source's key while the source still holds it.
     await tx.delete(tasks).where(eq(tasks.id, sourceId));
+
+    const updated = await tx
+      .update(tasks)
+      .set(mergedFields)
+      .where(eq(tasks.id, targetId))
+      .returning();
 
     return updated[0];
   });
@@ -194,6 +197,50 @@ export const taskMergeRoutes: Routes = {
 
       const result = await mergeSingleTask(id, body.sourceTaskId);
       return json(result);
+    },
+  },
+
+  // Manually attach a Jira issue (by key) to a PR task that has none
+  "/api/v1/tasks/:id/assign-jira": {
+    async POST(req, params) {
+      const id = parseId(params.id);
+      const body = await getBody(req);
+      const key = typeof body.key === "string" ? body.key.trim().toUpperCase() : "";
+
+      if (!/^[A-Z][A-Z0-9]*-\d+$/.test(key)) {
+        throw new ValidationError("Invalid Jira key. Expected format: PROJ-123");
+      }
+
+      const task = await getTaskOrThrow(id);
+      if (!task.prNumber) throw new ValidationError("Task has no PR");
+      if (task.jiraKey) throw new ValidationError("Task already has a Jira key");
+
+      // Make sure a local task exists for the issue, then merge it into this one
+      try {
+        await syncJiraItemByKey(key);
+      } catch (err) {
+        if (err instanceof JiraConfigError) {
+          throw new AppError(err.message, 400, err.code);
+        }
+        if (err instanceof JiraApiError) {
+          const statusCode =
+            err.code === "JIRA_AUTH_FAILED" ? 401 :
+            err.code === "JIRA_ISSUE_NOT_FOUND" ? 404 : 502;
+          throw new AppError(err.message, statusCode, err.code);
+        }
+        throw err;
+      }
+
+      const [jiraTask] = await db.select().from(tasks).where(eq(tasks.jiraKey, key));
+      if (jiraTask.prNumber) {
+        throw new AppError(
+          `${key} is already linked to task #${jiraTask.id}: ${jiraTask.title}`,
+          409,
+          "JIRA_ALREADY_LINKED"
+        );
+      }
+
+      return json(await mergeSingleTask(id, jiraTask.id));
     },
   },
 

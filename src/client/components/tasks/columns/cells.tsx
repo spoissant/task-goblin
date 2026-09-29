@@ -23,6 +23,7 @@ import { Textarea } from "@/client/components/ui/textarea";
 import { Linkify } from "@/client/components/ui/Linkify";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { AssignPrDialog } from "../AssignPrDialog";
+import { AssignJiraDialog } from "../AssignJiraDialog";
 
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-600 text-white hover:bg-red-600",
@@ -102,8 +103,34 @@ export function ParentCell({ task, jiraHost }: { task: Task; jiraHost?: string |
 }
 
 export function KeyCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
+  const [assignOpen, setAssignOpen] = useState(false);
+
   if (!task.jiraKey) {
-    return <span className="text-muted-foreground">—</span>;
+    if (!task.prNumber) {
+      return <span className="text-muted-foreground">—</span>;
+    }
+    return (
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            setAssignOpen(true);
+          }}
+        >
+          Assign
+        </Button>
+        {assignOpen && (
+          <AssignJiraDialog
+            taskId={task.id}
+            open={assignOpen}
+            onOpenChange={setAssignOpen}
+          />
+        )}
+      </>
+    );
   }
   const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
   if (jiraUrl) {

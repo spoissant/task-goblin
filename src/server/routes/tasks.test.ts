@@ -215,6 +215,36 @@ describe("Task repository changes", () => {
   });
 });
 
+describe("Task merge and Jira assignment", () => {
+  const ts = "'2026-01-01T00:00:00.000Z'";
+
+  beforeEach(() => {
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key)
+      VALUES (1, 'Jira summary', 'In Progress', ${ts}, ${ts}, 'EV-1')`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
+      VALUES (2, 'ev-1-branch', 'open', ${ts}, ${ts}, 1, 20, 'open')`);
+  });
+
+  it("merges a Jira task into a PR task, keeping the PR task", async () => {
+    const res = await request("POST", "/api/v1/tasks/2/merge", { sourceTaskId: 1 });
+    expect(res.status).toBe(200);
+    const task = await res.json();
+    expect(task).toMatchObject({ id: 2, jiraKey: "EV-1", status: "In Progress", title: "Jira summary", prNumber: 20 });
+    expect((await request("GET", "/api/v1/tasks/1")).status).toBe(404);
+  });
+
+  it("rejects an invalid Jira key", async () => {
+    const res = await request("POST", "/api/v1/tasks/2/assign-jira", { key: "not a key" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects assigning a Jira key to a task without a PR", async () => {
+    const res = await request("POST", "/api/v1/tasks/1/assign-jira", { key: "EV-2" });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("Task search filter", () => {
   beforeEach(async () => {
     await request("POST", "/api/v1/tasks", { title: "Migrate to tiptap editor" });
