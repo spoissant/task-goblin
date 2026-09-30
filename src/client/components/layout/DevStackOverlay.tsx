@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 import { useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
+import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useTaskQuery } from "@/client/lib/queries/tasks";
 import { DevStackButtons } from "@/client/components/tasks/DevStackToggle";
+import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { getPrUrl } from "@/client/components/tasks/columns/cells";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import type { DevStack, DevStackOwner } from "@/client/lib/types";
@@ -12,6 +14,7 @@ import type { DevStack, DevStackOwner } from "@/client/lib/types";
  */
 export function DevStackOverlay() {
   const { data } = useDevStackOverviewQuery();
+  const { data: repos } = useRepositoriesQuery();
   const stacks = data?.stacks ?? [];
   if (stacks.length === 0) return null;
 
@@ -20,11 +23,13 @@ export function DevStackOverlay() {
       <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">
         {stacks.map((stack) => {
           const owner: DevStackOwner = stack.taskId !== null ? { taskId: stack.taskId } : { prUrl: stack.prUrl! };
+          const repo = repos?.items.find((r) => r.id === stack.repositoryId);
           return (
             <div
               key={stack.repositoryId}
               className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm shadow-lg"
             >
+              {repo && <RepoBadge repo={repo} />}
               <StackIdentity stack={stack} />
               <DevStackButtons owner={owner} label={stack.branch} stack={stack} />
             </div>
