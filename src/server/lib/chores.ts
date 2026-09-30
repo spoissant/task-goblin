@@ -181,6 +181,15 @@ const CHORES: ChoreDefinition[] = [
     categories: ["Code Review"],
     match: (t) => parseDeploymentBranches(t.deployedOnBranches).length > 0,
   },
+  {
+    number: 11,
+    key: "merge-latest-origin",
+    name: "Merge Latest Origin",
+    condition: "manual only (never suggested)",
+    prompt: "/chore-merge-latest-origin {{taskId}}",
+    categories: null,
+    match: () => false,
+  },
 ];
 
 export function getChoreDefinitions() {
