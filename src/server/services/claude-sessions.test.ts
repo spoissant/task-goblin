@@ -256,6 +256,12 @@ describe("claude sessions", () => {
     list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("done");
     expect(list.items[0].firstTerminalAt).toBeTruthy();
+
+    // chatted with after it finished: working again
+    writeState("abcd1234", { ...idle, tempo: "active", updatedAt: "2026-01-01T00:03:00.000Z" });
+    await pollActiveSessions();
+    list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
+    expect(list.items[0].state).toBe("working");
   });
 
   it("treats an unanswered AskUserQuestion as blocked despite an active tempo", async () => {

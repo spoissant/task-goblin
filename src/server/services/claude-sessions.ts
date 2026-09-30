@@ -3,7 +3,7 @@
  * never resumed. Continuity lives in the worktree, Task Goblin and the PR.
  * PR reviews from the Reviews page are the exception: no task, keyed by PR URL.
  */
-import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessions, repositories, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
@@ -376,12 +376,23 @@ export async function syncProcessLiveness(): Promise<void> {
 // Consecutive polls where state.json was missing, per session id.
 const missingStateCounts = new Map<number, number>();
 
-/** Copy state.json into each working/blocked session; broadcast on change. */
+/**
+ * Copy state.json into each working/blocked session; broadcast on change.
+ * Done sessions with a live process are polled too: chatting with one resumes it.
+ */
 export async function pollActiveSessions(): Promise<void> {
   const rows = await db
     .select()
     .from(claudeSessions)
-    .where(and(inArray(claudeSessions.state, POLLED_STATES), isNotNull(claudeSessions.shortId)));
+    .where(
+      and(
+        isNotNull(claudeSessions.shortId),
+        or(
+          inArray(claudeSessions.state, POLLED_STATES),
+          and(eq(claudeSessions.state, "done"), isNull(claudeSessions.processStoppedAt)),
+        ),
+      ),
+    );
   if (rows.length === 0) return;
 
   let agents: Awaited<ReturnType<typeof listAgents>> | null = null;
@@ -389,6 +400,7 @@ export async function pollActiveSessions(): Promise<void> {
   for (const row of rows) {
     let job = await readJobState(row.shortId!);
     if (!job) {
+      if (row.state === "done") continue;
       const misses = (missingStateCounts.get(row.id) ?? 0) + 1;
       missingStateCounts.set(row.id, misses);
       if (misses < MISSING_STATE_TOLERANCE) continue;
