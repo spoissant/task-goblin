@@ -2,16 +2,23 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/client/lib/api";
 import { useTaskSessionsQuery } from "@/client/lib/queries/sessions";
+import { useChoresQuery } from "@/client/lib/queries/chores";
+import type { Task } from "@/client/lib/types";
 import { useRemoveTaskWorktree, useTaskWorktreeQuery } from "@/client/lib/queries/worktrees";
 import { Button } from "@/client/components/ui/button";
 import { CopyChip } from "@/client/components/ui/copy-chip";
+import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { SessionsTable } from "./SessionsTable";
+import { AiCell } from "./columns/AiCell";
 import { cn } from "@/client/lib/utils";
 
-/** Worktree status and the history of AI sessions for a task. */
-export function SessionsSection({ taskId }: { taskId: number }) {
+/** Worktree status, a menu to start a session, and the history of AI sessions for a task. */
+export function SessionsSection({ task }: { task: Task }) {
+  const taskId = task.id;
   const { data: worktree } = useTaskWorktreeQuery(taskId);
   const { data: sessions } = useTaskSessionsQuery(taskId);
+  const { data: chores } = useChoresQuery();
+  const nextChore = chores?.items.find((c) => c.task.id === taskId);
   const removeWorktree = useRemoveTaskWorktree();
 
   const remove = (force = false) => {
@@ -31,11 +38,15 @@ export function SessionsSection({ taskId }: { taskId: number }) {
   };
 
   const items = sessions?.items ?? [];
-  if (!worktree && items.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">AI Sessions</p>
+      <div className="flex items-center gap-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">AI Sessions</p>
+        <TooltipProvider>
+          <AiCell task={task} session={items[0]} nextChore={nextChore} />
+        </TooltipProvider>
+      </div>
 
       {worktree && (
         <div className="flex flex-wrap items-center gap-3 text-sm">

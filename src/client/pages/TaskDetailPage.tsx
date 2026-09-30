@@ -217,7 +217,7 @@ export function TaskDetailPage() {
         <ChoreSkipsEditor taskId={taskId} choreSkips={task.choreSkips ?? null} />
       )}
 
-      <SessionsSection taskId={taskId} />
+      <SessionsSection task={task} />
 
       <TodoList
         todos={task.todos}
