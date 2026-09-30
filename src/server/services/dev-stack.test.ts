@@ -6,6 +6,7 @@ import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib
 import {
   bootDevStack,
   devStackSettled,
+  getDevStackOverview,
   getDevStackStatus,
   refreshDevStack,
   setDevStackRuntime,
@@ -26,8 +27,10 @@ describe("dev stack", () => {
   let probeStatus: number | null = null;
   let running = 1; // containers of the main stack still running
   const killTreeCalls: number[] = [];
+  const spawnedCommands: string[] = [];
   const LOG = process.env.DEV_STACK_LOG!;
   const COMPILED_LINE = "\n  \u001b[32m✓\u001b[39m Compiled successfully 14.97s\n";
+  const STORYBOOK_LINE = "\n╭──────────╮\n│  Storybook ready!  │\n";
 
   beforeAll(() => createTestTables(sqlite));
 
@@ -41,14 +44,18 @@ describe("dev stack", () => {
     probeStatus = null;
     running = 1;
     killTreeCalls.length = 0;
+    spawnedCommands.length = 0;
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (3, 'hb', 'harborhive', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
     sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${MAIN}', ${ts}, ${ts})`);
+    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (2, '${MAIN}', ${ts}, ${ts})`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (1, 't1', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-1')`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (2, 't2', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-2')`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (3, 't3', 'In Progress', ${ts}, ${ts}, 2, 'feat/x')`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (4, 't4', 'In Progress', ${ts}, ${ts}, 3, 'feat/y')`);
 
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
@@ -61,11 +68,12 @@ describe("dev stack", () => {
       return ok();
     });
     setDevStackRuntime({
-      spawn() {
+      spawn(_cwd, command, logPath) {
         spawned++;
+        spawnedCommands.push(command);
         alive = true;
-        // Boot truncates the log first, so the bundler line goes in here when the test wants it.
-        if (compiled) appendFileSync(LOG, COMPILED_LINE);
+        // Boot truncates the log first, so the ready line goes in here when the test wants it.
+        if (compiled) appendFileSync(logPath, command.includes("storybook") ? STORYBOOK_LINE : COMPILED_LINE);
         return { pid: 4000 + spawned, exited: new Promise<number>(() => {}) };
       },
       isAlive: () => alive,
@@ -87,9 +95,9 @@ describe("dev stack", () => {
     setDevStackRuntime(null);
   });
 
-  it("is unsupported outside alumni_connect", async () => {
-    expect((await getDevStackStatus({ taskId: 3 })).supported).toBe(false);
-    await expect(bootDevStack({ taskId: 3 })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+  it("is unsupported outside alumni_connect and front-monorepo", async () => {
+    expect((await getDevStackStatus({ taskId: 4 })).supported).toBe(false);
+    await expect(bootDevStack({ taskId: 4 })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
   });
 
   it("detaches the main checkout at the local branch and stays booting until the site answers", async () => {
@@ -152,8 +160,35 @@ describe("dev stack", () => {
     expect((await getDevStackStatus(pr)).stack).toBeNull();
   });
 
-  it("is unsupported for PRs outside alumni_connect", async () => {
-    await expect(bootDevStack({ prUrl: "https://github.com/hb/front-monorepo/pull/7" })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+  it("is unsupported for PRs of other repositories", async () => {
+    await expect(bootDevStack({ prUrl: "https://github.com/hb/harborhive/pull/7" })).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+  });
+
+  it("runs Storybook for front-monorepo next to the alumni_connect stack", async () => {
+    ready();
+    await bootDevStack({ taskId: 1 });
+    await bootDevStack({ taskId: 3 });
+    await devStackSettled();
+
+    expect(spawnedCommands[1]).toBe("pnpm install --frozen-lockfile --config.confirmModulesPurge=false && pnpm nx run storybook:dev");
+    expect(commands).toContain("git switch --detach feat/x");
+    const overview = await getDevStackOverview();
+    expect(overview.supportedRepositoryIds.sort()).toEqual([1, 2]);
+    expect(overview.stacks.map((s) => [s.repositoryId, s.branch, s.state, s.url])).toEqual([
+      [1, "fix/EV-1", "up", "http://localhost.hvbrt.com"],
+      [2, "feat/x", "up", "http://localhost:4400"],
+    ]);
+
+    // Stopping Storybook kills its process tree (no stop command, no Docker) and leaves alumni_connect up.
+    commands.length = 0;
+    running = 5;
+    await stopDevStack({ taskId: 3 });
+    await devStackSettled();
+    expect(killTreeCalls).toEqual([4002]);
+    expect(commands.some((c) => c.startsWith("/bin/zsh") || c.startsWith("docker"))).toBe(false);
+    expect(commands).toContain("git switch main");
+    expect((await getDevStackStatus({ taskId: 3 })).stack).toBeNull();
+    expect((await getDevStackStatus({ taskId: 1 })).stack?.state).toBe("up");
   });
 
   it("refuses a dirty main checkout", async () => {

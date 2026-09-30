@@ -143,6 +143,7 @@ export type DevStackState = "starting" | "up" | "stopping" | "failed";
 export interface DevStack {
   taskId: number | null;
   prUrl: string | null; // owner when booted from a PR without a task (Reviews page)
+  repositoryId: number; // one stack per repository
   branch: string; // task branch, or "repo#N" for a PR
   state: DevStackState;
   pid: number | null;
@@ -156,7 +157,7 @@ export interface DevStack {
 
 export interface DevStackStatus {
   supported: boolean; // this task's repository can boot a dev stack
-  stack: DevStack | null; // the one stack, whichever task or PR owns it
+  stack: DevStack | null; // this repository's stack, whichever task or PR owns it
 }
 
 export interface DevStackRefresh {
@@ -165,8 +166,8 @@ export interface DevStackRefresh {
 }
 
 export interface DevStackOverview {
-  supportedRepositoryIds: number[]; // repositories whose tasks and PRs may boot the stack
-  stack: DevStack | null;
+  supportedRepositoryIds: number[]; // repositories whose tasks and PRs may boot a stack
+  stacks: DevStack[]; // at most one per repository
 }
 
 // Background Claude Code session, one per chore run

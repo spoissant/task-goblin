@@ -7,21 +7,29 @@ import { TooltipProvider } from "@/client/components/ui/tooltip";
 import type { DevStack, DevStackOwner } from "@/client/lib/types";
 
 /**
- * Bottom-right controls for the running dev stack, on every page, so it can be
- * stopped even after its task or review request drops out of the lists.
+ * Bottom-right controls for the running dev stacks, on every page, so they can
+ * be stopped even after their task or review request drops out of the lists.
  */
 export function DevStackOverlay() {
   const { data } = useDevStackOverviewQuery();
-  const stack = data?.stack;
-  if (!stack) return null;
-
-  const owner: DevStackOwner = stack.taskId !== null ? { taskId: stack.taskId } : { prUrl: stack.prUrl! };
+  const stacks = data?.stacks ?? [];
+  if (stacks.length === 0) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="fixed right-4 bottom-4 z-50 flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm shadow-lg">
-        <StackIdentity stack={stack} />
-        <DevStackButtons owner={owner} label={stack.branch} stack={stack} />
+      <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">
+        {stacks.map((stack) => {
+          const owner: DevStackOwner = stack.taskId !== null ? { taskId: stack.taskId } : { prUrl: stack.prUrl! };
+          return (
+            <div
+              key={stack.repositoryId}
+              className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm shadow-lg"
+            >
+              <StackIdentity stack={stack} />
+              <DevStackButtons owner={owner} label={stack.branch} stack={stack} />
+            </div>
+          );
+        })}
       </div>
     </TooltipProvider>
   );

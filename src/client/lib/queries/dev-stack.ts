@@ -8,16 +8,16 @@ export const devStackKeys = {
 
 const BUSY_STATES = new Set(["starting", "stopping"]);
 
-/** The one dev stack and which repositories support it; shared by every row. */
+/** The dev stacks (one per repository) and which repositories support them; shared by every row. */
 export function useDevStackOverviewQuery() {
   return useQuery({
     queryKey: devStackKeys.all,
     queryFn: () => api.get<DevStackOverview>("/dev-stack"),
     // Keep liveness fresh while a stack exists.
     refetchInterval: (query) => {
-      const state = query.state.data?.stack?.state;
-      if (!state) return false;
-      return BUSY_STATES.has(state) ? 2_000 : 10_000;
+      const stacks = query.state.data?.stacks ?? [];
+      if (stacks.length === 0) return false;
+      return stacks.some((s) => BUSY_STATES.has(s.state)) ? 2_000 : 10_000;
     },
   });
 }

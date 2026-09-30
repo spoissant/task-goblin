@@ -17,7 +17,7 @@ function isOwner(stack: DevStack, owner: DevStackOwner): boolean {
 }
 
 /**
- * Play/stop for the single local dev stack, shown next to the repo badge.
+ * Play/stop for the repository's local dev stack, shown next to the repo badge.
  * Play detaches the main checkout at the task branch (or a PR's head) and runs the stack;
  * stop tears it down and returns to the base branch. While up, refresh moves
  * the detached checkout to the branch's latest commit. Hidden for repositories
@@ -29,7 +29,8 @@ export function DevStackToggle({ owner, repositoryId, label }: DevStackTogglePro
   if (!data || repositoryId === null || !label) return null;
   if (!data.supportedRepositoryIds.includes(repositoryId)) return null;
 
-  return <DevStackButtons owner={owner} label={label} stack={data.stack} />;
+  const stack = data.stacks.find((s) => s.repositoryId === repositoryId) ?? null;
+  return <DevStackButtons owner={owner} label={label} stack={stack} />;
 }
 
 interface DevStackButtonsProps {
@@ -68,7 +69,7 @@ export function DevStackButtons({ owner, label, stack }: DevStackButtonsProps) {
     onClick = () => stop.mutate(owner, { onError });
   } else if (!stack.alive) {
     icon = <CircleStop className="h-6 w-6 text-red-500" />;
-    tooltip = "Boot process exited (see logs/dev-stack.log)\nClick to clean up";
+    tooltip = "Boot process exited (see logs/dev-stack*.log)\nClick to clean up";
     onClick = () => stop.mutate(owner, { onError });
   } else {
     icon = <CircleStop className="h-6 w-6 text-green-600" />;
@@ -118,7 +119,7 @@ export function DevStackButtons({ owner, label, stack }: DevStackButtonsProps) {
             </button>
           </TooltipTrigger>
           <TooltipContent className="max-w-xs whitespace-pre-line">
-            {"Move the checkout to the latest commit of the branch\nKeeps the stack running; new migrations are not run"}
+            {"Move the checkout to the latest commit of the branch\nKeeps the stack running; new migrations and packages are not installed"}
           </TooltipContent>
         </Tooltip>
       )}

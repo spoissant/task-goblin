@@ -1,26 +1,24 @@
 /**
  * Dev stack: boot a task's branch in the repository's MAIN checkout and run
- * the full local stack there. Manual testing keeps one Docker stack instead of
+ * the local stack there. Manual testing keeps one Docker stack instead of
  * one per task worktree (a full alumni_connect stack is ~20 containers and its
  * own volumes, see docs/gitworktree.md in that repo).
  *
- * Only one stack exists at a time, owned by a task or by a PR URL (a
- * colleague's PR from the Reviews page, which has no task). Boot detaches the
- * main checkout at the task branch (`git switch --detach`, allowed even though
- * a worktree owns the branch) or at the PR's `pull/N/head`, and runs
- * BOOT_COMMAND until stopped. The stack counts as up once the
- * bundler reports a successful compile in the log AND the site answers over
- * HTTP. Stop ends the bundler and the Docker stack, then switches the checkout
- * back to its base branch.
+ * One stack per supported repository (see STACKS), owned by a task or by a PR
+ * URL (a colleague's PR from the Reviews page, which has no task). Boot
+ * detaches the main checkout at the task branch (`git switch --detach`,
+ * allowed even though a worktree owns the branch) or at the PR's
+ * `pull/N/head`, and runs the repository's boot command until stopped. The
+ * stack counts as up once the log shows its ready line AND the site answers
+ * over HTTP. Stop ends the boot process (and the Docker stack), then switches
+ * the checkout back to its base branch.
  *
- * HARDCODED for alumni_connect: the boot/stop commands mirror the `hbup` zsh
- * alias and the repo's bin/dev tooling. A settings-driven version (per-repo
- * boot/stop commands next to setupCommand/teardownCommand) can replace these
- * constants when a second repository needs it.
+ * HARDCODED per repository: alumni_connect mirrors the `hbup` zsh alias and
+ * the repo's bin/dev tooling; front-monorepo runs Storybook.
  */
 import { appendFileSync, closeSync, mkdirSync, openSync } from "fs";
 import { dirname } from "path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, settings } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
@@ -34,18 +32,55 @@ import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
 import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh, DevStackState, DevStackStatus } from "../../shared/types";
 
-const DEV_STACK_REPO = "alumni_connect";
-/** Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs. */
-const BOOT_COMMAND = "bin/dev update-dependencies && bin/dev migration && bin/dev routes-typescript && bin/dev start";
-/** Killing the bundler makes `bin/dev start` return and its EXIT trap stop the stack; `dc stop` covers the rest. */
-const STOP_COMMAND = "bin/dev stop-dev-server; bin/dev dc stop";
-const FALLBACK_BASE_BRANCH = "sprint";
-const DEV_STACK_URL = "http://localhost.hvbrt.com";
-/** Printed by the Rspack dev server once the first build is served. */
-const BUNDLER_READY = /Compiled successfully/;
+interface StackConfig {
+  /** Stays in the foreground while the stack runs. */
+  boot: string;
+  /** Run on stop before waiting for the boot process; null kills the process tree right away. */
+  stop: string | null;
+  url: string;
+  /** Log line printed once the first build is served. */
+  ready: RegExp;
+  bootDetail: string;
+  /** Runs a Docker Compose project from the main checkout; its containers are watched. */
+  compose: boolean;
+  fallbackBaseBranch: string;
+  settingKey: string;
+  logPath: string;
+}
 
-const SETTING_KEY = "dev_stack";
 const LOG_PATH = process.env.DEV_STACK_LOG ?? "logs/dev-stack.log";
+
+const STACKS: Record<string, StackConfig> = {
+  alumni_connect: {
+    // Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs.
+    boot: "bin/dev update-dependencies && bin/dev migration && bin/dev routes-typescript && bin/dev start",
+    // Killing the bundler makes `bin/dev start` return and its EXIT trap stop the stack; `dc stop` covers the rest.
+    stop: "bin/dev stop-dev-server; bin/dev dc stop",
+    url: "http://localhost.hvbrt.com",
+    ready: /Compiled successfully/, // Rspack dev server
+    bootDetail: "Running hbup",
+    compose: true,
+    fallbackBaseBranch: "sprint",
+    settingKey: "dev_stack",
+    logPath: LOG_PATH,
+  },
+  "front-monorepo": {
+    // No TTY, so pnpm can't ask before purging an incompatible node_modules.
+    boot: "pnpm install --frozen-lockfile --config.confirmModulesPurge=false && pnpm nx run storybook:dev",
+    stop: null,
+    url: "http://localhost:4400",
+    ready: /Storybook ready!/,
+    bootDetail: "Installing packages and starting Storybook",
+    compose: false,
+    fallbackBaseBranch: "main",
+    settingKey: "dev_stack:front-monorepo",
+    logPath: LOG_PATH.replace(/(\.log)?$/, "-storybook.log"),
+  },
+};
+
+function configFor(repository: { repo: string } | null): StackConfig | null {
+  return repository && Object.hasOwn(STACKS, repository.repo) ? STACKS[repository.repo] : null;
+}
 const STOP_TIMEOUT_MS = 3 * 60 * 1000;
 const EXIT_WAIT_MS = 60_000;
 const READY_TIMEOUT_MS = 30 * 60 * 1000;
@@ -67,13 +102,14 @@ interface StoredStack {
 
 export interface DevStackRuntime {
   /** Start the long-running boot command with stdout/stderr appended to `logPath`. */
-  spawn(cwd: string, logPath: string): { pid: number; exited: Promise<number> };
+  spawn(cwd: string, command: string, logPath: string): { pid: number; exited: Promise<number> };
   isAlive(pid: number): boolean;
   /**
    * Best-effort SIGTERM (then SIGKILL) of pid and all its descendants.
    * `bin/dev start` is a shell script whose dev-server supervisor respawns
-   * children on crash and doesn't forward signals, so killing just the
-   * recorded pid leaves the real work running; this walks the whole tree.
+   * children on crash and doesn't forward signals (and nx runs Storybook as
+   * a child), so killing just the recorded pid leaves the real work running;
+   * this walks the whole tree.
    */
   killTree(pid: number): Promise<void>;
   /** HTTP status of the booted site, or null when nothing answers. */
@@ -118,9 +154,9 @@ async function processTree(pid: number): Promise<number[]> {
 }
 
 const defaultRuntime: DevStackRuntime = {
-  spawn(cwd, logPath) {
+  spawn(cwd, command, logPath) {
     const fd = openSync(logPath, "a");
-    const proc = Bun.spawn(["/bin/zsh", "-lc", BOOT_COMMAND], {
+    const proc = Bun.spawn(["/bin/zsh", "-lc", command], {
       cwd: expandPath(cwd),
       stdout: fd,
       stderr: fd,
@@ -180,8 +216,8 @@ function track(work: Promise<void>): void {
 // Persistence (settings row, survives server restarts)
 // ---------------------------------------------------------------------------
 
-async function loadStack(): Promise<StoredStack | null> {
-  const rows = await db.select().from(settings).where(eq(settings.key, SETTING_KEY));
+async function loadStack(cfg: StackConfig): Promise<StoredStack | null> {
+  const rows = await db.select().from(settings).where(eq(settings.key, cfg.settingKey));
   if (!rows[0]?.value) return null;
   try {
     return JSON.parse(rows[0].value) as StoredStack;
@@ -190,47 +226,50 @@ async function loadStack(): Promise<StoredStack | null> {
   }
 }
 
-async function saveStack(stack: StoredStack | null): Promise<void> {
+async function saveStack(cfg: StackConfig, stack: StoredStack | null): Promise<void> {
   if (stack) {
     const value = JSON.stringify(stack);
-    await db.insert(settings).values({ key: SETTING_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
+    await db.insert(settings).values({ key: cfg.settingKey, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
   } else {
-    await db.delete(settings).where(eq(settings.key, SETTING_KEY));
+    await db.delete(settings).where(eq(settings.key, cfg.settingKey));
   }
   broadcast("dev-stack", { taskId: stack?.taskId ?? null, state: stack?.state ?? null });
 }
 
-async function readLog(): Promise<string> {
+async function readLog(cfg: StackConfig): Promise<string> {
   try {
-    return await Bun.file(LOG_PATH).text();
+    return await Bun.file(cfg.logPath).text();
   } catch {
     return "";
   }
 }
 
-function appendLog(text: string): void {
+function appendLog(cfg: StackConfig, text: string): void {
   try {
-    mkdirSync(dirname(LOG_PATH), { recursive: true });
-    appendFileSync(LOG_PATH, text.endsWith("\n") ? text : `${text}\n`);
+    mkdirSync(dirname(cfg.logPath), { recursive: true });
+    appendFileSync(cfg.logPath, text.endsWith("\n") ? text : `${text}\n`);
   } catch {
     // logging only
   }
 }
 
-async function toDevStack(stored: StoredStack): Promise<DevStack> {
-  const log = await readLog();
+async function toDevStack(cfg: StackConfig, repositoryId: number, stored: StoredStack): Promise<DevStack> {
+  const log = await readLog(cfg);
   return {
     ...stored,
     prUrl: stored.prUrl ?? null,
+    repositoryId,
     alive: stored.pid !== null && runtime.isAlive(stored.pid),
     logTail: log.length > 4000 ? log.slice(-4000) : log,
-    url: DEV_STACK_URL,
+    url: cfg.url,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+type RepoRow = NonNullable<Awaited<ReturnType<typeof findRepository>>>;
 
 /** The owner's repository and the branch label it boots (null when a task has no branch). */
 async function resolveOwner(owner: DevStackOwner) {
@@ -245,6 +284,14 @@ async function resolveOwner(owner: DevStackOwner) {
   return { taskId: task.id, prUrl: null, branch: task.headBranch, repository };
 }
 
+/** The owner's repository with its stack config, for stop and refresh. */
+async function resolveStack(owner: DevStackOwner): Promise<{ repository: RepoRow; cfg: StackConfig }> {
+  const { repository } = await resolveOwner(owner);
+  const cfg = configFor(repository);
+  if (!repository || !cfg) throw new AppError("No dev stack for this repository", 400, "DEV_STACK_UNSUPPORTED");
+  return { repository, cfg };
+}
+
 function ownerOf(stored: StoredStack): DevStackOwner {
   return stored.prUrl ? { prUrl: stored.prUrl } : { taskId: stored.taskId! };
 }
@@ -253,45 +300,49 @@ function owns(stored: StoredStack, owner: DevStackOwner): boolean {
   return "prUrl" in owner ? stored.prUrl === parsePrUrl(owner.prUrl).url : stored.taskId === owner.taskId;
 }
 
-function isSupported(repository: { repo: string } | null, branch: string | null): boolean {
-  return repository?.repo === DEV_STACK_REPO && !!branch;
-}
-
-/** The one stack plus the repositories whose tasks may boot it (for table rows). */
+/** Every stack plus the repositories whose tasks may boot one (for table rows). */
 export async function getDevStackOverview(): Promise<DevStackOverview> {
   const repos = await db
-    .select({ id: repositories.id })
+    .select({ id: repositories.id, repo: repositories.repo })
     .from(repositories)
-    .where(and(eq(repositories.repo, DEV_STACK_REPO), eq(repositories.enabled, 1)));
-  const stored = await loadStack();
-  return {
-    supportedRepositoryIds: repos.map((r) => r.id),
-    stack: stored ? await toDevStack(stored) : null,
-  };
+    .where(and(inArray(repositories.repo, Object.keys(STACKS)), eq(repositories.enabled, 1)));
+  const stacks: DevStack[] = [];
+  for (const repo of repos) {
+    const cfg = configFor(repo)!;
+    const stored = await loadStack(cfg);
+    if (stored) stacks.push(await toDevStack(cfg, repo.id, stored));
+  }
+  return { supportedRepositoryIds: repos.map((r) => r.id), stacks };
 }
 
 export async function getDevStackStatus(owner: DevStackOwner): Promise<DevStackStatus> {
   const { branch, repository } = await resolveOwner(owner);
-  const stored = await loadStack();
+  const cfg = configFor(repository);
+  const stored = cfg ? await loadStack(cfg) : null;
   return {
-    supported: isSupported(repository, branch),
-    stack: stored ? await toDevStack(stored) : null,
+    supported: !!cfg && !!branch,
+    stack: stored ? await toDevStack(cfg!, repository!.id, stored) : null,
   };
 }
 
 /** Detach the main checkout at the owner's branch and start the stack in the background. */
 export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
   const { taskId, prUrl, branch, repository } = await resolveOwner(owner);
-  if (!repository || !branch || !isSupported(repository, branch)) {
-    throw new AppError(`Dev stack is only available for ${DEV_STACK_REPO} tasks with a branch or PRs`, 400, "DEV_STACK_UNSUPPORTED");
+  const cfg = configFor(repository);
+  if (!repository || !cfg || !branch) {
+    throw new AppError(
+      `Dev stack is only available for ${Object.keys(STACKS).join(" and ")} tasks with a branch or PRs`,
+      400,
+      "DEV_STACK_UNSUPPORTED",
+    );
   }
   const mainPath = await resolveMainPath(repository);
 
-  const existing = await loadStack();
+  const existing = await loadStack(cfg);
   if (existing && !owns(existing, owner)) {
     throw new AppError(`Dev stack is already up for ${existing.branch}`, 409, "DEV_STACK_BUSY");
   }
-  if (existing && existing.state !== "failed") return toDevStack(existing);
+  if (existing && existing.state !== "failed") return toDevStack(cfg, repository.id, existing);
 
   // A previous attempt failed but may have left its process tree running
   // (e.g. a supervisor that respawned the dev server past the recorded
@@ -311,9 +362,9 @@ export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
     error: null,
     startedAt: now(),
   };
-  await saveStack(stored);
-  track(runBoot(stored, mainPath));
-  return toDevStack(stored);
+  await saveStack(cfg, stored);
+  track(runBoot(cfg, stored, mainPath));
+  return toDevStack(cfg, repository.id, stored);
 }
 
 /**
@@ -332,8 +383,8 @@ async function resolveTarget(mainPath: string, stored: StoredStack): Promise<str
   return null;
 }
 
-async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
-  const fail = (error: string) => saveStack({ ...stored, state: "failed", detail: null, error });
+async function runBoot(cfg: StackConfig, stored: StoredStack, mainPath: string): Promise<void> {
+  const fail = (error: string) => saveStack(cfg, { ...stored, state: "failed", detail: null, error });
   try {
     const changed = await changedFileCount(mainPath);
     if (changed === null || changed > 0) {
@@ -353,53 +404,53 @@ async function runBoot(stored: StoredStack, mainPath: string): Promise<void> {
       return;
     }
 
-    mkdirSync(dirname(LOG_PATH), { recursive: true });
-    await Bun.write(LOG_PATH, `# ${now()} boot ${stored.branch} (${target}) in ${mainPath}\n$ ${BOOT_COMMAND}\n`);
-    const { pid, exited } = runtime.spawn(mainPath, LOG_PATH);
-    const booting: StoredStack = { ...stored, pid, detail: "Running hbup" };
-    await saveStack(booting);
-    watchExit(pid, exited);
-    await waitUntilReady(booting, mainPath);
+    mkdirSync(dirname(cfg.logPath), { recursive: true });
+    await Bun.write(cfg.logPath, `# ${now()} boot ${stored.branch} (${target}) in ${mainPath}\n$ ${cfg.boot}\n`);
+    const { pid, exited } = runtime.spawn(mainPath, cfg.boot, cfg.logPath);
+    const booting: StoredStack = { ...stored, pid, detail: cfg.bootDetail };
+    await saveStack(cfg, booting);
+    watchExit(cfg, pid, exited);
+    await waitUntilReady(cfg, booting, mainPath);
   } catch (err) {
     await fail(err instanceof Error ? err.message : String(err));
   }
 }
 
 /** A boot process that ends on its own (while starting or up) means the stack is broken. */
-function watchExit(pid: number, exited: Promise<number>): void {
+function watchExit(cfg: StackConfig, pid: number, exited: Promise<number>): void {
   void exited.then(async (code) => {
-    const current = await loadStack();
+    const current = await loadStack(cfg);
     if (current?.pid !== pid || (current.state !== "up" && current.state !== "starting")) return; // stopped by us, or superseded
-    await saveStack({ ...current, state: "failed", detail: null, error: `Boot process exited with code ${code}; see log` });
+    await saveStack(cfg, { ...current, state: "failed", detail: null, error: `Boot process exited with code ${code}; see log` });
   });
 }
 
 /**
- * Poll until the bundler has compiled and the site answers (anything but a
- * gateway 5xx from nginx), then mark the stack up. Gives up after
+ * Poll until the log shows the ready line and the site answers (anything but
+ * a gateway 5xx from nginx), then mark the stack up. Gives up after
  * READY_TIMEOUT_MS. Stops silently if the record changes underneath (stop,
- * failure, restart). Also fails fast if the main stack's containers vanish
- * once the bundler is compiled — a crashed bundler can trigger `bin/dev`'s
- * own EXIT trap and tear the Docker stack down mid-boot, which otherwise
- * leaves this loop polling a dead gateway for the full timeout.
+ * failure, restart). For a Compose stack, also fails fast if its containers
+ * vanish once the bundler is compiled — a crashed bundler can trigger
+ * `bin/dev`'s own EXIT trap and tear the Docker stack down mid-boot, which
+ * otherwise leaves this loop polling a dead gateway for the full timeout.
  */
-async function waitUntilReady(stored: StoredStack, mainPath: string): Promise<void> {
+async function waitUntilReady(cfg: StackConfig, stored: StoredStack, mainPath: string): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   let lastDetail = stored.detail;
   while (Date.now() < deadline) {
     await Bun.sleep(runtime.readyPollMs);
-    const current = await loadStack();
+    const current = await loadStack(cfg);
     if (!current || current.pid !== stored.pid || current.state !== "starting") return;
 
-    const compiled = BUNDLER_READY.test(await readLog());
-    if (compiled && (await runningMainContainers(mainPath)) === 0) {
-      await saveStack({ ...current, state: "failed", detail: null, error: "Docker stack is not running (crashed mid-boot?); see log" });
+    const compiled = cfg.ready.test(await readLog(cfg));
+    if (compiled && cfg.compose && (await runningMainContainers(mainPath)) === 0) {
+      await saveStack(cfg, { ...current, state: "failed", detail: null, error: "Docker stack is not running (crashed mid-boot?); see log" });
       return;
     }
 
-    const status = compiled ? await runtime.probe(DEV_STACK_URL) : null;
+    const status = compiled ? await runtime.probe(cfg.url) : null;
     if (compiled && status !== null && status < 500) {
-      await saveStack({ ...current, state: "up", detail: null });
+      await saveStack(cfg, { ...current, state: "up", detail: null });
       return;
     }
 
@@ -408,12 +459,12 @@ async function waitUntilReady(stored: StoredStack, mainPath: string): Promise<vo
       : `Bundler ready, waiting for the web app (HTTP ${status ?? "no response"})`;
     if (detail !== lastDetail) {
       lastDetail = detail;
-      await saveStack({ ...current, detail });
+      await saveStack(cfg, { ...current, detail });
     }
   }
-  const current = await loadStack();
+  const current = await loadStack(cfg);
   if (current?.pid === stored.pid && current.state === "starting") {
-    await saveStack({ ...current, state: "failed", detail: null, error: "Stack did not become ready in time; see log" });
+    await saveStack(cfg, { ...current, state: "failed", detail: null, error: "Stack did not become ready in time; see log" });
   }
 }
 
@@ -423,20 +474,19 @@ async function shortHead(mainPath: string): Promise<string> {
 
 /**
  * Move the running stack's detached checkout to the branch's latest commit,
- * leaving the stack up so the bundler and Rails reload in place. Local changes
- * (db/schema.rb from the boot migration) are discarded, like on stop.
- * New migrations are not run.
+ * leaving the stack up so the bundler (and Rails) reload in place. Local
+ * changes (db/schema.rb from the boot migration) are discarded, like on stop.
+ * New migrations and packages are not installed.
  */
 export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRefresh> {
-  const stored = await loadStack();
+  const { repository, cfg } = await resolveStack(owner);
+  const stored = await loadStack(cfg);
   if (!stored) throw new NotFoundError("Dev stack");
   if (!owns(stored, owner)) {
     throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
 
-  const { repository } = await resolveOwner(owner);
-  if (!repository) throw new AppError("No configured repository for the dev stack", 400, "NO_REPOSITORY");
   const mainPath = await resolveMainPath(repository);
 
   const target = await resolveTarget(mainPath, stored);
@@ -448,48 +498,53 @@ export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRef
     throw new AppError(switched.stderr || `git switch --detach ${target} failed`, 500, "DEV_STACK_REFRESH_FAILED");
   }
   const to = await shortHead(mainPath);
-  appendLog(`# ${now()} refresh ${stored.branch} (${target}): ${from} -> ${to}`);
+  appendLog(cfg, `# ${now()} refresh ${stored.branch} (${target}): ${from} -> ${to}`);
   return { from, to };
 }
 
 /** Stop the stack of this owner and return the main checkout to its base branch, in the background. */
 export async function stopDevStack(owner: DevStackOwner): Promise<DevStack> {
-  const stored = await loadStack();
+  const { repository, cfg } = await resolveStack(owner);
+  const stored = await loadStack(cfg);
   if (!stored) throw new NotFoundError("Dev stack");
   if (!owns(stored, owner)) {
     throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
   }
-  if (stored.state === "stopping") return toDevStack(stored);
+  if (stored.state === "stopping") return toDevStack(cfg, repository.id, stored);
 
-  const { repository } = await resolveOwner(owner);
-  if (!repository) throw new AppError("No configured repository for the dev stack", 400, "NO_REPOSITORY");
   const mainPath = await resolveMainPath(repository);
-  const baseBranch = repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH;
+  const baseBranch = repository.defaultBaseBranch ?? cfg.fallbackBaseBranch;
 
-  const stopping: StoredStack = { ...stored, state: "stopping", detail: "Stopping the bundler and containers", error: null };
-  await saveStack(stopping);
-  track(runStop(stopping, mainPath, baseBranch));
-  return toDevStack(stopping);
+  const stopping: StoredStack = { ...stored, state: "stopping", detail: "Stopping the stack", error: null };
+  await saveStack(cfg, stopping);
+  track(runStop(cfg, stopping, mainPath, baseBranch));
+  return toDevStack(cfg, repository.id, stopping);
 }
 
-async function runStop(stored: StoredStack, mainPath: string, baseBranch: string): Promise<void> {
-  const fail = (error: string) => saveStack({ ...stored, state: "failed", detail: null, error });
+async function runStop(cfg: StackConfig, stored: StoredStack, mainPath: string, baseBranch: string): Promise<void> {
+  const fail = (error: string) => saveStack(cfg, { ...stored, state: "failed", detail: null, error });
   try {
-    appendLog(`# ${now()} stop\n$ ${STOP_COMMAND}`);
-    const stop = await runShell(mainPath, STOP_COMMAND, { timeoutMs: STOP_TIMEOUT_MS });
-    appendLog(tailOutput(stop));
+    if (cfg.stop) {
+      appendLog(cfg, `# ${now()} stop\n$ ${cfg.stop}`);
+      const stop = await runShell(mainPath, cfg.stop, { timeoutMs: STOP_TIMEOUT_MS });
+      appendLog(cfg, tailOutput(stop));
+    } else {
+      appendLog(cfg, `# ${now()} stop`);
+      if (stored.pid !== null && runtime.isAlive(stored.pid)) await runtime.killTree(stored.pid);
+    }
 
     if (stored.pid !== null) await waitForExit(stored.pid);
 
-    const leftover = await waitUntilDown(stored, mainPath);
+    const leftover = cfg.compose ? await waitUntilDown(cfg, stored, mainPath) : 0;
     if (leftover > 0) {
       await fail(`${leftover} container(s) of the main stack are still running; see log`);
       return;
     }
 
-    await saveStack({ ...stored, detail: `Switching back to ${baseBranch}` });
-    // The boot commands (e.g. bin/dev migration) always leave db/schema.rb
-    // modified; discard that before switching or git refuses to check out.
+    await saveStack(cfg, { ...stored, detail: `Switching back to ${baseBranch}` });
+    // The boot commands (e.g. bin/dev migration) can leave tracked files
+    // modified (db/schema.rb); discard that before switching or git refuses
+    // to check out.
     const reset = await runGit(mainPath, ["reset", "--hard"]);
     if (reset.exitCode !== 0) {
       await fail(`Stack stopped but git reset --hard failed: ${reset.stderr}`);
@@ -500,8 +555,8 @@ async function runStop(stored: StoredStack, mainPath: string, baseBranch: string
       await fail(`Stack stopped but git switch ${baseBranch} failed: ${switched.stderr}`);
       return;
     }
-    appendLog(`# ${now()} back on ${baseBranch}`);
-    await saveStack(null);
+    appendLog(cfg, `# ${now()} back on ${baseBranch}`);
+    await saveStack(cfg, null);
   } catch (err) {
     await fail(err instanceof Error ? err.message : String(err));
   }
@@ -519,7 +574,7 @@ async function runningMainContainers(mainPath: string): Promise<number> {
 }
 
 /** Poll until the main stack has no running containers; returns the leftover count on timeout. */
-async function waitUntilDown(stored: StoredStack, mainPath: string): Promise<number> {
+async function waitUntilDown(cfg: StackConfig, stored: StoredStack, mainPath: string): Promise<number> {
   const deadline = Date.now() + runtime.downTimeoutMs;
   let lastDetail: string | null = null;
   let running = await runningMainContainers(mainPath);
@@ -527,7 +582,7 @@ async function waitUntilDown(stored: StoredStack, mainPath: string): Promise<num
     const detail = `Waiting for ${running} container(s) to stop`;
     if (detail !== lastDetail) {
       lastDetail = detail;
-      await saveStack({ ...stored, detail });
+      await saveStack(cfg, { ...stored, detail });
     }
     await Bun.sleep(runtime.readyPollMs);
     running = await runningMainContainers(mainPath);
@@ -545,23 +600,25 @@ async function waitForExit(pid: number): Promise<void> {
 
 /** Resume work interrupted by a server restart. */
 export async function reconcileDevStack(): Promise<void> {
-  const stored = await loadStack();
-  if (!stored) return;
+  for (const cfg of Object.values(STACKS)) {
+    const stored = await loadStack(cfg);
+    if (!stored) continue;
 
-  const { repository } = await resolveOwner(ownerOf(stored)).catch(() => ({ repository: null }));
-  if (!repository) {
-    await saveStack(null);
-    return;
-  }
-  const mainPath = await resolveMainPath(repository);
-
-  if (stored.state === "starting") {
-    if (stored.pid !== null && runtime.isAlive(stored.pid)) {
-      track(waitUntilReady(stored, mainPath)); // boot process survived the restart; keep watching for readiness
-    } else {
-      await saveStack({ ...stored, state: "failed", detail: null, error: "Boot interrupted by a server restart" });
+    const { repository } = await resolveOwner(ownerOf(stored)).catch(() => ({ repository: null }));
+    if (!repository) {
+      await saveStack(cfg, null);
+      continue;
     }
-  } else if (stored.state === "stopping") {
-    track(runStop(stored, mainPath, repository.defaultBaseBranch ?? FALLBACK_BASE_BRANCH));
+    const mainPath = await resolveMainPath(repository);
+
+    if (stored.state === "starting") {
+      if (stored.pid !== null && runtime.isAlive(stored.pid)) {
+        track(waitUntilReady(cfg, stored, mainPath)); // boot process survived the restart; keep watching for readiness
+      } else {
+        await saveStack(cfg, { ...stored, state: "failed", detail: null, error: "Boot interrupted by a server restart" });
+      }
+    } else if (stored.state === "stopping") {
+      track(runStop(cfg, stored, mainPath, repository.defaultBaseBranch ?? cfg.fallbackBaseBranch));
+    }
   }
 }
