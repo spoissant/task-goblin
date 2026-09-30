@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState, Task } from "@/client/lib/types";
 import { resolveChorePrompt, useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";
+import { markSessionSeen, useSessionSeen } from "@/client/lib/seenSessions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,6 +90,9 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   const shown = session && !SETTLED_STATES.includes(session.state) ? session : undefined;
   const ui = shown ? (active && canRespawn(shown) ? DISCONNECTED_UI : STATE_UI[shown.state]) : null;
   const Icon = ui?.icon ?? Sparkles;
+  // A finished session gets its own icon so its result stays one hover away.
+  const finished = session?.state === "done" ? session : undefined;
+  const finishedSeen = useSessionSeen(finished);
 
   // Every start goes through the prompt dialog, so the command can be tweaked
   // and the model picked before the session spawns.
@@ -175,6 +179,36 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
           </TooltipTrigger>
           <TooltipContent className="max-w-xs whitespace-pre-line">{tooltip}</TooltipContent>
         </Tooltip>
+        {finished && (
+          <Tooltip onOpenChange={(open) => open && markSessionSeen(finished.id)}>
+            <TooltipTrigger asChild>
+              <a
+                href={finished.link ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Last finished session"
+                className="inline-flex items-center px-1 border-l border-background/40 hover:bg-accent hover:text-accent-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markSessionSeen(finished.id);
+                }}
+              >
+                <CheckCircle
+                  className={cn("h-3.5 w-3.5", finishedSeen ? "text-muted-foreground/60" : "text-green-500")}
+                />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm whitespace-pre-line">
+              {[
+                `${finished.choreName} · Done`,
+                finished.result ?? finished.detail ?? "No summary",
+                finished.link && "Click to open on claude.ai",
+              ]
+                .filter(Boolean)
+                .join("\n")}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
