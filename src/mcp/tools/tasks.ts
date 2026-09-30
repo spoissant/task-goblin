@@ -149,6 +149,56 @@ export function registerTaskTools(server: McpServer) {
     }
   );
 
+  // sync_task
+  server.registerTool(
+    "sync_task",
+    {
+      description:
+        "Sync a single task from its sources: re-pulls its Jira issue and GitHub PR (whichever it has). " +
+        "Located by ID, Jira key, PR number, or branch name. Returns the refreshed task.",
+      inputSchema: {
+        id: z.number().optional().describe("Task ID"),
+        jiraKey: z.string().optional().describe("Jira key to look up task"),
+        prNumber: z.number().optional().describe("GitHub PR number"),
+        repo: z
+          .string()
+          .optional()
+          .describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
+        branch: z.string().optional().describe("Git branch name (headBranch)"),
+      },
+    },
+    async ({ id, jiraKey, prNumber, repo, branch }) => {
+      try {
+        const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
+        const task = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        const errors: string[] = [];
+
+        if (task.jiraKey) {
+          try {
+            await post(`/api/v1/sync/jira/${encodeURIComponent(task.jiraKey)}`);
+          } catch (err) {
+            errors.push(`Jira: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        if (task.prNumber && task.repository) {
+          const { owner, repo: repoName } = task.repository;
+          try {
+            await post(`/api/v1/sync/github/${owner}/${repoName}/${task.prNumber}`);
+          } catch (err) {
+            errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        const refreshed = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        return { content: [{ type: "text", text: JSON.stringify({ task: refreshed, errors }) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
   // update_task
   server.registerTool(
     "update_task",
