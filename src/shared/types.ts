@@ -205,6 +205,11 @@ export interface ClaudeSession {
   claudeUpdatedAt: string | null;
   firstTerminalAt: string | null;
   processStoppedAt: string | null;
+  costUsd: number | null; // API-list-price equivalent, from the transcript
+  activeMs: number | null; // time Claude spent working, summed over turns
+  turnCount: number | null;
+  subagentCount: number | null;
+  usageCollectedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

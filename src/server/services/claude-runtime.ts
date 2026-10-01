@@ -13,6 +13,7 @@ import {
 import { ensureStackCapacity, sweepIdleStacks } from "./docker-stacks";
 import { reapCompletedWorktrees } from "./task-worktrees";
 import { reconcileDevStack } from "./dev-stack";
+import { collectSessionUsage } from "./session-usage";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
@@ -50,6 +51,7 @@ export function startClaudeRuntime(): void {
       await reapIdleProcesses();
       await syncProcessLiveness();
       await startQueued();
+      await collectSessionUsage();
     } catch (err) {
       console.error("[claude] sweep failed", err);
     } finally {

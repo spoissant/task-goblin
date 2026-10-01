@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // 1. Task - Unified table for manual tasks, Jira items, and PRs
 export const tasks = sqliteTable("tasks", {
@@ -131,12 +131,41 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   claudeUpdatedAt: text("claude_updated_at"),
   firstTerminalAt: text("first_terminal_at"),
   processStoppedAt: text("process_stopped_at"),
+  // Usage totals, collected from the transcript (see session-usage.ts)
+  costUsd: real("cost_usd"), // API-list-price equivalent; null when a request's model is unpriced
+  activeMs: integer("active_ms"), // sum of turn durations: time Claude was working, not waiting
+  turnCount: integer("turn_count"),
+  subagentCount: integer("subagent_count"),
+  usageCollectedAt: text("usage_collected_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
   index("idx_claude_sessions_task_id").on(table.taskId),
   index("idx_claude_sessions_pr_url").on(table.prUrl),
   index("idx_claude_sessions_state").on(table.state),
+]);
+
+// 3e. Claude session requests - one row per API request in a session's transcript, subagents included
+export const claudeSessionRequests = sqliteTable("claude_session_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),
+  messageId: text("message_id").notNull(),
+  agentId: text("agent_id"), // null = main agent
+  agentType: text("agent_type"), // subagent type, e.g. Explore
+  timestamp: text("timestamp").notNull(),
+  model: text("model").notNull(),
+  effort: text("effort"),
+  speed: text("speed"), // standard | fast
+  inputTokens: integer("input_tokens").notNull(),
+  outputTokens: integer("output_tokens").notNull(),
+  thinkingTokens: integer("thinking_tokens").notNull(), // included in outputTokens
+  cacheWrite5mTokens: integer("cache_write_5m_tokens").notNull(),
+  cacheWrite1hTokens: integer("cache_write_1h_tokens").notNull(),
+  cacheReadTokens: integer("cache_read_tokens").notNull(),
+  webSearchRequests: integer("web_search_requests").notNull(),
+  costUsd: real("cost_usd"), // at the price when collected; null when the model is unpriced
+}, (table) => [
+  uniqueIndex("idx_claude_session_requests_message").on(table.sessionId, table.messageId),
 ]);
 
 // 4. Team Channels - maps GitHub team slugs to Slack channels for code review routing

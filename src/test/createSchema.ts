@@ -69,6 +69,7 @@ export function generateTestSchema(): string {
     schema.todos,
     schema.taskWorktrees,
     schema.claudeSessions,
+    schema.claudeSessionRequests,
     schema.teamChannels,
     schema.statusCategories,
   ];

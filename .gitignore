@@ -46,3 +46,6 @@ plans/
 # Standup snapshots & generated reports (root-anchored: src/standup/ is source)
 /snapshots/
 /standup/
+
+# Archived Claude Code transcripts of AI sessions
+/transcripts/
