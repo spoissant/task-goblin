@@ -8,7 +8,7 @@ import { useRemoveTaskWorktree, useTaskWorktreeQuery } from "@/client/lib/querie
 import { Button } from "@/client/components/ui/button";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
-import { SessionsTable } from "./SessionsTable";
+import { SessionsTable, formatActive, formatCost } from "./SessionsTable";
 import { AiCell } from "./columns/AiCell";
 import { cn } from "@/client/lib/utils";
 
@@ -38,11 +38,19 @@ export function SessionsSection({ task }: { task: Task }) {
   };
 
   const items = sessions?.items ?? [];
+  const collected = items.filter((s) => s.usageCollectedAt);
+  const totalCost = collected.some((s) => s.costUsd === null) ? null : collected.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
+  const totalActive = collected.reduce((sum, s) => sum + (s.activeMs ?? 0), 0);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">AI Sessions</p>
+        {collected.length > 0 && (
+          <span className="text-xs text-muted-foreground tabular-nums" title="Total across this task's sessions">
+            {formatCost(totalCost)} · {formatActive(totalActive)} active
+          </span>
+        )}
         <TooltipProvider>
           <AiCell task={task} session={items[0]} nextChore={nextChore} />
         </TooltipProvider>

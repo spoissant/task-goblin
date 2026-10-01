@@ -30,6 +30,19 @@ function formatTime(iso: string): string {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+export function formatCost(usd: number | null): string {
+  return usd === null ? "—" : `$${usd.toFixed(2)}`;
+}
+
+/** Active time, e.g. "45s", "21m", "1h 10m". */
+export function formatActive(ms: number | null): string {
+  if (ms === null) return "—";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes === 0) return `${Math.round(ms / 1000)}s`;
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 type SessionRow = ClaudeSession & { taskTitle?: string | null };
 
 /** AI sessions table; `showTask` adds a column linking to each session's task. */
@@ -49,7 +62,11 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
             <TableHead>Started</TableHead>
             {showTask && <TableHead>Task</TableHead>}
             <TableHead>Chore</TableHead>
+            <TableHead>Model</TableHead>
             <TableHead>State</TableHead>
+            <TableHead className="text-right">Cost</TableHead>
+            <TableHead className="text-right" title="Time Claude spent working, summed over turns">Active</TableHead>
+            <TableHead className="text-right">Subagents</TableHead>
             <TableHead>Detail</TableHead>
             <TableHead></TableHead>
           </TableRow>
@@ -74,7 +91,16 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
                 </TableCell>
               )}
               <TableCell className="text-sm">{s.choreName}</TableCell>
+              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                {s.model ?? "default"}
+                {s.effort && ` · ${s.effort}`}
+              </TableCell>
               <TableCell className={cn("text-sm font-medium", STATE_CLASS[s.state])}>{s.state}</TableCell>
+              <TableCell className="text-sm text-right tabular-nums">{formatCost(s.costUsd)}</TableCell>
+              <TableCell className="text-sm text-right tabular-nums" title={s.turnCount !== null ? `${s.turnCount} turns` : undefined}>
+                {formatActive(s.activeMs)}
+              </TableCell>
+              <TableCell className="text-sm text-right tabular-nums">{s.subagentCount ?? "—"}</TableCell>
               <TableCell className="text-xs text-muted-foreground max-w-md truncate" title={s.needs ?? s.detail ?? s.error ?? ""}>
                 {s.needs ?? s.detail ?? s.error ?? s.result ?? "—"}
               </TableCell>
