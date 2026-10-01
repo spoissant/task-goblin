@@ -7,6 +7,7 @@ import { parseId } from "../lib/validation";
 import { getTaskOrThrow } from "../lib/queries";
 import {
   getTaskWorktreeStatus,
+  pushTaskWorktree,
   removeTaskWorktree,
   startTaskWorktreePreparation,
 } from "../services/task-worktrees";
@@ -74,6 +75,14 @@ export const taskWorktreeRoutes: Routes = {
       const force = new URL(req.url).searchParams.get("force") === "true";
       const row = await removeTaskWorktree(id, { force });
       return json(row, 202);
+    },
+  },
+
+  "/api/v1/tasks/:id/worktree/push": {
+    async POST(_req, params) {
+      const id = parseId(params.id);
+      await pushTaskWorktree(id);
+      return json(await getTaskOrThrow(id));
     },
   },
 

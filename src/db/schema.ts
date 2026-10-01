@@ -44,6 +44,8 @@ export const tasks = sqliteTable("tasks", {
   changedFiles: integer("changed_files"),
   additions: integer("additions"),
   deletions: integer("deletions"),
+  uncommittedFiles: integer("uncommitted_files"), // task worktree, refreshed on GitHub sync; null without a worktree
+  unpushedCommits: integer("unpushed_commits"), // task worktree commits not on any remote
 
   // Automation flags (not synced from Jira/GitHub)
   choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, ...}

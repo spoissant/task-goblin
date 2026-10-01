@@ -9,7 +9,7 @@ import { now } from "../lib/timestamp";
 import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
 import { getCompletedCondition } from "../lib/task-status";
 import { runShell, tailOutput } from "../lib/process";
-import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, worktreePrune } from "../lib/git";
+import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit, unpushedCommitCount, worktreePrune } from "../lib/git";
 import { wtPreStart, wtRemove, wtSwitch } from "../lib/wt";
 import { broadcast } from "../lib/sse";
 
@@ -286,6 +286,7 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
     }
 
     await db.delete(taskWorktrees).where(eq(taskWorktrees.id, row.id));
+    await db.update(tasks).set({ uncommittedFiles: null, unpushedCommits: null }).where(eq(tasks.id, row.taskId));
     broadcast("worktree", { taskId: row.taskId, state: null });
   } catch (err) {
     await updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
@@ -324,6 +325,32 @@ export async function reapCompletedWorktrees(): Promise<void> {
         console.warn(`[worktree] reap failed for task ${worktree.taskId}:`, err);
       }
     }
+  }
+}
+
+/** Store the worktree's uncommitted file and unpushed commit counts on its task. */
+async function refreshGitStatus(row: TaskWorktreeRow): Promise<void> {
+  const present = (row.state === "ready" || row.state === "dirty") && existsSync(expandPath(row.path));
+  const uncommittedFiles = present ? await changedFileCount(row.path) : null;
+  const unpushedCommits = present ? await unpushedCommitCount(row.path) : null;
+  await db.update(tasks).set({ uncommittedFiles, unpushedCommits }).where(eq(tasks.id, row.taskId));
+}
+
+/** Refresh git status for every task worktree; run after the GitHub sync. */
+export async function refreshWorktreeGitStatuses(): Promise<void> {
+  const rows = await db.select().from(taskWorktrees);
+  for (const row of rows) await refreshGitStatus(row);
+}
+
+/** Push the worktree's branch to origin (setting upstream), then refresh its status. */
+export async function pushTaskWorktree(taskId: number): Promise<void> {
+  const row = await getTaskWorktreeRow(taskId);
+  if (!row) throw new NotFoundError("Worktree for task", taskId);
+  if (!row.branch) throw new AppError("Worktree has no branch to push", 400, "WORKTREE_DETACHED");
+  const result = await runGit(row.path, ["push", "-u", "origin", row.branch]);
+  await refreshGitStatus(row);
+  if (result.exitCode !== 0) {
+    throw new AppError(`git push failed: ${tailOutput(result, 500)}`, 502, "PUSH_FAILED");
   }
 }
 

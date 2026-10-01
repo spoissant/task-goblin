@@ -52,6 +52,8 @@ export interface Task {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
+  uncommittedFiles: number | null; // task worktree, refreshed on GitHub sync; null without a worktree
+  unpushedCommits: number | null; // task worktree commits not on any remote
   choreSkips: string | null; // JSON: {"fix-pr-checks": true, ...}
 }
 

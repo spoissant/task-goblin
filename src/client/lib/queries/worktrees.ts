@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { RepositoryGuess, TaskWorktreeStatus } from "../types";
+import type { RepositoryGuess, Task, TaskWorktreeStatus } from "../types";
+import { taskKeys } from "./tasks";
 
 export const worktreeKeys = {
   all: ["worktree"] as const,
@@ -22,6 +23,17 @@ export function useRemoveTaskWorktree() {
     mutationFn: ({ taskId, force }: { taskId: number; force?: boolean }) =>
       api.delete<TaskWorktreeStatus>(`/tasks/${taskId}/worktree${force ? "?force=true" : ""}`),
     onSuccess: (_data, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: worktreeKeys.task(taskId) });
+    },
+  });
+}
+
+export function usePushTaskWorktree() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: number) => api.post<Task>(`/tasks/${taskId}/worktree/push`),
+    onSettled: (_data, _err, taskId) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: worktreeKeys.task(taskId) });
     },
   });

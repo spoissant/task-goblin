@@ -7,9 +7,11 @@ import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIc
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { Flame, ListTree, Snowflake, Zap } from "lucide-react";
+import { AlertTriangle, Flame, ListTree, Snowflake, Zap } from "lucide-react";
+import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
+import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
 import {
   Dialog,
   DialogContent,
@@ -179,18 +181,62 @@ export function RepoCell({ task, repo }: { task: Task; repo?: Repository }) {
 }
 
 export function BranchCell({ task }: { task: Task }) {
-  if (!task.headBranch) {
-    return <span className="text-muted-foreground">—</span>;
-  }
   return (
-    <CopyChip
-      value={task.headBranch}
-      message="Branch copied to clipboard"
-      title={task.headBranch}
-      className="truncate block w-full"
-    >
-      {task.headBranch}
-    </CopyChip>
+    <span className="flex items-center gap-1 min-w-0">
+      {task.headBranch ? (
+        <CopyChip
+          value={task.headBranch}
+          message="Branch copied to clipboard"
+          title={task.headBranch}
+          className="truncate block min-w-0"
+        >
+          {task.headBranch}
+        </CopyChip>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+      <UnpushedWarning task={task} />
+    </span>
+  );
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** Warns about worktree work not on the remote; clicking pushes the commits. */
+function UnpushedWarning({ task }: { task: Task }) {
+  const push = usePushTaskWorktree();
+  const unpushed = task.unpushedCommits ?? 0;
+  const uncommitted = task.uncommittedFiles ?? 0;
+  if (unpushed === 0 && uncommitted === 0) return null;
+
+  const parts = [];
+  if (unpushed > 0) parts.push(plural(unpushed, "unpushed commit"));
+  if (uncommitted > 0) parts.push(plural(uncommitted, "uncommitted file"));
+  const hint = unpushed > 0 ? "click to push" : "commit them in the worktree first";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={`inline-flex shrink-0 ${unpushed > 0 ? "cursor-pointer" : "cursor-default"} ${push.isPending ? "opacity-50" : ""}`}
+          aria-label={`${parts.join(", ")}: ${hint}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (unpushed === 0 || push.isPending) return;
+            push.mutate(task.id, {
+              onSuccess: () => toast.success(`Pushed ${task.headBranch ?? "branch"}`),
+              onError: (err) => toast.error(err.message),
+            });
+          }}
+        >
+          <AlertTriangle className="h-4 w-4 text-orange-500" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{parts.join(", ")}: {hint}</TooltipContent>
+    </Tooltip>
   );
 }
 

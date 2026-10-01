@@ -65,3 +65,10 @@ export async function changedFileCount(repoPath: string): Promise<number | null>
   if (result.stdout === "") return 0;
   return result.stdout.split("\n").filter(Boolean).length;
 }
+
+/** Commits on HEAD that no remote branch contains; null when git fails. */
+export async function unpushedCommitCount(repoPath: string): Promise<number | null> {
+  const result = await runGit(repoPath, ["rev-list", "--count", "HEAD", "--not", "--remotes"]);
+  if (result.exitCode !== 0) return null;
+  return Number(result.stdout);
+}

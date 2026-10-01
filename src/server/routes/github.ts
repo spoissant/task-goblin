@@ -11,6 +11,7 @@ import {
   GitHubApiError,
 } from "../services/github-sync";
 import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
+import { refreshWorktreeGitStatuses } from "../services/task-worktrees";
 import {
   fetchPullRequestReviewInfo,
   fetchPullRequestTeamReviews,
@@ -128,6 +129,7 @@ export const githubRoutes: Routes = {
     async POST() {
       try {
         const result = await syncGitHubPullRequests();
+        await refreshWorktreeGitStatuses();
         return json(result);
       } catch (err) {
         if (err instanceof GitHubConfigError) {
