@@ -63,8 +63,8 @@ interface CustomPromptDialogProps {
  */
 export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: CustomPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState<SessionModel>("opus");
-  const [effort, setEffort] = useState<SessionEffort>("medium");
+  const [model, setModel] = useState<SessionModel>("sonnet");
+  const [effort, setEffort] = useState<SessionEffort>("high");
   const [uploading, setUploading] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const startSession = useStartSession();
