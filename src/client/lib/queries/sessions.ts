@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { ClaudeSession, ListResponse, PaginatedResponse, RecentClaudeSession, SessionEffort, SessionModel } from "../types";
+import type { ClaudeSession, ListResponse, PaginatedResponse, RecentClaudeSession, SessionAnalyticsRow, SessionEffort, SessionModel } from "../types";
 import { taskKeys } from "./tasks";
 
 export const sessionKeys = {
@@ -8,6 +8,7 @@ export const sessionKeys = {
   latest: () => [...sessionKeys.all, "latest"] as const,
   recent: (pagination: { limit: number; offset: number }) => [...sessionKeys.all, "recent", pagination] as const,
   reviews: () => [...sessionKeys.all, "reviews"] as const,
+  analytics: () => [...sessionKeys.all, "analytics"] as const,
   task: (taskId: number) => [...sessionKeys.all, "task", taskId] as const,
 };
 
@@ -25,6 +26,14 @@ export function useRecentSessionsQuery({ limit, offset }: { limit: number; offse
     queryKey: sessionKeys.recent({ limit, offset }),
     queryFn: () => api.get<PaginatedResponse<RecentClaudeSession>>(`/sessions/recent?limit=${limit}&offset=${offset}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Every session with collected usage, for the analytics page. */
+export function useSessionAnalyticsQuery() {
+  return useQuery({
+    queryKey: sessionKeys.analytics(),
+    queryFn: () => api.get<ListResponse<SessionAnalyticsRow>>("/sessions/analytics"),
   });
 }
 

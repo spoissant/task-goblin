@@ -9,10 +9,11 @@
  */
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
-import { eq, isNotNull } from "drizzle-orm";
+import { eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessionRequests, claudeSessions } from "../../db/schema";
+import { claudeSessionRequests, claudeSessions, repositories, tasks } from "../../db/schema";
 import { now } from "../lib/timestamp";
+import type { SessionAnalyticsRow } from "../../shared/types";
 
 export function projectsDir(): string {
   return process.env.CLAUDE_PROJECTS_DIR ?? `${homedir()}/.claude/projects`;
@@ -209,4 +210,64 @@ export async function collectSessionUsage(): Promise<void> {
       console.error(`[usage] collecting session ${row.id} failed`, err);
     }
   }
+}
+
+/** The value with the highest count. */
+function mostFrequent(counts: Map<string | null, number> | undefined): string | null {
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [value, count] of counts ?? []) {
+    if (count > bestCount) [best, bestCount] = [value, count];
+  }
+  return best;
+}
+
+/**
+ * One row per collected session, for the analytics page. Model and effort are
+ * the ones most of the main agent's requests ran on, not the requested alias.
+ */
+export async function listSessionAnalytics(): Promise<SessionAnalyticsRow[]> {
+  const rows = await db
+    .select({ session: claudeSessions, jiraKey: tasks.jiraKey, taskTitle: tasks.title, repoAlias: repositories.alias, repo: repositories.repo })
+    .from(claudeSessions)
+    .leftJoin(tasks, eq(tasks.id, claudeSessions.taskId))
+    .leftJoin(repositories, eq(repositories.id, claudeSessions.repositoryId))
+    .where(isNotNull(claudeSessions.usageCollectedAt));
+
+  const mainRequests = await db
+    .select({
+      sessionId: claudeSessionRequests.sessionId,
+      model: claudeSessionRequests.model,
+      effort: claudeSessionRequests.effort,
+      count: sql<number>`count(*)`,
+    })
+    .from(claudeSessionRequests)
+    .where(isNull(claudeSessionRequests.agentId))
+    .groupBy(claudeSessionRequests.sessionId, claudeSessionRequests.model, claudeSessionRequests.effort);
+
+  const models = new Map<number, Map<string | null, number>>();
+  const efforts = new Map<number, Map<string | null, number>>();
+  for (const r of mainRequests) {
+    for (const [byKey, key] of [[models, r.model], [efforts, r.effort]] as const) {
+      const counts = byKey.get(r.sessionId) ?? new Map<string | null, number>();
+      counts.set(key, (counts.get(key) ?? 0) + r.count);
+      byKey.set(r.sessionId, counts);
+    }
+  }
+
+  return rows.map(({ session: s, jiraKey, taskTitle, repoAlias, repo }) => ({
+    id: s.id,
+    taskId: s.taskId,
+    task: jiraKey ?? s.name.split(" · ")[0], // the name keeps the key if the task is gone
+    taskTitle,
+    chore: s.choreName,
+    repo: repoAlias ?? repo,
+    model: mostFrequent(models.get(s.id))?.replace(/^claude-/, "").replace(/-\d{8}$/, "") ?? null,
+    effort: mostFrequent(efforts.get(s.id)),
+    createdAt: s.createdAt,
+    costUsd: s.costUsd,
+    activeMs: s.activeMs,
+    turnCount: s.turnCount,
+    subagentCount: s.subagentCount,
+  }));
 }

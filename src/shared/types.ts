@@ -214,6 +214,23 @@ export interface ClaudeSession {
   updatedAt: string;
 }
 
+/** One collected session for the analytics page; model and effort are what the main agent mostly ran on. */
+export interface SessionAnalyticsRow {
+  id: number;
+  taskId: number | null;
+  task: string; // Jira key, or the session name's prefix (e.g. "ac#123" for a PR review)
+  taskTitle: string | null;
+  chore: string;
+  repo: string | null;
+  model: string | null; // e.g. "opus-5-5"
+  effort: string | null;
+  createdAt: string;
+  costUsd: number | null;
+  activeMs: number | null;
+  turnCount: number | null;
+  subagentCount: number | null;
+}
+
 /** A session listed across tasks, carrying its task's title (null for PR reviews). */
 export interface RecentClaudeSession extends ClaudeSession {
   taskTitle: string | null;

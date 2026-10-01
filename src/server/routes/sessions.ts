@@ -18,6 +18,7 @@ import {
   stopSession,
   toApi,
 } from "../services/claude-sessions";
+import { listSessionAnalytics } from "../services/session-usage";
 import { SESSION_EFFORTS, SESSION_MODELS } from "../../shared/types";
 import type { Routes } from "../router";
 
@@ -38,6 +39,14 @@ export const sessionRoutes: Routes = {
       const { rows, total } = await listRecentSessions(limit, offset);
       const items = rows.map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
       return json({ items, total, limit, offset });
+    },
+  },
+
+  // Every session whose usage was collected, one row each, for the analytics page.
+  "/api/v1/sessions/analytics": {
+    async GET() {
+      const items = await listSessionAnalytics();
+      return json({ items, total: items.length });
     },
   },
 
