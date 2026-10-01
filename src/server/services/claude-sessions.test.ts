@@ -109,6 +109,9 @@ describe("claude sessions", () => {
       const recent = await (await request("GET", "/api/v1/sessions/recent")).json();
       expect(recent.items).toHaveLength(2);
       expect(recent.items[0].taskTitle).toBeNull();
+      const page2 = await (await request("GET", "/api/v1/sessions/recent?limit=1&offset=1")).json();
+      expect(page2.items.map((s: { id: number }) => s.id)).toEqual([recent.items[1].id]);
+      expect(page2.total).toBe(2);
     } finally {
       setCapacityCheck(async () => "ok");
     }

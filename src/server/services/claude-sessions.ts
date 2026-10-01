@@ -101,15 +101,20 @@ export async function listLatestReviewSessions(): Promise<SessionRow[]> {
     .orderBy(desc(claudeSessions.id));
 }
 
-/** Newest sessions across all tasks and PR reviews, with the task title, for the sessions page. */
-export async function listRecentSessions(limit: number): Promise<(SessionRow & { taskTitle: string | null })[]> {
+/** A page of sessions across all tasks and PR reviews, newest first, with the task title, for the sessions page. */
+export async function listRecentSessions(
+  limit: number,
+  offset: number,
+): Promise<{ rows: (SessionRow & { taskTitle: string | null })[]; total: number }> {
   const rows = await db
     .select({ session: claudeSessions, taskTitle: tasks.title })
     .from(claudeSessions)
     .leftJoin(tasks, eq(tasks.id, claudeSessions.taskId))
     .orderBy(desc(claudeSessions.id))
-    .limit(limit);
-  return rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle }));
+    .limit(limit)
+    .offset(offset);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(claudeSessions);
+  return { rows: rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle })), total: count };
 }
 
 async function findActiveSession(taskId: number): Promise<SessionRow | null> {

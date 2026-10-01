@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { json } from "../response";
 import { ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
-import { parseId } from "../lib/validation";
+import { parseId, validatePagination } from "../lib/validation";
 import { getTaskOrThrow } from "../lib/queries";
 import {
   getSession,
@@ -30,12 +30,14 @@ export const sessionRoutes: Routes = {
     },
   },
 
-  // Newest sessions across all tasks, for the sessions page.
+  // Sessions across all tasks, newest first and paginated, for the sessions page.
   "/api/v1/sessions/recent": {
     async GET(req) {
-      const limit = Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit")) || 50, 1), 200);
-      const items = (await listRecentSessions(limit)).map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
-      return json({ items, total: items.length });
+      const url = new URL(req.url);
+      const { limit, offset } = validatePagination(url.searchParams.get("limit"), url.searchParams.get("offset"));
+      const { rows, total } = await listRecentSessions(limit, offset);
+      const items = rows.map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
+      return json({ items, total, limit, offset });
     },
   },
 
