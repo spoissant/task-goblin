@@ -177,7 +177,10 @@ export async function startCustomSession(taskId: number, input: CustomSessionInp
  * Review a colleague's PR in its repo's main checkout, with no task. Any
  * number can run at once; only one per PR.
  */
-export async function startReviewSession(prUrl: string): Promise<SessionRow> {
+export async function startReviewSession(
+  prUrl: string,
+  opts: { model?: string | null; effort?: string | null } = {},
+): Promise<SessionRow> {
   const { url, owner, repo, number } = parsePrUrl(prUrl);
 
   const repository = await findRepository(owner, repo);
@@ -205,6 +208,8 @@ export async function startReviewSession(prUrl: string): Promise<SessionRow> {
       prompt: `${REVIEW_CHORE.prompt} ${url}`,
       cwd,
       name: `${repository.alias ?? repository.repo}#${number} · ${REVIEW_CHORE.name}`,
+      model: opts.model ?? null,
+      effort: opts.effort ?? null,
       state: "preparing",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -435,7 +440,7 @@ export async function pollActiveSessions(): Promise<void> {
     if (job.bridgeSessionId && job.bridgeSessionId !== row.bridgeSessionId) updates.bridgeSessionId = job.bridgeSessionId;
     if ((job.updatedAt ?? null) !== row.claudeUpdatedAt) updates.claudeUpdatedAt = job.updatedAt ?? null;
     const terminalAt = job.firstTerminalAt ?? null;
-    if (terminalAt !== row.firstTerminalAt) updates.firstTerminalAt = terminalAt;
+    if (terminalAt && terminalAt !== row.firstTerminalAt) updates.firstTerminalAt = terminalAt;
     if (nextState && TERMINAL_STATES.includes(nextState) && !terminalAt && !row.firstTerminalAt) {
       updates.firstTerminalAt = now();
     }

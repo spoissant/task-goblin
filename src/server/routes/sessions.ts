@@ -60,7 +60,9 @@ export const sessionRoutes: Routes = {
     async POST(req) {
       const body = await getBody(req);
       if (typeof body.prUrl !== "string" || !body.prUrl) throw new ValidationError("prUrl is required");
-      return json(toApi(await startReviewSession(body.prUrl)), 202);
+      const model = optionalEnum(body.model, SESSION_MODELS, "model");
+      const effort = optionalEnum(body.effort, SESSION_EFFORTS, "effort");
+      return json(toApi(await startReviewSession(body.prUrl, { model, effort })), 202);
     },
   },
 

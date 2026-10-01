@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/client/lib/types";
 import { ApiError } from "@/client/lib/api";
 import { handleResponse } from "@/shared/api";
+import { EFFORT_LABELS, MODEL_LABELS, useChoreModelDefaults } from "@/client/lib/chore-models";
 import { useStartSession } from "@/client/lib/queries/sessions";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
@@ -15,21 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/client/components/ui/select";
-
-const MODEL_LABELS: Record<SessionModel, string> = {
-  opus: "Opus",
-  sonnet: "Sonnet",
-  fable: "Fable",
-  haiku: "Haiku",
-};
-
-const EFFORT_LABELS: Record<SessionEffort, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-};
 
 /** Save a pasted image on the server; returns the file path to put in the prompt. */
 async function uploadImage(file: File): Promise<string> {
@@ -69,11 +55,21 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: Custom
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const startSession = useStartSession();
   const chorePrompt = chore?.prompt ?? null;
+  const choreKey = chore?.key;
+  const { getDefault } = useChoreModelDefaults();
+  const defaults = getDefault(choreKey);
 
   // Keyed on the chore's fields, not the object, so typing is never wiped.
   useEffect(() => {
     if (open) setPrompt(chorePrompt ? `${chorePrompt}\n` : "");
   }, [open, chorePrompt]);
+
+  // Each time the dialog opens, start from the chore's configured model and effort.
+  useEffect(() => {
+    if (!open) return;
+    setModel(defaults.model);
+    setEffort(defaults.effort);
+  }, [open, choreKey, defaults.model, defaults.effort]);
 
   // Pasted screenshots are uploaded and replaced by their file path at the cursor.
   const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {

@@ -6,6 +6,7 @@ import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
 import { TeamMembersForm } from "@/client/components/settings/TeamMembersForm";
 import { VipMembersForm } from "@/client/components/settings/VipMembersForm";
 import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsForm";
+import { ChoreModelsForm } from "@/client/components/settings/ChoreModelsForm";
 import { Separator } from "@/client/components/ui/separator";
 
 export function SettingsPage() {
@@ -82,6 +83,16 @@ export function SettingsPage() {
             Configure status colors and which statuses are considered "done". Tasks are sorted by category order.
           </p>
           <StatusCategoriesForm />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Chore Models</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Default model and effort pre-selected when starting an AI session for each chore.
+          </p>
+          <ChoreModelsForm />
         </section>
       </div>
     </div>

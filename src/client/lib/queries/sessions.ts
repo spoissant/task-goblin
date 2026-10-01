@@ -51,10 +51,10 @@ export type StartReviewInput = { prUrl: string } | { taskId: number };
 export function useStartReviewSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: StartReviewInput) =>
+    mutationFn: ({ model, effort, ...input }: StartReviewInput & { model: SessionModel; effort: SessionEffort }) =>
       "prUrl" in input
-        ? api.post<ClaudeSession>("/review-sessions", { prUrl: input.prUrl })
-        : api.post<ClaudeSession>(`/tasks/${input.taskId}/sessions`, { choreKey: "code-review-pr" }),
+        ? api.post<ClaudeSession>("/review-sessions", { prUrl: input.prUrl, model, effort })
+        : api.post<ClaudeSession>(`/tasks/${input.taskId}/sessions`, { choreKey: "code-review-pr", model, effort }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
     },
