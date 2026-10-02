@@ -190,6 +190,15 @@ const CHORES: ChoreDefinition[] = [
     categories: null,
     match: () => false,
   },
+  {
+    number: 12,
+    key: "ai-qa",
+    name: "AI QA",
+    condition: "manual only (never suggested)",
+    prompt: "/chore-ai-qa {{taskId}}",
+    categories: null,
+    match: () => false,
+  },
 ];
 
 export function getChoreDefinitions() {
