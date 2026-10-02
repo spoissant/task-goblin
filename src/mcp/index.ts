@@ -5,6 +5,7 @@ import { registerTodoTools } from "./tools/todos.js";
 import { registerChoreTools } from "./tools/chores.js";
 import { registerReviewTools } from "./tools/reviews.js";
 import { registerDevStackTools } from "./tools/dev-stack.js";
+import { registerSessionTools } from "./tools/sessions.js";
 import { registerTaskPrompts } from "./prompts/tasks.js";
 
 const server = new McpServer({
@@ -18,6 +19,7 @@ registerTodoTools(server);
 registerChoreTools(server);
 registerReviewTools(server);
 registerDevStackTools(server);
+registerSessionTools(server);
 
 // Register prompts
 registerTaskPrompts(server);
