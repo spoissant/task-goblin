@@ -74,6 +74,8 @@ export function registerTaskTools(server: McpServer) {
         if (hasComments !== undefined) params.set("hasComments", String(hasComments));
         if (limit !== undefined) params.set("limit", String(limit));
         if (offset !== undefined) params.set("offset", String(offset));
+        // The completed endpoint hides done-status tasks unless asked (a UI toggle); agents want them all.
+        if (completed) params.set("showDone", "true");
 
         const base = completed ? "/api/v1/tasks/completed" : "/api/v1/tasks";
         const qs = params.toString();
