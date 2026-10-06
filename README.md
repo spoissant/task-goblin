@@ -94,6 +94,7 @@ Task Goblin exposes an MCP server for AI agent integration. The server provides 
 |------|-------------|
 | `get_task` | Get a single task by ID or Jira key (returns task with its repository) |
 | `update_task` | Update task fields: title, description, status, repository (only while the task has no PR), choreSkips, workingOn |
+| `delete_task` | Permanently delete a task (and tear down its worktree) |
 | `list_team_channels` | List GitHub team → Slack channel mappings for review requests |
 | `get_pr_changes_by_category` | Get a PR's size and frontend/backend/other file split |
 
