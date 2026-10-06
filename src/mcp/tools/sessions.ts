@@ -19,7 +19,7 @@ export function registerSessionTools(server: McpServer) {
     {
       description:
         "Start a background Claude Code session (claude --bg --rc) in the task's worktree, tracked in Task Goblin's AI column. " +
-        "Pass choreKey to run a chore (any key from chore_definitions, including manual-only ones like ai-qa), optionally with " +
+        "Pass choreKey to run a chore (any key from chore_definitions), optionally with " +
         "prompt replacing the chore's command; or pass prompt alone for a custom session. model and effort default to the " +
         "chore's settings. Returns the session row (state starts as spawning).",
       inputSchema: {

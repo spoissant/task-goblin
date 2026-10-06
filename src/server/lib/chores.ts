@@ -122,34 +122,29 @@ const CHORES: ChoreDefinition[] = [
   {
     number: 6,
     key: "continue-work",
-    name: "Continue In Progress",
-    condition: "status category = In Progress AND checksStatus != pending",
+    name: "Continue After QA",
+    condition: "status category = In Progress AND prState = open AND isDraft = false",
     prompt: "/chore-continue-work {{taskId}}",
     categories: ["In Progress"],
-    match: (t) => t.checksStatus !== "pending",
+    match: (t) => t.prState === "open" && t.isDraft === 0,
   },
   {
     number: 7,
+    key: "ai-qa",
+    name: "AI QA",
+    condition: "status category = In Progress AND prState = open AND isDraft = true",
+    prompt: "/chore-ai-qa {{taskId}}",
+    categories: ["In Progress"],
+    match: (t) => t.prState === "open" && t.isDraft === 1,
+  },
+  {
+    number: 8,
     key: "code-review-pr",
     name: "Code review my PR",
     condition: "status category = Code Review AND isDraft = true",
     prompt: "/chore-code-review-my-pr {{taskId}}",
     categories: ["Code Review"],
     match: (t) => t.isDraft === 1,
-  },
-  {
-    number: 8,
-    key: "request-reviews",
-    name: "Request Code Reviews",
-    condition: "isDraft = false AND prState = open AND approvedReviewCount < repo.requiredReviews",
-    prompt: "/chore-request-reviews {{taskId}}",
-    categories: null,
-    supportsBulk: true,
-    cwd: "main",
-    match: (t, repo) =>
-      t.isDraft === 0 &&
-      t.prState === "open" &&
-      (t.approvedReviewCount ?? 0) < (repo?.requiredReviews ?? 1),
   },
   {
     number: 9,
@@ -173,30 +168,17 @@ const CHORES: ChoreDefinition[] = [
   },
   {
     number: 10,
-    key: "dev-qa-video",
-    name: "Requires Dev QA Video",
-    condition: "status category = Code Review AND deployedOnBranches.length > 0",
-    prompt: "/chore-dev-qa-video {{taskId}}",
-    categories: ["Code Review"],
-    match: (t) => parseDeploymentBranches(t.deployedOnBranches).length > 0,
-  },
-  {
-    number: 11,
-    key: "merge-latest-origin",
-    name: "Merge Latest Origin",
-    condition: "manual only (never suggested)",
-    prompt: "/chore-merge-latest-origin {{taskId}}",
+    key: "request-reviews",
+    name: "Request Code Reviews",
+    condition: "isDraft = false AND prState = open AND approvedReviewCount < repo.requiredReviews",
+    prompt: "/chore-request-reviews {{taskId}}",
     categories: null,
-    match: () => false,
-  },
-  {
-    number: 12,
-    key: "ai-qa",
-    name: "AI QA",
-    condition: "manual only (never suggested)",
-    prompt: "/chore-ai-qa {{taskId}}",
-    categories: null,
-    match: () => false,
+    supportsBulk: true,
+    cwd: "main",
+    match: (t, repo) =>
+      t.isDraft === 0 &&
+      t.prState === "open" &&
+      (t.approvedReviewCount ?? 0) < (repo?.requiredReviews ?? 1),
   },
 ];
 

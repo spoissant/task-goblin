@@ -60,3 +60,24 @@ describe("getChores — chore 4 address-pr-comments", () => {
     expect(entries.find((e) => e.key === "address-pr-comments")?.number).toBe(4);
   });
 });
+
+describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
+  it("suggests AI QA, not continue-work, for an in-progress draft PR", async () => {
+    const task = await seedTask();
+    await db.update(tasks).set({ isDraft: 1 }).where(eq(tasks.id, task.id));
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("ai-qa");
+    expect(keys).not.toContain("continue-work");
+  });
+
+  it("suggests continue-work, not AI QA, for an in-progress PR ready for review", async () => {
+    const task = await seedTask();
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("continue-work");
+    expect(keys).not.toContain("ai-qa");
+  });
+});
