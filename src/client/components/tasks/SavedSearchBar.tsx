@@ -56,6 +56,17 @@ export function SavedSearchBar({ searches, onChange }: SavedSearchBarProps) {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      <button
+        type="button"
+        title="Add saved search"
+        onClick={() => setDialogOpen(true)}
+        className="cursor-pointer"
+      >
+        <Badge variant="outline" className="text-xs text-muted-foreground hover:text-foreground">
+          <Plus />
+          Saved search
+        </Badge>
+      </button>
       {searches.map((s) => (
         <Badge
           key={s.id}
@@ -78,17 +89,6 @@ export function SavedSearchBar({ searches, onChange }: SavedSearchBarProps) {
           </button>
         </Badge>
       ))}
-      <button
-        type="button"
-        title="Add saved search"
-        onClick={() => setDialogOpen(true)}
-        className="cursor-pointer"
-      >
-        <Badge variant="outline" className="text-xs text-muted-foreground hover:text-foreground">
-          <Plus />
-          Saved search
-        </Badge>
-      </button>
 
       <ModalDialog
         open={dialogOpen}
