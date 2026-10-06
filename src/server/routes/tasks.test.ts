@@ -264,6 +264,38 @@ describe("Task search filter", () => {
     expect(data.items).toHaveLength(1);
     expect(data.items[0].title).toBe("Fix login bug");
   });
+
+  it("trims surrounding whitespace from the search term", async () => {
+    const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("  tiptap  ")}`);
+    const data = await res.json();
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe("Migrate to tiptap editor");
+  });
+
+  it("combines terms with | as OR", async () => {
+    const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("tiptap | login")}`);
+    const data = await res.json();
+    expect(data.items).toHaveLength(2);
+  });
+
+  it("combines terms with & as AND", async () => {
+    const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("fix & bug")}`);
+    const data = await res.json();
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe("Fix login bug");
+  });
+
+  it("binds & tighter than | and supports ~ per term", async () => {
+    const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("tiptap & ~editor | login & ~bug")}`);
+    const data = await res.json();
+    expect(data.items).toHaveLength(0);
+  });
+
+  it("ignores empty terms", async () => {
+    const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("tiptap | ")}`);
+    const data = await res.json();
+    expect(data.items).toHaveLength(1);
+  });
 });
 
 describe("Todos endpoints", () => {

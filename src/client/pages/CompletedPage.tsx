@@ -40,7 +40,7 @@ export function CompletedPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
+      setDebouncedQuery(searchQuery.trim());
       setPage(0);
     }, 300);
     return () => clearTimeout(timer);
@@ -84,7 +84,7 @@ export function CompletedPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search completed tasks..."
-          title="Prefix with ~ to exclude matches (e.g. ~tiptap)"
+          title="Combine with | (or) and & (and); prefix a term with ~ to exclude it (e.g. tiptap | editor & ~bug)"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"

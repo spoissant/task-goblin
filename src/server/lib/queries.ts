@@ -1,17 +1,37 @@
-import { eq, sql, or, not } from "drizzle-orm";
+import { eq, sql, or, and, not, type SQL } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, worktrees, repositories } from "../../db/schema";
 import { NotFoundError } from "./errors";
 
 /**
- * Build a search condition for the `title` query param. A leading `~`
- * negates the match (e.g. "~tiptap" matches tasks that don't mention tiptap).
- * Columns are COALESCE'd to '' so NULL values compare as non-matches instead
- * of poisoning the OR/NOT with SQL's three-valued NULL logic.
+ * Build a search condition for the `title` query param. Terms combine with
+ * `|` (OR) and `&` (AND, binds tighter), e.g. "tiptap | editor & ~bug" means
+ * tiptap OR (editor AND NOT bug). A leading `~` negates a term. Terms are
+ * trimmed and empty ones ignored.
  */
 export function buildTitleSearchCondition(title: string) {
-  const negate = title.startsWith("~");
-  const term = negate ? title.slice(1).trim() : title;
+  const orGroups = title
+    .split("|")
+    .map((group) => {
+      const terms = group
+        .split("&")
+        .map(buildTermCondition)
+        .filter((c): c is SQL => c !== undefined);
+      return terms.length > 0 ? and(...terms) : undefined;
+    })
+    .filter((c): c is SQL => c !== undefined);
+  return orGroups.length > 0 ? or(...orGroups) : undefined;
+}
+
+/**
+ * Match one search term against title/keys/branch. Columns are COALESCE'd to
+ * '' so NULL values compare as non-matches instead of poisoning the OR/NOT
+ * with SQL's three-valued NULL logic.
+ */
+function buildTermCondition(raw: string) {
+  const trimmed = raw.trim();
+  const negate = trimmed.startsWith("~");
+  const term = negate ? trimmed.slice(1).trim() : trimmed;
   if (!term) return undefined;
 
   const pattern = `%${term}%`;
