@@ -24,12 +24,6 @@ export interface PrSnapshot {
   deployed: string[];
 }
 
-export interface TodoSnapshot {
-  id: number;
-  content: string;
-  done: string | null; // ISO timestamp
-}
-
 export interface TaskSnapshot {
   id: number;
   jiraKey: string | null;
@@ -48,7 +42,6 @@ export interface TaskSnapshot {
   onIce: boolean;
   onIceReason: string | null;
   pr: PrSnapshot | null;
-  todos: TodoSnapshot[];
   workingOn: string | null;
   updatedAt: string;
 }
@@ -100,15 +93,11 @@ export type EventKind =
   | "on_ice"
   | "off_ice"
   | "high_priority_on"
-  | "high_priority_off"
-  | "todos_done"
-  | "todos_added";
+  | "high_priority_off";
 
 export interface ChangeEvent {
   kind: EventKind;
   detail: string;
-  /** Extra lines nested under the event (e.g. todo contents). */
-  items?: string[];
 }
 
 export interface TaskChanges {

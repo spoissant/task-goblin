@@ -41,7 +41,7 @@ describe("claude sessions", () => {
   beforeEach(() => {
     commands.length = 0;
     rmSync(JOBS_DIR, { recursive: true, force: true });
-    for (const t of ["claude_sessions", "task_worktrees", "todos", "tasks", "worktrees", "repositories"]) {
+    for (const t of ["claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);

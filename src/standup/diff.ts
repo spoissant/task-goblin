@@ -5,11 +5,6 @@ const asBlocked = (t: TaskSnapshot) => isBlockedCategory({ name: t.category ?? "
 
 const label = (t: TaskSnapshot) => t.category ?? t.status;
 
-function todoText(content: string, max = 90): string {
-  const flat = content.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-}
-
 function statusEvents(prev: TaskSnapshot, cur: TaskSnapshot, events: ChangeEvent[]): void {
   if (prev.category === cur.category && prev.status === cur.status) return;
 
@@ -124,28 +119,6 @@ function flagEvents(prev: TaskSnapshot, cur: TaskSnapshot, events: ChangeEvent[]
   }
 }
 
-function todoEvents(prev: TaskSnapshot, cur: TaskSnapshot, events: ChangeEvent[]): void {
-  const before = new Map(prev.todos.map((t) => [t.id, t]));
-
-  const finished = cur.todos.filter((t) => t.done && !before.get(t.id)?.done);
-  if (finished.length) {
-    events.push({
-      kind: "todos_done",
-      detail: `ticked off ${finished.length} checklist item${finished.length === 1 ? "" : "s"}`,
-      items: finished.map((t) => todoText(t.content)),
-    });
-  }
-
-  const fresh = cur.todos.filter((t) => !before.has(t.id) && !t.done);
-  if (fresh.length) {
-    events.push({
-      kind: "todos_added",
-      detail: `${fresh.length} new checklist item${fresh.length === 1 ? "" : "s"}`,
-      items: fresh.map((t) => todoText(t.content)),
-    });
-  }
-}
-
 export function diffSnapshots(from: Snapshot, to: Snapshot): DiffResult {
   const before = new Map(from.tasks.map((t) => [t.id, t]));
   const after = new Map(to.tasks.map((t) => [t.id, t]));
@@ -164,7 +137,6 @@ export function diffSnapshots(from: Snapshot, to: Snapshot): DiffResult {
     statusEvents(prev, cur, events);
     prEvents(prev, cur, events);
     flagEvents(prev, cur, events);
-    todoEvents(prev, cur, events);
     if (events.length) changed.push({ task: cur, events });
   }
 

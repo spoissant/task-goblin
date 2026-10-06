@@ -1,13 +1,13 @@
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Badge } from "@/client/components/ui/badge";
 import { CheckCircle, XCircle, SkipForward } from "lucide-react";
-import type { BulkDeployResult, TaskWithTodos } from "@/client/lib/types";
+import type { BulkDeployResult, TaskListItem } from "@/client/lib/types";
 
 interface BulkDeployResultsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   results: BulkDeployResult | null;
-  taskMap: Map<number, TaskWithTodos>;
+  taskMap: Map<number, TaskListItem>;
 }
 
 export function BulkDeployResultsDialog({

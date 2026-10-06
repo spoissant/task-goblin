@@ -6,7 +6,7 @@ import {
   patch,
   resolveTaskId,
   resolveRepositoryId,
-  type TaskWithRelations,
+  type TaskWithRepository,
   type ListResponse,
   type Task,
   type SyncResult,
@@ -18,7 +18,7 @@ export function registerTaskTools(server: McpServer) {
     "get_task",
     {
       description:
-        "Get a single task by ID, Jira key, PR number, or branch name. Returns task with todos.",
+        "Get a single task by ID, Jira key, PR number, or branch name. Returns task with its repository.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),
@@ -33,7 +33,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ id, jiraKey, prNumber, repo, branch }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        const task = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(task) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -104,7 +104,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ owner, repo, prNumber }) => {
       try {
         await post(`/api/v1/sync/github/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${prNumber}`);
-        const task = await get<TaskWithRelations>(
+        const task = await get<TaskWithRepository>(
           `/api/v1/tasks/by-pr/${prNumber}?repo=${encodeURIComponent(`${owner}/${repo}`)}`
         );
         return { content: [{ type: "text", text: JSON.stringify(task) }] };
@@ -172,7 +172,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ id, jiraKey, prNumber, repo, branch }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        const task = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
         const errors: string[] = [];
 
         if (task.jiraKey) {
@@ -192,7 +192,7 @@ export function registerTaskTools(server: McpServer) {
           }
         }
 
-        const refreshed = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        const refreshed = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify({ task: refreshed, errors }) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -251,7 +251,7 @@ export function registerTaskTools(server: McpServer) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
         }
 
-        const fullTask = await get<TaskWithRelations>(`/api/v1/tasks/${taskId}`);
+        const fullTask = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

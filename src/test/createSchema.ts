@@ -66,7 +66,6 @@ export function generateTestSchema(): string {
     schema.repositories,
     schema.worktrees,
     schema.tasks,
-    schema.todos,
     schema.taskWorktrees,
     schema.claudeSessions,
     schema.claudeSessionRequests,

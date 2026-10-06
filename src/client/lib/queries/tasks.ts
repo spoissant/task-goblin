@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Task, TaskDetail, TaskWithRepository, TaskWithTodos, ListResponse, PaginatedResponse, SplitResult } from "../types";
+import type { Task, TaskDetail, TaskWithRepository, TaskListItem, ListResponse, PaginatedResponse, SplitResult } from "../types";
 import { choreKeys } from "./chores";
 
 export const taskKeys = {
@@ -25,7 +25,7 @@ export function useTasksQuery(filters: { status?: string; excludeCompleted?: boo
 
   return useQuery({
     queryKey: taskKeys.list(filters),
-    queryFn: () => api.get<ListResponse<TaskWithTodos>>(`/tasks${query ? `?${query}` : ""}`),
+    queryFn: () => api.get<ListResponse<TaskListItem>>(`/tasks${query ? `?${query}` : ""}`),
   });
 }
 

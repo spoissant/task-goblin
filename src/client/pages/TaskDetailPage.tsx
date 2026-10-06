@@ -10,7 +10,6 @@ import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { ChoreSkipsEditor } from "@/client/components/tasks/ChoreSkipsEditor";
 import { SessionsSection } from "@/client/components/tasks/SessionsSection";
-import { TodoList } from "@/client/components/todos/TodoList";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
 
@@ -42,7 +41,6 @@ export function TaskDetailPage() {
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
   const [conflictSource, setConflictSource] = useState<"deploy" | "sync">("deploy");
-  const [showCompleted, setShowCompleted] = useState(false);
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
 
@@ -218,13 +216,6 @@ export function TaskDetailPage() {
       )}
 
       <SessionsSection task={task} />
-
-      <TodoList
-        todos={task.todos}
-        taskId={taskId}
-        showCompleted={showCompleted}
-        onShowCompletedChange={setShowCompleted}
-      />
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
 

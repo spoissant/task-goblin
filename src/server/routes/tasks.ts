@@ -1,6 +1,6 @@
 import { eq, and, sql, ne, isNull, isNotNull, or } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, repositories } from "../../db/schema";
+import { tasks, repositories } from "../../db/schema";
 import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors";
@@ -131,38 +131,6 @@ export const taskRoutes: Routes = {
 
       const taskList = await query;
 
-      // Get all pending todos for each task
-      const taskIds = taskList.map((t) => t.id);
-      const pendingTodosMap = new Map<number, { id: number; content: string; position: number | null }[]>();
-
-      if (taskIds.length > 0) {
-        // Get all incomplete todos for each task, ordered by position
-        const allPendingTodos = await db
-          .select({
-            taskId: todos.taskId,
-            id: todos.id,
-            content: todos.content,
-            position: todos.position,
-          })
-          .from(todos)
-          .where(
-            and(
-              sql`${todos.taskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`,
-              sql`${todos.done} IS NULL`
-            )
-          )
-          .orderBy(sql`COALESCE(${todos.position}, 999999)`);
-
-        // Group todos by task
-        for (const todo of allPendingTodos) {
-          if (todo.taskId) {
-            const existing = pendingTodosMap.get(todo.taskId) || [];
-            existing.push({ id: todo.id, content: todo.content, position: todo.position });
-            pendingTodosMap.set(todo.taskId, existing);
-          }
-        }
-      }
-
       const repoMap = await buildRepoMap(taskList);
 
       // Which of the returned tasks are parents. Looked up across the whole
@@ -189,7 +157,6 @@ export const taskRoutes: Routes = {
 
       const items = taskList.map((task) => ({
         ...task,
-        pendingTodos: pendingTodosMap.get(task.id) || [],
         repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
         hasChildren: !!task.jiraKey && parentKeys.has(task.jiraKey),
       }));
@@ -237,12 +204,6 @@ export const taskRoutes: Routes = {
       const id = parseId(params.id);
       const task = await getTaskOrThrow(id);
 
-      // Get related entities
-      const taskTodos = await db
-        .select()
-        .from(todos)
-        .where(eq(todos.taskId, id));
-
       // Get repository if task has one
       let repository = null;
       if (task.repositoryId) {
@@ -255,7 +216,6 @@ export const taskRoutes: Routes = {
 
       return json({
         ...task,
-        todos: taskTodos,
         repository,
       });
     },
@@ -342,11 +302,6 @@ export const taskRoutes: Routes = {
 
       await getTaskOrThrow(id);
       await teardownBeforeTaskDelete(id);
-
-      // Cascade delete: todos
-      await db
-        .delete(todos)
-        .where(eq(todos.taskId, id));
 
       await db.delete(tasks).where(eq(tasks.id, id));
 

@@ -1,6 +1,6 @@
 import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, todos, taskWorktrees, claudeSessions } from "../../db/schema";
+import { tasks, taskWorktrees, claudeSessions } from "../../db/schema";
 import { json } from "../response";
 import { AppError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -144,12 +144,6 @@ export async function mergeSingleTask(
 
   // Wrap all merge operations in a transaction for consistency
   const result = await db.transaction(async (tx) => {
-    // Move todos from source to target
-    await tx
-      .update(todos)
-      .set({ taskId: targetId })
-      .where(eq(todos.taskId, sourceId));
-
     await tx
       .update(taskWorktrees)
       .set({ taskId: targetId })

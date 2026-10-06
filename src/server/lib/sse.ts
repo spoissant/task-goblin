@@ -39,8 +39,7 @@ export function broadcast(entity: string, payload?: Record<string, unknown>) {
 
 export function autoBroadcast(pathname: string) {
   let entity: string | null = null;
-  if (pathname.includes("/todos")) entity = "todo";
-  else if (pathname.includes("/settings")) entity = "setting";
+  if (pathname.includes("/settings")) entity = "setting";
   else if (pathname.includes("/sessions")) entity = "session";
   else if (pathname.includes("/dev-stack")) entity = "dev-stack";
   else if (pathname.includes("/worktree")) entity = "worktree";

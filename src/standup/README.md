@@ -89,8 +89,7 @@ Reports answer three questions, one line per task:
 Detected changes include status moves, completions, reopenings, block/unblock,
 PRs opened, leaving draft, hitting the repo's own `required_reviews`, CI
 flipping, review comments arriving or clearing, merge conflicts, new deployment
-branches, merges, sprint moves, on-ice, high-priority flags, and checklist items
-ticked off or added.
+branches, merges, sprint moves, on-ice, and high-priority flags.
 
 ## How snapshots get taken
 

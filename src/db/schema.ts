@@ -54,20 +54,6 @@ export const tasks = sqliteTable("tasks", {
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);
 
-// 2. Todo - Checklist items linked only to tasks. Pending todos are unresolved
-// feedback on the task, addressed together with its PR comments (chore 4).
-export const todos = sqliteTable("todos", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  content: text("content").notNull(),
-  done: text("done"), // ISO timestamp when completed, null if pending
-  taskId: integer("task_id").references(() => tasks.id),
-  position: integer("position"), // global ordering for all todos
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-}, (table) => [
-  index("idx_todos_task_id").on(table.taskId),
-]);
-
 // 3. Repository - GitHub repo configs
 export const repositories = sqliteTable("repositories", {
   id: integer("id").primaryKey({ autoIncrement: true }),

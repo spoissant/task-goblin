@@ -16,7 +16,6 @@ beforeAll(() => {
 
 beforeEach(() => {
   // Clear all tables before each test
-  sqlite.exec("DELETE FROM todos");
   sqlite.exec("DELETE FROM tasks");
   sqlite.exec("DELETE FROM repositories");
   sqlite.exec("DELETE FROM settings");
@@ -295,92 +294,6 @@ describe("Task search filter", () => {
     const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("tiptap | ")}`);
     const data = await res.json();
     expect(data.items).toHaveLength(1);
-  });
-});
-
-describe("Todos endpoints", () => {
-  it("creates a todo", async () => {
-    const res = await request("POST", "/api/v1/todos", {
-      content: "Test todo",
-    });
-    expect(res.status).toBe(201);
-    const data = await res.json();
-    expect(data.content).toBe("Test todo");
-    expect(data.done).toBeNull();
-  });
-
-  it("toggles a todo", async () => {
-    const createRes = await request("POST", "/api/v1/todos", {
-      content: "Toggle me",
-    });
-    const created = await createRes.json();
-    expect(created.done).toBeNull();
-
-    const toggleRes = await request(
-      "POST",
-      `/api/v1/todos/${created.id}/toggle`
-    );
-    const toggled = await toggleRes.json();
-    expect(toggled.done).not.toBeNull();
-
-    const toggleRes2 = await request(
-      "POST",
-      `/api/v1/todos/${created.id}/toggle`
-    );
-    const toggled2 = await toggleRes2.json();
-    expect(toggled2.done).toBeNull();
-  });
-
-  it("creates todo at start with placement='start'", async () => {
-    // Create first todo (position 1)
-    const res1 = await request("POST", "/api/v1/todos", { content: "First" });
-    const todo1 = await res1.json();
-    expect(todo1.position).toBe(1);
-
-    // Create second todo at end (position 2)
-    const res2 = await request("POST", "/api/v1/todos", { content: "Second" });
-    const todo2 = await res2.json();
-    expect(todo2.position).toBe(2);
-
-    // Create third todo at start - should shift others
-    const res3 = await request("POST", "/api/v1/todos", {
-      content: "Third at start",
-      placement: "start",
-    });
-    const todo3 = await res3.json();
-    expect(todo3.position).toBe(1);
-
-    // Verify positions shifted: Third=1, First=2, Second=3
-    const listRes = await request("GET", "/api/v1/todos");
-    const list = await listRes.json();
-    const sorted = list.items.sort((a: { position: number }, b: { position: number }) => a.position - b.position);
-    expect(sorted[0].content).toBe("Third at start");
-    expect(sorted[0].position).toBe(1);
-    expect(sorted[1].content).toBe("First");
-    expect(sorted[1].position).toBe(2);
-    expect(sorted[2].content).toBe("Second");
-    expect(sorted[2].position).toBe(3);
-  });
-
-  it("creates todo at end with placement='end' (default)", async () => {
-    // Create first todo
-    const res1 = await request("POST", "/api/v1/todos", { content: "First" });
-    const todo1 = await res1.json();
-    expect(todo1.position).toBe(1);
-
-    // Create second todo with explicit 'end' placement
-    const res2 = await request("POST", "/api/v1/todos", {
-      content: "Second at end",
-      placement: "end",
-    });
-    const todo2 = await res2.json();
-    expect(todo2.position).toBe(2);
-
-    // Verify first todo position unchanged
-    const listRes = await request("GET", "/api/v1/todos");
-    const list = await listRes.json();
-    const first = list.items.find((t: { content: string }) => t.content === "First");
-    expect(first.position).toBe(1);
   });
 });
 

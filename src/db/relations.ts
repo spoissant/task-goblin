@@ -1,7 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
   tasks,
-  todos,
   repositories,
   worktrees,
   taskWorktrees,
@@ -9,7 +8,6 @@ import {
 } from "./schema";
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
-  todos: many(todos),
   repository: one(repositories, {
     fields: [tasks.repositoryId],
     references: [repositories.id],
@@ -19,13 +17,6 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     references: [taskWorktrees.taskId],
   }),
   sessions: many(claudeSessions),
-}));
-
-export const todosRelations = relations(todos, ({ one }) => ({
-  task: one(tasks, {
-    fields: [todos.taskId],
-    references: [tasks.id],
-  }),
 }));
 
 export const repositoriesRelations = relations(repositories, ({ many }) => ({

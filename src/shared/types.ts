@@ -59,7 +59,6 @@ export interface Task {
 
 // Task detail with relations
 export interface TaskDetail extends Task {
-  todos: Todo[];
   repository: Repository | null;
 }
 
@@ -68,34 +67,10 @@ export interface TaskWithRepository extends Task {
   repository: Repository | null;
 }
 
-// Task with pending todos for dashboard
-export interface TaskWithTodos extends Task {
-  pendingTodos: NextTodo[];
+// Task row for dashboard lists
+export interface TaskListItem extends Task {
   repository: Repository | null;
   hasChildren: boolean; // another task points at this one via parentKey or epicKey
-}
-
-export interface Todo {
-  id: number;
-  content: string;
-  done: string | null;
-  taskId: number | null;
-  position: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TodoWithTask extends Todo {
-  task: {
-    jiraKey: string | null;
-    title: string;
-  } | null;
-}
-
-export interface NextTodo {
-  id: number;
-  content: string;
-  position: number | null;
 }
 
 export interface Repository {

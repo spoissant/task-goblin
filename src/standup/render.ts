@@ -18,7 +18,6 @@ const KIND_RANK: EventKind[] = [
   "ci_fixed",
   "comments_cleared",
   "conflicts_cleared",
-  "todos_done",
   "on_ice",
   "off_ice",
   "high_priority_on",
@@ -26,7 +25,6 @@ const KIND_RANK: EventKind[] = [
   "added",
   "sprint_removed",
   "high_priority_off",
-  "todos_added",
   "pr_closed",
   "removed",
 ];

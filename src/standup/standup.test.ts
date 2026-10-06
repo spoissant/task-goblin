@@ -325,43 +325,7 @@ describe("board membership", () => {
   });
 });
 
-describe("checklist and flags", () => {
-  test("completed todos are listed by content", () => {
-    const [d1, d2] = snapshotPair([base], (db) => {
-      db.exec(
-        `insert into todos (id,content,done,task_id,position,created_at,updated_at) values (1,'Ship the translations',null,1,1,'2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')`,
-      );
-      db.exec("update todos set done='2026-09-03T10:00:00.000Z' where id=1");
-    });
-    // The todo did not exist in day1 at all, so it reads as newly added and done.
-    const tc = diffSnapshots(d1, d2).changed.find((c) => c.task.id === 1);
-    expect(tc?.events.map((e) => e.kind)).toEqual(["todos_done"]);
-    expect(tc?.events[0]!.items).toEqual(["Ship the translations"]);
-  });
-
-  test("ticking off a pre-existing todo is reported", () => {
-    const path = `/tmp/standup-test-${Math.random().toString(36).slice(2)}.db`;
-    const db = new Database(path, { create: true });
-    createTestTables(db);
-    const insCat = db.prepare(
-      "insert into status_categories (name,color,done,display_order,jira_mappings) values (?,?,?,?,?)",
-    );
-    for (const [name, done, order, maps] of CATEGORIES) insCat.run(name, "c", done, order, JSON.stringify(maps));
-    db.exec("insert into settings (key,value) values ('github_username','spoissant')");
-    insertTasks(db, [base], "2026-09-02T09:00:00.000Z");
-    db.exec(
-      `insert into todos (id,content,done,task_id,position,created_at,updated_at) values (1,'Blocker A',null,1,1,'2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')`,
-    );
-    const d1 = takeSnapshot({ dbPath: path, now: DAY1 });
-    db.exec("update todos set done='2026-09-03T10:00:00.000Z' where id=1");
-    db.exec(
-      `insert into todos (id,content,done,task_id,position,created_at,updated_at) values (2,'Blocker B',null,1,2,'2026-09-03T00:00:00.000Z','2026-09-03T00:00:00.000Z')`,
-    );
-    const d2 = takeSnapshot({ dbPath: path, now: DAY2 });
-    db.close();
-    expect(kindsFor(d1, d2, 1).sort()).toEqual(["todos_added", "todos_done"]);
-  });
-
+describe("flags", () => {
   test("sprint moves distinguish being pulled in from being dropped", () => {
     const [d1, d2] = snapshotPair([{ ...base, sprint: null }], (db) =>
       db.exec(`update tasks set sprint='${SPRINT}' where id=1`),

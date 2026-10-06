@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { buildCategoryResolver } from "./categories";
-import type { Snapshot, SnapshotMeta, TaskSnapshot, TodoSnapshot } from "./types";
+import type { Snapshot, SnapshotMeta, TaskSnapshot } from "./types";
 
 /** Done tasks older than this are dropped from snapshots to keep files small.
  *  They can no longer produce standup-relevant changes. */
@@ -154,17 +154,6 @@ export function takeSnapshot(opts: TakeSnapshotOptions = {}): Snapshot {
       )
       .all(assignee, githubUser);
 
-    const todosByTask = new Map<number, TodoSnapshot[]>();
-    for (const t of db
-      .query<{ id: number; content: string; done: string | null; task_id: number | null }, []>(
-        "select id, content, done, task_id from todos where task_id is not null order by position, id",
-      )
-      .all()) {
-      const list = todosByTask.get(t.task_id!) ?? [];
-      list.push({ id: t.id, content: t.content, done: t.done });
-      todosByTask.set(t.task_id!, list);
-    }
-
     const now = opts.now ?? new Date();
     const cutoff = new Date(now.getTime() - DONE_RETENTION_DAYS * 86_400_000).toISOString();
 
@@ -215,7 +204,6 @@ export function takeSnapshot(opts: TakeSnapshotOptions = {}): Snapshot {
                   ? parseStringArray(r.deployed_on_branches)
                   : parseStringArray(r.on_deployment_branches),
               },
-        todos: todosByTask.get(r.id) ?? [],
         workingOn: r.working_on,
         updatedAt: r.updated_at,
       });

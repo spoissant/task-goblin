@@ -1,6 +1,6 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories, todos } from "../../db/schema";
+import { tasks, repositories } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
@@ -16,7 +16,7 @@ interface ChoreDefinition {
   prompt: string; // template: {{taskId}}, {{jiraKey}}
   categories: string[] | null; // null = all active tasks; array = category names from DB
   excludeCategories?: string[]; // category names whose tasks must never match this chore
-  match: (task: TaskRow, repo: RepoRow | null, pendingTodos: number) => boolean;
+  match: (task: TaskRow, repo: RepoRow | null) => boolean;
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
   requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
@@ -104,12 +104,11 @@ const CHORES: ChoreDefinition[] = [
   {
     number: 4,
     key: "address-pr-comments",
-    name: "Address Comments & Todos",
-    condition: "unresolvedCommentCount > 0 OR pending todos > 0",
+    name: "Address PR Comments",
+    condition: "unresolvedCommentCount > 0",
     prompt: "/chore-address-pr-comments {{taskId}}",
     categories: null,
-    match: (t, _repo, pendingTodos) =>
-      (t.unresolvedCommentCount ?? 0) > 0 || pendingTodos > 0,
+    match: (t) => (t.unresolvedCommentCount ?? 0) > 0,
   },
   {
     number: 5,
@@ -319,35 +318,22 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
   }
 
-  // Fetch hardcoded chore candidates and pending-todo counts in parallel
+  // Fetch hardcoded chore candidates in parallel
   const batchRows = new Map<string | null, TaskRow[]>();
 
-  const [pendingTodoRows] = await Promise.all([
-    db
-      .select({ taskId: todos.taskId, count: sql<number>`COUNT(*)` })
-      .from(todos)
-      .where(isNull(todos.done))
-      .groupBy(todos.taskId),
-    Promise.all(
-      [...neededKeys].map(async (key) => {
-        let rows: TaskRow[];
-        if (key === null) {
-          rows = await fetchAllActive();
-        } else {
-          const categoryNames: string[] = JSON.parse(key);
-          const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
-          rows = await fetchByStatuses(statuses);
-        }
-        batchRows.set(key, rows);
-      })
-    ),
-  ]);
-
-  // Pending todos count as unresolved feedback for chore 4 (address-pr-comments)
-  const pendingTodoCounts = new Map<number, number>();
-  for (const row of pendingTodoRows) {
-    if (row.taskId !== null) pendingTodoCounts.set(row.taskId, row.count);
-  }
+  await Promise.all(
+    [...neededKeys].map(async (key) => {
+      let rows: TaskRow[];
+      if (key === null) {
+        rows = await fetchAllActive();
+      } else {
+        const categoryNames: string[] = JSON.parse(key);
+        const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
+        rows = await fetchByStatuses(statuses);
+      }
+      batchRows.set(key, rows);
+    })
+  );
 
   // Build a single repoMap across all fetched tasks
   const allRows = [...batchRows.values()].flat();
@@ -389,7 +375,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       const skips = parseChoreSkips(task.choreSkips);
       if (skips[chore.key]) continue;
       if (excludedStatuses.has(task.status.toLowerCase())) continue;
-      if (!chore.match(task, repo, pendingTodoCounts.get(task.id) ?? 0)) continue;
+      if (!chore.match(task, repo)) continue;
 
       entries.push({
         number: chore.number,

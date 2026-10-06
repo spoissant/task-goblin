@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { cn, normalizeStatus } from "@/client/lib/utils";
@@ -15,10 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw, ListTodo } from "lucide-react";
-import { TodosDialog } from "./TodosDialog";
+import { RefreshCw } from "lucide-react";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
-import type { TaskWithTodos, Repository } from "@/client/lib/types";
+import type { TaskListItem, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import { useLatestSessionsQuery } from "@/client/lib/queries/sessions";
@@ -76,7 +75,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   const { data: statusSettings } = useStatusSettingsQuery();
   const { data: choresData } = useChoresQuery();
   const { data: sessionsData } = useLatestSessionsQuery();
-  const [todoDialogTask, setTodoDialogTask] = useState<{ id: number; title: string } | null>(null);
 
   // Latest AI session per task
   const sessionMap = useMemo(() => {
@@ -175,7 +173,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
                 </TableHead>
               );
             })}
-            <TableHead className="w-[80px]">Todos</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -190,7 +187,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
               nextChore={choreMap.get(task.id)}
               session={sessionMap.get(task.id)}
               isParent={task.hasChildren}
-              onOpenTodos={() => setTodoDialogTask({ id: task.id, title: task.title })}
               isSelected={selectedIds?.has(task.id) ?? false}
               onSelectionChange={onSelectionChange ? (selected) => {
                 const newSelection = new Set(selectedIds);
@@ -205,20 +201,12 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
           ))}
         </TableBody>
       </Table>
-      {todoDialogTask && (
-        <TodosDialog
-          open={!!todoDialogTask}
-          onOpenChange={(open) => !open && setTodoDialogTask(null)}
-          taskId={todoDialogTask.id}
-          taskTitle={todoDialogTask.title}
-        />
-      )}
     </TooltipProvider>
   );
 }
 
 interface TaskRowProps {
-  task: TaskWithTodos;
+  task: TaskListItem;
   columns: typeof TABLE_COLUMNS;
   repo?: Repository;
   jiraHost: string | null;
@@ -226,12 +214,11 @@ interface TaskRowProps {
   nextChore?: ChoreEntry;
   session?: ClaudeSession;
   isParent: boolean;
-  onOpenTodos: () => void;
   isSelected: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, onOpenTodos, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -306,25 +293,6 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, s
           </TableCell>
         );
       })}
-
-      {/* Todos */}
-      <TableCell>
-        <button
-          type="button"
-          onClick={() => {
-            onOpenTodos();
-          }}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-80 ${
-            task.pendingTodos.length > 0
-              ? "bg-yellow-100 text-yellow-800"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          <ListTodo className="h-3.5 w-3.5" />
-          {task.pendingTodos.length}
-        </button>
-      </TableCell>
-
 
     </TableRow>
   );

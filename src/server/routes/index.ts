@@ -1,7 +1,6 @@
 import type { Routes } from "../router";
 import { taskRoutes } from "./tasks";
 import { taskMergeRoutes } from "../services/task-merge";
-import { todoRoutes } from "./todos";
 import { repositoryRoutes } from "./repositories";
 import { settingsRoutes } from "./settings";
 import { githubRoutes } from "./github";
@@ -29,7 +28,6 @@ export const routes: Routes = {
   ...healthRoute,
   ...taskRoutes,
   ...taskMergeRoutes,
-  ...todoRoutes,
   ...repositoryRoutes,
   ...settingsRoutes,
   ...githubRoutes,

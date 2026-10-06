@@ -2,7 +2,6 @@ import { ApiError, handleResponse } from "@/shared/api";
 import type {
   Task,
   TaskWithRepository,
-  Todo,
   Repository,
   ListResponse,
   SyncResult,
@@ -12,11 +11,7 @@ import type {
 export { ApiError };
 
 // Re-export types for MCP tools
-export type { Task, TaskWithRepository, Todo, Repository, ListResponse, SyncResult, SplitResult };
-
-export interface TaskWithRelations extends TaskWithRepository {
-  todos: Todo[];
-}
+export type { Task, TaskWithRepository, Repository, ListResponse, SyncResult, SplitResult };
 
 const BASE_URL = process.env.API_URL || "http://localhost:3456";
 
