@@ -7,12 +7,15 @@ import { useLatestSessionsQuery, useReviewSessionsQuery } from "@/client/lib/que
 import { ReviewCell } from "@/client/components/reviews/ReviewCell";
 import { isSessionActive } from "@/client/components/tasks/columns/AiCell";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
+import { useLocalStorage } from "@/client/lib/useLocalStorage";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { DevStackToggle } from "@/client/components/tasks/DevStackToggle";
 import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
+import { Checkbox } from "@/client/components/ui/checkbox";
+import { Label } from "@/client/components/ui/label";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
 import { ReviewStatusIcon, PrStatusIcon, CodeownerStatusIcon } from "@/client/components/tasks/StatusIcons";
@@ -123,6 +126,15 @@ function parseHighPriority(value: string | null | undefined): Set<string> {
   }
 }
 
+/** Unknown approvals (null) never count as satisfied, so the PR stays listed. */
+function isReviewSatisfied(request: ReviewRequest): boolean {
+  return (
+    request.approvedCount != null &&
+    request.approvedCount >= request.requiredReviews &&
+    !request.codeowner.some((t) => t.state === "blocking")
+  );
+}
+
 function prKey(request: ReviewRequest): string {
   return `${request.repo.owner}/${request.repo.repo}#${request.prNumber}`;
 }
@@ -140,12 +152,15 @@ export function ReviewsPage() {
     window.localStorage.setItem(SCOPE_STORAGE_KEY, scope);
   }, [scope]);
 
+  const [hideReadyToMerge, setHideReadyToMerge] = useLocalStorage("reviewsPage.hideReadyToMerge", true);
+
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery(scope);
   const { data: reposData } = useRepositoriesQuery();
   const { data: settings } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
   const teamMembers = useMemo(() => parseUsernames(settings?.team_members), [settings?.team_members]);
   const vips = useMemo(() => parseUsernames(settings?.vip_members), [settings?.vip_members]);
+  const ignored = useMemo(() => parseUsernames(settings?.ignored_members), [settings?.ignored_members]);
   const highPriorityPrs = useMemo(
     () => parseHighPriority(settings?.[HIGH_PRIORITY_KEY]),
     [settings],
@@ -184,9 +199,16 @@ export function ReviewsPage() {
   const visibleItems = useMemo(() => {
     if (!data?.items) return null;
     // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
+    // Others' PRs with enough approvals and no blocking codeowner don't need
+    // another review, so they can be hidden too. Ignored authors (bots) never show.
     if (scope === "mine") return data.items;
-    return data.items.filter((item) => !item.isDraft);
-  }, [data, scope]);
+    return data.items.filter(
+      (item) =>
+        !item.isDraft &&
+        !ignored.has(item.author.toLowerCase()) &&
+        !(hideReadyToMerge && isReviewSatisfied(item)),
+    );
+  }, [data, scope, hideReadyToMerge, ignored]);
 
   const groups = useMemo(() => {
     if (!visibleItems) return null;
@@ -242,9 +264,21 @@ export function ReviewsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Review Requests</h1>
         <div className="flex items-center gap-2">
-          {data && (
+          {scope === "others" && (
+            <div className="flex items-center gap-2 shrink-0 mr-2">
+              <Checkbox
+                id="hide-ready-to-merge"
+                checked={hideReadyToMerge}
+                onCheckedChange={(checked) => setHideReadyToMerge(checked === true)}
+              />
+              <Label htmlFor="hide-ready-to-merge" className="text-sm cursor-pointer whitespace-nowrap">
+                Hide ready to merge
+              </Label>
+            </div>
+          )}
+          {visibleItems && (
             <span className="text-sm text-muted-foreground">
-              {data.total} PR{data.total !== 1 ? "s" : ""} {scope === "mine" ? "open" : "awaiting review"}
+              {visibleItems.length} PR{visibleItems.length !== 1 ? "s" : ""} {scope === "mine" ? "open" : "awaiting review"}
             </span>
           )}
           <Button variant="outline" onClick={handleRefresh} disabled={isFetching}>
@@ -273,14 +307,14 @@ export function ReviewsPage() {
         <EmptyState message="Failed to load review requests" />
       )}
 
-      {data && !data.items.length && (
+      {visibleItems && !visibleItems.length && (
         <EmptyState
           icon={GitPullRequestArrow}
           message={scope === "mine" ? "No open PRs" : "No PRs awaiting your review"}
         />
       )}
 
-      {data && data.items.length > 0 && (
+      {visibleItems && visibleItems.length > 0 && (
         <TooltipProvider>
           <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mb-4">
             <TabsList>
@@ -354,7 +388,7 @@ function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost,
           {showSize && <TableHead className="w-[110px]">Size</TableHead>}
           <TableHead className="w-[100px]">Changes</TableHead>
           <TableHead className="w-[80px]">Reviews</TableHead>
-          <TableHead className="w-[100px]">Code Owners</TableHead>
+          <TableHead>Code Owners</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

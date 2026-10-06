@@ -262,14 +262,14 @@ export function RepositoryList() {
                         type="number"
                         min={1}
                         className="h-6 w-16 text-xs"
-                        value={requiredReviewsInputs[repo.id] ?? String(repo.requiredReviews ?? 2)}
+                        value={requiredReviewsInputs[repo.id] ?? String(repo.requiredReviews ?? 1)}
                         onChange={(e) => setRequiredReviewsInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
                         onBlur={() => {
                           const val = requiredReviewsInputs[repo.id];
                           if (val === undefined) return;
                           const n = parseInt(val, 10);
                           updateRepo.mutate(
-                            { id: repo.id, requiredReviews: Number.isInteger(n) && n >= 1 ? n : 2 },
+                            { id: repo.id, requiredReviews: Number.isInteger(n) && n >= 1 ? n : 1 },
                             { onError: () => toast.error("Failed to update required reviews") }
                           );
                         }}

@@ -16,25 +16,32 @@ function parseMembers(value: string | null | undefined): string[] {
   }
 }
 
-export function TeamMembersForm() {
+interface UsernameListFormProps {
+  /** Settings key holding the JSON array of GitHub usernames. */
+  settingKey: string;
+  /** Plural noun used in the save toasts, e.g. "team members". */
+  label: string;
+}
+
+export function UsernameListForm({ settingKey, label }: UsernameListFormProps) {
   const { data, isLoading } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
 
-  const stored = parseMembers(data?.team_members);
+  const stored = parseMembers(data?.[settingKey]);
   const [members, setMembers] = useState<string[]>(stored);
 
   useEffect(() => {
-    setMembers(parseMembers(data?.team_members));
-  }, [data?.team_members]);
+    setMembers(parseMembers(data?.[settingKey]));
+  }, [data?.[settingKey]]);
 
   const dirty = JSON.stringify(members) !== JSON.stringify(stored);
 
   const handleSave = () => {
     updateSetting.mutate(
-      { key: "team_members", value: JSON.stringify(members) },
+      { key: settingKey, value: JSON.stringify(members) },
       {
-        onSuccess: () => toast.success("Team members saved"),
-        onError: () => toast.error("Failed to save team members"),
+        onSuccess: () => toast.success(`${label[0].toUpperCase()}${label.slice(1)} saved`),
+        onError: () => toast.error(`Failed to save ${label}`),
       },
     );
   };

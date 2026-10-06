@@ -12,7 +12,7 @@ interface ReviewStatusIconProps {
   prUrl?: string | null;
 }
 
-export function ReviewStatusIcon({ approvedCount, requiredReviews = 2, prUrl }: ReviewStatusIconProps) {
+export function ReviewStatusIcon({ approvedCount, requiredReviews = 1, prUrl }: ReviewStatusIconProps) {
   if (approvedCount === null) {
     return <span className="text-muted-foreground">—</span>;
   }
@@ -55,50 +55,43 @@ interface CodeownerStatusIconProps {
   codeowner: CodeownerReview;
 }
 
+const CODEOWNER_STATE_DISPLAY = {
+  blocking: { Icon: ShieldAlert, color: "text-red-500", label: "Blocking — awaiting review" },
+  reviewed: { Icon: ShieldCheck, color: "text-green-500", label: "Reviewed" },
+  optional: {
+    Icon: Shield,
+    color: "text-muted-foreground/50",
+    label: "Review requested (not required to merge)",
+  },
+};
+
 /**
- * Whether one of your teams is holding up a PR. Red is reserved for a review the
- * PR genuinely can't merge without; a team asked for a courtesy review reads as
+ * Where each of your teams stands on a PR. Red is reserved for a review the PR
+ * genuinely can't merge without; a team asked for a courtesy review reads as
  * muted, and blank means none of your teams was asked at all.
  */
 export function CodeownerStatusIcon({ codeowner }: CodeownerStatusIconProps) {
-  const { state, pendingTeams, reviewedTeams } = codeowner;
-
-  if (state === "none") {
+  if (!codeowner.length) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const { Icon, color, label, teams } = {
-    blocking: {
-      Icon: ShieldAlert,
-      color: "text-red-500",
-      label: "Blocking — awaiting review from",
-      teams: pendingTeams,
-    },
-    reviewed: {
-      Icon: ShieldCheck,
-      color: "text-green-500",
-      label: "Reviewed by",
-      teams: reviewedTeams,
-    },
-    optional: {
-      Icon: Shield,
-      color: "text-muted-foreground/50",
-      label: "Review requested from (not required to merge)",
-      teams: pendingTeams,
-    },
-  }[state];
-
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Icon className={`h-4 w-4 ${color}`} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {label} {teams.join(", ")}
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex flex-col gap-0.5">
+      {codeowner.map(({ slug, state }) => {
+        const { Icon, color, label } = CODEOWNER_STATE_DISPLAY[state];
+        return (
+          <Tooltip key={slug}>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-xs">
+                <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+                {slug}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{label}</TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
   );
 }
 

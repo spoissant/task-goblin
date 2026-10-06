@@ -83,7 +83,7 @@ export interface Repository {
   deploymentBranches: string | null; // JSON array of branch names
   deploymentUrls: string | null; // JSON object mapping branch -> environment URL
   slackChannel: string | null; // Slack channel for review requests
-  requiredReviews: number | null; // number of approving reviews required to merge (default 2)
+  requiredReviews: number | null; // number of approving reviews required to merge (default 1)
   setupCommand: string | null; // shell line run inside a new task worktree
   teardownCommand: string | null; // shell line run before removing a task worktree; may use {{composeProject}}
   defaultBaseBranch: string | null; // base branch for tasks without a branch yet
@@ -349,21 +349,15 @@ export interface GitHubTeam {
 }
 
 /**
- * Where your own teams stand on reviewing a PR:
- * - none: no team of yours has been asked
- * - blocking: a team of yours owns changed files and the PR can't merge until it reviews
- * - reviewed: a member of your team has already reviewed on the team's behalf
- * - optional: a team of yours was asked, but its review doesn't gate the merge
+ * Where one of your teams stands on reviewing a PR:
+ * - blocking: the team owns changed files and the PR can't merge until it reviews
+ * - reviewed: a member of the team has already reviewed on the team's behalf
+ * - optional: the team was asked, but its review doesn't gate the merge
  */
-export type CodeownerState = "none" | "blocking" | "reviewed" | "optional";
+export type CodeownerState = "blocking" | "reviewed" | "optional";
 
-export interface CodeownerReview {
-  state: CodeownerState;
-  /** Your teams with a review request still open on the PR. */
-  pendingTeams: string[];
-  /** Your teams that already have a review submitted on their behalf. */
-  reviewedTeams: string[];
-}
+/** Your teams involved in a PR's review, each with its own state. Empty when none was asked. */
+export type CodeownerReview = Array<{ slug: string; state: CodeownerState }>;
 
 export interface ReviewRequest {
   prNumber: number;

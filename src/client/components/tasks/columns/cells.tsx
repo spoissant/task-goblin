@@ -232,7 +232,7 @@ function UnpushedWarning({ task }: { task: Task }) {
             });
           }}
         >
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
+          <AlertTriangle className={`h-4 w-4 ${uncommitted > 0 ? "text-red-500" : "text-orange-500"}`} />
         </button>
       </TooltipTrigger>
       <TooltipContent>{parts.join(", ")}: {hint}</TooltipContent>
@@ -322,7 +322,7 @@ export function ReviewsCell({ task, prUrl }: { task: Task & { repository?: Repos
   return (
     <ReviewStatusIcon
       approvedCount={task.approvedReviewCount}
-      requiredReviews={task.repository?.requiredReviews ?? 2}
+      requiredReviews={task.repository?.requiredReviews ?? 1}
       prUrl={prUrl}
     />
   );

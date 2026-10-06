@@ -284,10 +284,10 @@ export const githubRoutes: Routes = {
 
         const items: ReviewRequest[] = [];
 
-        // Per-repo required-reviews threshold, keyed by "owner/repo" (default 2)
+        // Per-repo required-reviews threshold, keyed by "owner/repo" (default 1)
         const repoRows = await db.select().from(repositories);
         const requiredReviewsByRepo = new Map<string, number>(
-          repoRows.map((r) => [`${r.owner}/${r.repo}`, r.requiredReviews ?? 2])
+          repoRows.map((r) => [`${r.owner}/${r.repo}`, r.requiredReviews ?? 1])
         );
 
         // Existing task per PR, keyed by "owner/repo#number"
@@ -380,7 +380,7 @@ export const githubRoutes: Routes = {
             state: isDraft ? "draft" : "open",
             isDraft,
             approvedCount,
-            requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 2,
+            requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 1,
             hasPendingReview,
             codeowner: computeCodeownerReview(
               codeownerTeamsByOrg.get(owner),

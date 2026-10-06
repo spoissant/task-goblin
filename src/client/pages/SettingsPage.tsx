@@ -3,8 +3,7 @@ import { GitHubConfigForm } from "@/client/components/settings/GitHubConfigForm"
 import { RepositoryList } from "@/client/components/settings/RepositoryList";
 import { StatusCategoriesForm } from "@/client/components/settings/StatusCategoriesForm";
 import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
-import { TeamMembersForm } from "@/client/components/settings/TeamMembersForm";
-import { VipMembersForm } from "@/client/components/settings/VipMembersForm";
+import { UsernameListForm } from "@/client/components/settings/UsernameListForm";
 import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsForm";
 import { ChoreModelsForm } from "@/client/components/settings/ChoreModelsForm";
 import { Separator } from "@/client/components/ui/separator";
@@ -41,7 +40,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             GitHub usernames of your teammates. Review requests authored by them are highlighted on the Reviews page.
           </p>
-          <TeamMembersForm />
+          <UsernameListForm settingKey="team_members" label="team members" />
         </section>
 
         <Separator />
@@ -51,7 +50,17 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             GitHub usernames you always want to unblock first. Review requests authored by them are highlighted on the Reviews page.
           </p>
-          <VipMembersForm />
+          <UsernameListForm settingKey="vip_members" label="VIPs" />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Ignored Authors</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            GitHub usernames (e.g. bots) whose PRs you never want to review. Their review requests are hidden from the Reviews page.
+          </p>
+          <UsernameListForm settingKey="ignored_members" label="ignored authors" />
         </section>
 
         <Separator />

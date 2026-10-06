@@ -55,8 +55,6 @@ export function selectCodeownerTeams(
   return byOrg;
 }
 
-const NO_CODEOWNER: CodeownerReview = { state: "none", pendingTeams: [], reviewedTeams: [] };
-
 /**
  * Review decisions that mean the PR still owes a review it can't merge without.
  * APPROVED means the requirements are met, null that the base ref has none — in
@@ -65,27 +63,28 @@ const NO_CODEOWNER: CodeownerReview = { state: "none", pendingTeams: [], reviewe
 const REVIEWS_OUTSTANDING = new Set(["REVIEW_REQUIRED", "CHANGES_REQUESTED"]);
 
 /**
- * Cross the user's teams with a PR's team review state.
+ * Cross the user's teams with a PR's team review state, one entry per team.
  *
  * Only a CODEOWNERS request on a PR that GitHub says still owes a required
  * review actually holds up the merge. A hand-picked team request, or any request
  * on a PR whose review requirements are already met (or that has none), is
- * reported as optional so it doesn't read as a blocker.
+ * reported as optional so it doesn't read as a blocker. An open request wins
+ * over a past review: a re-request means the team owes a fresh one.
  */
 export function computeCodeownerReview(
   myTeams: Set<string> | undefined,
   prTeams: GqlPrTeamReviews | undefined
 ): CodeownerReview {
-  if (!myTeams?.size || !prTeams) return NO_CODEOWNER;
+  if (!myTeams?.size || !prTeams) return [];
 
-  const mine = prTeams.pendingTeams.filter((t) => myTeams.has(t.slug));
-  const pendingTeams = mine.map((t) => t.slug);
-  const reviewedTeams = prTeams.reviewedTeams.filter((slug) => myTeams.has(slug));
+  const outstanding = REVIEWS_OUTSTANDING.has(prTeams.reviewDecision ?? "");
+  const pending: CodeownerReview = prTeams.pendingTeams
+    .filter((t) => myTeams.has(t.slug))
+    .map((t) => ({ slug: t.slug, state: outstanding && t.asCodeOwner ? "blocking" : "optional" }));
+  const pendingSlugs = new Set(pending.map((t) => t.slug));
+  const reviewed: CodeownerReview = prTeams.reviewedTeams
+    .filter((slug) => myTeams.has(slug) && !pendingSlugs.has(slug))
+    .map((slug) => ({ slug, state: "reviewed" }));
 
-  const blocking =
-    REVIEWS_OUTSTANDING.has(prTeams.reviewDecision ?? "") && mine.some((t) => t.asCodeOwner);
-  if (blocking) return { state: "blocking", pendingTeams, reviewedTeams };
-  if (reviewedTeams.length) return { state: "reviewed", pendingTeams, reviewedTeams };
-  if (pendingTeams.length) return { state: "optional", pendingTeams, reviewedTeams };
-  return NO_CODEOWNER;
+  return [...pending, ...reviewed];
 }

@@ -12,10 +12,10 @@ function normalizeText(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-// Coerce a required-reviews input to a positive integer, defaulting to 2 when absent/invalid.
+// Coerce a required-reviews input to a positive integer, defaulting to 1 when absent/invalid.
 function normalizeRequiredReviews(v: unknown): number {
   const n = Number(v);
-  return Number.isInteger(n) && n >= 1 ? n : 2;
+  return Number.isInteger(n) && n >= 1 ? n : 1;
 }
 
 export const repositoryRoutes: Routes = {

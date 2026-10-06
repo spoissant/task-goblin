@@ -34,13 +34,13 @@ describe("computeCodeownerReview", () => {
   const mine = new Set(["squad-fe"]);
   const owns = [{ slug: "squad-fe", asCodeOwner: true }];
 
-  it("is none when no team of mine is involved", () => {
+  it("is empty when no team of mine is involved", () => {
     const result = computeCodeownerReview(mine, {
       reviewDecision: "REVIEW_REQUIRED",
       pendingTeams: [{ slug: "squad-be", asCodeOwner: true }],
       reviewedTeams: ["squad-other"],
     });
-    expect(result.state).toBe("none");
+    expect(result).toEqual([]);
   });
 
   it("blocks when my team owns files on a PR that still needs a review", () => {
@@ -49,7 +49,7 @@ describe("computeCodeownerReview", () => {
       pendingTeams: owns,
       reviewedTeams: [],
     });
-    expect(result).toEqual({ state: "blocking", pendingTeams: ["squad-fe"], reviewedTeams: [] });
+    expect(result).toEqual([{ slug: "squad-fe", state: "blocking" }]);
   });
 
   it("blocks when changes were requested and my team still owes a review", () => {
@@ -58,7 +58,7 @@ describe("computeCodeownerReview", () => {
       pendingTeams: owns,
       reviewedTeams: [],
     });
-    expect(result.state).toBe("blocking");
+    expect(result).toEqual([{ slug: "squad-fe", state: "blocking" }]);
   });
 
   it("is optional when the base ref requires no review at all", () => {
@@ -68,7 +68,7 @@ describe("computeCodeownerReview", () => {
       pendingTeams: owns,
       reviewedTeams: [],
     });
-    expect(result).toEqual({ state: "optional", pendingTeams: ["squad-fe"], reviewedTeams: [] });
+    expect(result).toEqual([{ slug: "squad-fe", state: "optional" }]);
   });
 
   it("is optional once the PR's review requirements are already met", () => {
@@ -77,7 +77,7 @@ describe("computeCodeownerReview", () => {
       pendingTeams: owns,
       reviewedTeams: [],
     });
-    expect(result.state).toBe("optional");
+    expect(result).toEqual([{ slug: "squad-fe", state: "optional" }]);
   });
 
   it("is optional when my team was hand-picked rather than owning the files", () => {
@@ -86,7 +86,7 @@ describe("computeCodeownerReview", () => {
       pendingTeams: [{ slug: "squad-fe", asCodeOwner: false }],
       reviewedTeams: [],
     });
-    expect(result.state).toBe("optional");
+    expect(result).toEqual([{ slug: "squad-fe", state: "optional" }]);
   });
 
   it("is reviewed once my team has reviewed", () => {
@@ -95,27 +95,39 @@ describe("computeCodeownerReview", () => {
       pendingTeams: [],
       reviewedTeams: ["squad-fe"],
     });
-    expect(result).toEqual({ state: "reviewed", pendingTeams: [], reviewedTeams: ["squad-fe"] });
+    expect(result).toEqual([{ slug: "squad-fe", state: "reviewed" }]);
   });
 
-  it("still blocks when one of my teams reviewed but another owner has not", () => {
+  it("reports each of my teams separately when only some have reviewed", () => {
+    // PR 38054: front-admins approved, squad-connect-and-learn-frontend still pending.
     const result = computeCodeownerReview(new Set(["squad-fe", "squad"]), {
-      reviewDecision: "REVIEW_REQUIRED",
-      pendingTeams: owns,
+      reviewDecision: null,
+      pendingTeams: [{ slug: "squad-fe", asCodeOwner: false }],
       reviewedTeams: ["squad"],
     });
-    expect(result.state).toBe("blocking");
-    expect(result.reviewedTeams).toEqual(["squad"]);
+    expect(result).toEqual([
+      { slug: "squad-fe", state: "optional" },
+      { slug: "squad", state: "reviewed" },
+    ]);
   });
 
-  it("is none without teams or PR data", () => {
+  it("treats a re-requested team as pending even if it reviewed before", () => {
+    const result = computeCodeownerReview(mine, {
+      reviewDecision: "REVIEW_REQUIRED",
+      pendingTeams: owns,
+      reviewedTeams: ["squad-fe"],
+    });
+    expect(result).toEqual([{ slug: "squad-fe", state: "blocking" }]);
+  });
+
+  it("is empty without teams or PR data", () => {
     expect(
       computeCodeownerReview(undefined, {
         reviewDecision: "REVIEW_REQUIRED",
         pendingTeams: owns,
         reviewedTeams: [],
-      }).state
-    ).toBe("none");
-    expect(computeCodeownerReview(mine, undefined).state).toBe("none");
+      })
+    ).toEqual([]);
+    expect(computeCodeownerReview(mine, undefined)).toEqual([]);
   });
 });

@@ -149,7 +149,7 @@ const CHORES: ChoreDefinition[] = [
     match: (t, repo) =>
       t.isDraft === 0 &&
       t.prState === "open" &&
-      (t.approvedReviewCount ?? 0) < (repo?.requiredReviews ?? 2),
+      (t.approvedReviewCount ?? 0) < (repo?.requiredReviews ?? 1),
   },
   {
     number: 9,

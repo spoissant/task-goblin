@@ -65,7 +65,7 @@ export const repositories = sqliteTable("repositories", {
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
   deploymentUrls: text("deployment_urls"), // JSON object mapping branch -> environment URL (e.g., {"staging": "https://staging.hvbrt.com"})
   slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
-  requiredReviews: integer("required_reviews").default(2), // number of approving reviews required to merge
+  requiredReviews: integer("required_reviews").default(1), // number of approving reviews required to merge
   setupCommand: text("setup_command"), // shell line run inside a new task worktree (e.g. "bin/dev worktree-setup --copy-volumes --test-only && yarn install")
   teardownCommand: text("teardown_command"), // shell line run before removing a task worktree; may use {{composeProject}}
   defaultBaseBranch: text("default_base_branch"), // base for tasks without a branch yet (e.g. "sprint", "main")

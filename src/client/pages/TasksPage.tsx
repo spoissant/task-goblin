@@ -5,6 +5,7 @@ import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
+import { SavedSearchBar, effectiveQuery, type SavedSearch } from "@/client/components/tasks/SavedSearchBar";
 import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
 import { type ChoreDefinition, useTasksQuery } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
@@ -24,6 +25,8 @@ export function TasksPage() {
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
   const [hideIdle, setHideIdle] = useLocalStorage("tasksPage.hideIdle", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
+  const [savedSearches, setSavedSearches] = useLocalStorage<SavedSearch[]>("tasksPage.namedSearches", []);
+  const titleFilter = effectiveQuery(debouncedQuery, savedSearches);
 
   const [bulkChoreTarget, setBulkChoreTarget] = useState<(PromptChore & { taskId: number }) | undefined>(undefined);
 
@@ -33,7 +36,7 @@ export function TasksPage() {
   }, [searchQuery]);
 
   // Same query + filters as TaskTable, so this reads from the shared cache instead of refetching.
-  const { data: tasksData } = useTasksQuery({ title: debouncedQuery });
+  const { data: tasksData } = useTasksQuery({ title: titleFilter });
   const selectedTasks = useMemo(
     () => (tasksData?.items ?? []).filter((t) => selectedIds.has(t.id)),
     [tasksData?.items, selectedIds],
@@ -53,6 +56,61 @@ export function TasksPage() {
 
   return (
     <div>
+      <div className="flex items-center gap-4 flex-wrap mb-2">
+        <SavedSearchBar searches={savedSearches} onChange={setSavedSearches} />
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="hide-low-priority"
+              checked={hideLowPriority}
+              onCheckedChange={(checked) => setHideLowPriority(checked === true)}
+            />
+            <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
+              Sprint view
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="hide-on-ice"
+              checked={hideOnIce}
+              onCheckedChange={(checked) => setHideOnIce(checked === true)}
+            />
+            <Label htmlFor="hide-on-ice" className="text-sm cursor-pointer whitespace-nowrap">
+              Hide on ice
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="hide-parents"
+              checked={hideParents}
+              onCheckedChange={(checked) => setHideParents(checked === true)}
+            />
+            <Label htmlFor="hide-parents" className="text-sm cursor-pointer whitespace-nowrap">
+              Hide parents
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="hide-idle"
+              checked={hideIdle}
+              onCheckedChange={(checked) => setHideIdle(checked === true)}
+            />
+            <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
+              Hide idle
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="compact-mode"
+              checked={compactMode}
+              onCheckedChange={(checked) => setCompactMode(checked === true)}
+            />
+            <Label htmlFor="compact-mode" className="text-sm cursor-pointer whitespace-nowrap">
+              Compact mode
+            </Label>
+          </div>
+        </div>
+      </div>
       <div className="flex items-center gap-2 mb-4">
         {selectedIds.size > 0 ? (
           <div className="flex-1">
@@ -64,76 +122,24 @@ export function TasksPage() {
             />
           </div>
         ) : (
-          <>
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search tasks..."
-                title="Combine with | (or) and & (and); prefix a term with ~ to exclude it (e.g. tiptap | editor & ~bug)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
-                id="hide-low-priority"
-                checked={hideLowPriority}
-                onCheckedChange={(checked) => setHideLowPriority(checked === true)}
-              />
-              <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
-                Sprint view
-              </Label>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
-                id="hide-on-ice"
-                checked={hideOnIce}
-                onCheckedChange={(checked) => setHideOnIce(checked === true)}
-              />
-              <Label htmlFor="hide-on-ice" className="text-sm cursor-pointer whitespace-nowrap">
-                Hide on ice
-              </Label>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
-                id="hide-parents"
-                checked={hideParents}
-                onCheckedChange={(checked) => setHideParents(checked === true)}
-              />
-              <Label htmlFor="hide-parents" className="text-sm cursor-pointer whitespace-nowrap">
-                Hide parents
-              </Label>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
-                id="hide-idle"
-                checked={hideIdle}
-                onCheckedChange={(checked) => setHideIdle(checked === true)}
-              />
-              <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
-                Hide idle
-              </Label>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Checkbox
-                id="compact-mode"
-                checked={compactMode}
-                onCheckedChange={(checked) => setCompactMode(checked === true)}
-              />
-              <Label htmlFor="compact-mode" className="text-sm cursor-pointer whitespace-nowrap">
-                Compact mode
-              </Label>
-            </div>
-          </>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              title="Combine with | (or) and & (and); prefix a term with ~ to exclude it (e.g. tiptap | editor & ~bug)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         )}
         <RefreshButton />
         {selectedIds.size === 0 && (
@@ -145,7 +151,7 @@ export function TasksPage() {
       </div>
 
       <RepoFilterBar
-        titleFilter={debouncedQuery}
+        titleFilter={titleFilter}
         selectedRepoId={repoFilter}
         onSelectedRepoIdChange={setRepoFilter}
       />
@@ -153,7 +159,7 @@ export function TasksPage() {
       <TaskTable
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
-        titleFilter={debouncedQuery}
+        titleFilter={titleFilter}
         hideLowPriority={hideLowPriority}
         hideOnIce={hideOnIce}
         hideParents={hideParents}
