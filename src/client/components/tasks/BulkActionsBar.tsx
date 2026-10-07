@@ -8,7 +8,7 @@ import {
 } from "@/client/components/ui/dropdown-menu";
 import { useChoreDefinitionsQuery, type ChoreDefinition } from "@/client/lib/queries";
 import { useBootDevStack, useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { X, Sparkles, ChevronDown, CirclePlay, PenLine } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,11 +109,13 @@ function StartMergedStackButton({ selectedIds, repositoryId }: { selectedIds: nu
   );
   if (!stack) return button;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span>{button}</span>
-      </TooltipTrigger>
-      <TooltipContent>Dev stack is already up for {stack.branch}</TooltipContent>
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>Dev stack is already up for {stack.branch}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
