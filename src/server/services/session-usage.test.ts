@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from "bun:test"
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync, appendFileSync } from "fs";
 import { sqlite } from "../../db";
 import { createTestTables } from "../../test/createSchema";
-import { collectSessionUsage } from "./session-usage";
+import { collectSessionUsage, requestCost } from "./session-usage";
 
 const ROOT = `${import.meta.dir}/../../../.test-usage`;
 const PROJECTS = `${ROOT}/projects`;
@@ -49,6 +49,34 @@ const writeTranscript = () => {
 const session = () => sqlite.query("SELECT * FROM claude_sessions WHERE id = 1").get() as Record<string, unknown>;
 const requests = () =>
   sqlite.query("SELECT * FROM claude_session_requests ORDER BY message_id").all() as Record<string, unknown>[];
+
+describe("requestCost", () => {
+  const row = (model: string, input: number, read: number, output: number) => ({
+    messageId: "m",
+    timestamp: "2026-10-01T10:00:00.000Z",
+    model,
+    effort: null,
+    speed: "standard",
+    inputTokens: input,
+    outputTokens: output,
+    thinkingTokens: 0,
+    cacheWrite5mTokens: 0,
+    cacheWrite1hTokens: 0,
+    cacheReadTokens: read,
+    webSearchRequests: 0,
+  });
+
+  it("bills Haiku 5.5 on the long-prompt card once input plus cache tokens exceed 100K", () => {
+    // 50K input + 50K cache reads = 100K: short card ($0.10 in, $0.01 reads, $0.50 out)
+    expect(requestCost(row("claude-haiku-5-5", 50_000, 50_000, 1_000))).toBeCloseTo(0.005 + 0.0005 + 0.0005, 6);
+    // one more token: long card ($0.50 in, $0.05 reads, $2.50 out)
+    expect(requestCost(row("claude-haiku-5-5", 50_001, 50_000, 1_000))).toBeCloseTo(0.0250005 + 0.0025 + 0.0025, 6);
+  });
+
+  it("returns null for unknown models", () => {
+    expect(requestCost(row("<synthetic>", 1, 0, 0))).toBeNull();
+  });
+});
 
 describe("session usage", () => {
   beforeAll(() => {

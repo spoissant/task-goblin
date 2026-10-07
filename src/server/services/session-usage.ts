@@ -30,6 +30,8 @@ interface Price {
   cacheWrite5m: number;
   cacheWrite1h: number;
   cacheRead: number;
+  /** Rate card once the prompt (input + cache tokens) exceeds 100K tokens; same card when absent. */
+  over100k?: Price;
 }
 
 const PRICES: Record<string, Price> = {
@@ -37,17 +39,28 @@ const PRICES: Record<string, Price> = {
   "claude-fable-5": { input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1 },
   "claude-opus-5-5": { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 },
   "claude-opus-5": { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
-  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1 },
   "claude-sonnet-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 },
+  "claude-haiku-5-5": {
+    input: 0.1,
+    output: 0.5,
+    cacheWrite5m: 0.125,
+    cacheWrite1h: 0.2,
+    cacheRead: 0.01,
+    over100k: { input: 0.5, output: 2.5, cacheWrite5m: 0.625, cacheWrite1h: 1, cacheRead: 0.05 },
+  },
   "claude-haiku-4-5": { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
 };
+const LONG_PROMPT_TOKENS = 100_000;
 const FAST_MULTIPLIER = 2; // fast mode bills 2x the standard rates
 
 type RequestRow = Omit<typeof claudeSessionRequests.$inferInsert, "id" | "sessionId">;
 
 export function requestCost(r: RequestRow): number | null {
-  const price = PRICES[r.model.replace(/-\d{8}$/, "")]; // drop date suffixes like -20251001
-  if (!price) return null;
+  const card = PRICES[r.model.replace(/-\d{8}$/, "")]; // drop date suffixes like -20251001
+  if (!card) return null;
+  const promptTokens = r.inputTokens + r.cacheWrite5mTokens + r.cacheWrite1hTokens + r.cacheReadTokens;
+  const price = card.over100k && promptTokens > LONG_PROMPT_TOKENS ? card.over100k : card;
   const dollars =
     r.inputTokens * price.input +
     r.outputTokens * price.output +
