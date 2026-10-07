@@ -280,6 +280,7 @@ export async function listSessionAnalytics(): Promise<SessionAnalyticsRow[]> {
     createdAt: s.createdAt,
     costUsd: s.costUsd,
     activeMs: s.activeMs,
+    wallMs: s.firstTerminalAt === null ? null : Date.parse(s.firstTerminalAt) - Date.parse(s.createdAt),
     turnCount: s.turnCount,
     subagentCount: s.subagentCount,
   }));

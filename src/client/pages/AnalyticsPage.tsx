@@ -28,6 +28,19 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/client/components/ui/table";
 import { formatActive, formatCost, formatTime } from "@/client/components/tasks/SessionsTable";
+import { TrendChart } from "@/client/components/analytics/TrendChart";
+import {
+  ROLLING_DAYS,
+  dayOf,
+  daysAgo,
+  median,
+  pickSeries,
+  rollingMedian,
+  trendSamples,
+  type TrendDimension,
+  type TrendMetric,
+  type TrendUnit,
+} from "@/client/lib/trends";
 import { cn } from "@/client/lib/utils";
 
 const DIMENSIONS = [
@@ -43,6 +56,17 @@ const PERIODS = [
   { days: 30, label: "30 days" },
   { days: null, label: "All" },
 ] as const;
+
+const METRICS: { id: TrendMetric; label: string; format: (v: number | null) => string }[] = [
+  { id: "cost", label: "Cost", format: formatCost },
+  { id: "active", label: "Active time", format: formatActive },
+  { id: "wall", label: "Wall-clock", format: formatActive },
+];
+
+const UNITS: { id: TrendUnit; label: string }[] = [
+  { id: "session", label: "per session" },
+  { id: "task", label: "per task" },
+];
 
 const NUMERIC = new Set(["sessions", "cost", "medianCost", "active", "medianActive", "turns", "subagents"]);
 
@@ -131,19 +155,14 @@ const columns = helper.columns([
   }),
 ]);
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 export function AnalyticsPage() {
   const { data, isLoading, error } = useSessionAnalyticsQuery();
   const [days, setDays] = useState<number | null>(30);
   const [grouping, setGrouping] = useState<GroupingState>(["task"]);
   const [sorting, setSorting] = useState<SortingState>([{ id: "cost", desc: true }]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [metric, setMetric] = useState<TrendMetric>("cost");
+  const [unit, setUnit] = useState<TrendUnit>("session");
 
   const rows = useMemo(() => {
     const items = data?.items ?? [];
@@ -151,6 +170,19 @@ export function AnalyticsPage() {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     return items.filter((s) => s.createdAt >= since);
   }, [data, days]);
+
+  // Lines split on the first grouped dimension (never task: one line per task is noise).
+  // The rolling window reads every session, so the first days of a period are full medians.
+  const trend = useMemo(() => {
+    const items = data?.items ?? [];
+    if (items.length === 0) return null;
+    const dimension = (grouping.find((g) => g !== "task" && (unit === "session" || g === "repo")) ?? null) as TrendDimension | null;
+    const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
+    const first = dayOf(items.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b)).createdAt);
+    const from = days === null ? first : [first, daysAgo(days - 1)].sort().at(-1)!;
+    return { dimension, series, points: rollingMedian(samples, series, from, dayOf(new Date().toISOString())) };
+  }, [data, grouping, metric, unit, days]);
+  const metricDef = METRICS.find((m) => m.id === metric)!;
 
   const table = useTable({
     features,
@@ -207,6 +239,42 @@ export function AnalyticsPage() {
         <EmptyState message="No AI session usage in this period" icon={ChartColumn} />
       ) : (
         <>
+          {trend && (
+            <div className="rounded-lg border bg-card p-4 mb-6">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+                <div>
+                  <h2 className="text-sm font-medium">
+                    {metricDef.label} {UNITS.find((u) => u.id === unit)!.label}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {ROLLING_DAYS}-day rolling median
+                    {trend.dimension
+                      ? `, one line per ${trend.dimension}`
+                      : unit === "task" && grouping.some((g) => g !== "task")
+                        ? "; a task spans chores and models, so only Repo splits lines"
+                        : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    {METRICS.map((m) => (
+                      <Button key={m.id} size="sm" variant={metric === m.id ? "default" : "outline"} onClick={() => setMetric(m.id)}>
+                        {m.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {UNITS.map((u) => (
+                      <Button key={u.id} size="sm" variant={unit === u.id ? "default" : "outline"} onClick={() => setUnit(u.id)}>
+                        {u.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <TrendChart points={trend.points} series={trend.series} format={metricDef.format} />
+            </div>
+          )}
           <p className="text-sm text-muted-foreground mb-3 tabular-nums">
             {rows.length} sessions · {formatCost(totalCost)} · {formatActive(totalActive)} active · median{" "}
             {formatCost(medianCost)} per session

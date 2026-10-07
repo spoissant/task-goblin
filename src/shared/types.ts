@@ -214,6 +214,7 @@ export interface SessionAnalyticsRow {
   createdAt: string;
   costUsd: number | null;
   activeMs: number | null;
+  wallMs: number | null; // start to first terminal state; null while the session runs
   turnCount: number | null;
   subagentCount: number | null;
 }
