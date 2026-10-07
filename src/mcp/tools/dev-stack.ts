@@ -35,9 +35,9 @@ export function registerDevStackTools(server: McpServer) {
     {
       description:
         "Get the local dev stack for a task's repository (alumni_connect runs the full app, front-monorepo runs Storybook). " +
-        "Returns { supported, stack }. stack is null when nothing runs; otherwise { taskId, prUrl, branch, state " +
+        "Returns { supported, stack }. stack is null when nothing runs; otherwise { taskId, prUrl, branch, mergedTaskIds, state " +
         "(starting | up | stopping | failed), detail, error, url, logTail, ... }. The stack is per repository, so it may " +
-        "belong to another task or PR: compare stack.taskId with yours. Pass waitSeconds to block until the stack " +
+        "belong to another task or PR: you own it when stack.taskId is yours or in stack.mergedTaskIds. Pass waitSeconds to block until the stack " +
         `leaves starting/stopping (max ${MAX_WAIT_SECONDS}s per call; booting can take several minutes, so call again if still starting).`,
       inputSchema: {
         taskId: taskIdSchema,
@@ -59,13 +59,18 @@ export function registerDevStackTools(server: McpServer) {
     {
       description:
         "Boot the task's branch in the repository's main checkout and start the dev stack in the background. " +
-        "Returns the stack in state starting (or the existing stack if this task already owns one). Fails if another " +
-        "task or PR owns the stack, or the main checkout has uncommitted changes. Follow with dev_stack_status(waitSeconds) until up or failed.",
-      inputSchema: { taskId: taskIdSchema },
+        "withTaskIds merges those tasks' branches (same repository) on top, locally, to QA several PRs on one stack; " +
+        "the boot fails if one does not merge cleanly, and every task in the stack then counts as its owner. " +
+        "Returns the stack in state starting (or the existing stack if this task already owns one with the same tasks). Fails if another " +
+        "task, PR or set of tasks owns the stack, or the main checkout has uncommitted changes. Follow with dev_stack_status(waitSeconds) until up or failed.",
+      inputSchema: {
+        taskId: taskIdSchema,
+        withTaskIds: z.array(z.number().int()).optional().describe("Other tasks whose branches to merge on top"),
+      },
     },
-    async ({ taskId }) => {
+    async ({ taskId, withTaskIds }) => {
       try {
-        return result(await post<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`));
+        return result(await post<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`, withTaskIds?.length ? { withTaskIds } : undefined));
       } catch (err) {
         return errorResult(err);
       }
@@ -77,7 +82,7 @@ export function registerDevStackTools(server: McpServer) {
     "refresh_dev_stack",
     {
       description:
-        "Move the running stack's checkout to the latest commit of the task branch without restarting it (the bundler reloads). " +
+        "Move the running stack's checkout to the latest commit of the task branch (merging the stack's other tasks again) without restarting it (the bundler reloads). " +
         "Only works when this task owns a stack that is up. New migrations and packages are not installed. Returns { from, to } short shas.",
       inputSchema: { taskId: taskIdSchema },
     },

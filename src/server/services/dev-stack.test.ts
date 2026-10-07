@@ -27,6 +27,7 @@ describe("dev stack", () => {
   let compiled = false;
   let probeStatus: number | null = null;
   let running = 1; // containers of the main stack still running
+  let conflictOn: string | null = null; // branch whose merge conflicts
   const killTreeCalls: number[] = [];
   const spawnedCommands: string[] = [];
   const LOG = process.env.DEV_STACK_LOG!;
@@ -44,6 +45,7 @@ describe("dev stack", () => {
     compiled = false;
     probeStatus = null;
     running = 1;
+    conflictOn = null;
     killTreeCalls.length = 0;
     spawnedCommands.length = 0;
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
@@ -61,6 +63,10 @@ describe("dev stack", () => {
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
       if (cmd === "git" && args[0] === "status") return ok(dirty ? " M app.rb" : "");
+      if (cmd === "git" && args.includes("merge") && conflictOn && args.includes(conflictOn)) {
+        return { stdout: "", stderr: "CONFLICT", exitCode: 1 };
+      }
+      if (cmd === "git" && args[0] === "diff" && args.includes("--diff-filter=U")) return ok(conflictOn ? "app.rb" : "");
       if (cmd === "docker" && args[0] === "ps") return ok(Array.from({ length: running }, (_, i) => `c${i}`).join("\n"));
       if (cmd === "/bin/zsh" && args[1]?.includes("stop-dev-server")) alive = false; // the stop command ends the bundler
       if (cmd === "git" && args[0] === "rev-parse" && args.includes("refs/heads/fix/EV-1")) {
@@ -313,6 +319,63 @@ describe("dev stack", () => {
     await Bun.sleep(20);
     await expect(refreshDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "DEV_STACK_NOT_UP" });
     await expect(refreshDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+  });
+
+  it("merges other tasks' branches on top of the owner's and lets each of them act as owner", async () => {
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (5, 't5', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1, 'fix/EV-5')`);
+    ready();
+    await bootDevStack({ taskId: 1 }, [2, 5, 1]);
+    await devStackSettled();
+
+    const switchIndex = commands.indexOf("git switch --detach fix/EV-1");
+    const mergeIndex = commands.indexOf("git -c core.hooksPath=/dev/null merge --no-edit fix/EV-2");
+    expect(switchIndex).toBeGreaterThanOrEqual(0);
+    expect(mergeIndex).toBeGreaterThan(switchIndex);
+    expect(commands).toContain("git -c core.hooksPath=/dev/null merge --no-edit fix/EV-5");
+
+    const { stack } = await getDevStackStatus({ taskId: 2 });
+    expect(stack).toMatchObject({ taskId: 1, branch: "fix/EV-1", mergedTaskIds: [2, 5], state: "up" });
+    expect(stack).not.toHaveProperty("merged");
+
+    // Same set again returns the running stack; another set is refused.
+    expect((await bootDevStack({ taskId: 1 }, [5, 2])).state).toBe("up");
+    await expect(bootDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+    await expect(bootDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+
+    commands.length = 0;
+    await refreshDevStack({ taskId: 5 });
+    expect(commands).toContain("git switch --detach --discard-changes fix/EV-1");
+    expect(commands).toContain("git -c core.hooksPath=/dev/null merge --no-edit fix/EV-2");
+
+    running = 0;
+    await stopDevStack({ taskId: 2 });
+    await devStackSettled();
+    expect((await getDevStackStatus({ taskId: 1 })).stack).toBeNull();
+  });
+
+  it("fails the boot when a merged branch conflicts, and reboots a different set after", async () => {
+    conflictOn = "fix/EV-2";
+    ready();
+    await bootDevStack({ taskId: 1 }, [2]);
+    await devStackSettled();
+
+    const { stack } = await getDevStackStatus({ taskId: 1 });
+    expect(stack?.state).toBe("failed");
+    expect(stack?.error).toBe("fix/EV-2 does not merge cleanly on top of fix/EV-1: app.rb");
+    expect(commands).toContain("git merge --abort");
+    expect(spawned).toBe(0);
+
+    conflictOn = null;
+    await bootDevStack({ taskId: 1 });
+    await devStackSettled();
+    expect((await getDevStackStatus({ taskId: 1 })).stack).toMatchObject({ state: "up", mergedTaskIds: [] });
+  });
+
+  it("refuses to merge tasks of another repository or without a branch", async () => {
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id) VALUES (6, 't6', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1)`);
+    await expect(bootDevStack({ taskId: 1 }, [3])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(bootDevStack({ taskId: 1 }, [6])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(bootDevStack({ taskId: 1 }, [99])).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("mints a login link through rails runner in the main checkout", async () => {

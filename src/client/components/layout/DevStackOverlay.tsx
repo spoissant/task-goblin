@@ -64,6 +64,7 @@ function StackIdentity({ stack }: { stack: DevStack }) {
           #{task!.prNumber}
         </a>
       )}
+      {stack.mergedTaskIds.length > 0 && <span className="text-muted-foreground">+ {stack.mergedTaskIds.length} more</span>}
     </>
   );
 }

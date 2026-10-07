@@ -135,6 +135,8 @@ const CHORES: ChoreDefinition[] = [
     condition: "status category = In Progress AND prState = open AND isDraft = true",
     prompt: "/chore-ai-qa {{taskId}}",
     categories: ["In Progress"],
+    supportsBulk: true,
+    requiresSameRepo: true,
     match: (t) => t.prState === "open" && t.isDraft === 1,
   },
   {

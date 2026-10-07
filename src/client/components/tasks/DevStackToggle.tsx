@@ -13,7 +13,8 @@ interface DevStackToggleProps {
 }
 
 function isOwner(stack: DevStack, owner: DevStackOwner): boolean {
-  return "taskId" in owner ? stack.taskId === owner.taskId : stack.prUrl === owner.prUrl;
+  if ("prUrl" in owner) return stack.prUrl === owner.prUrl;
+  return stack.taskId === owner.taskId || stack.mergedTaskIds.includes(owner.taskId);
 }
 
 /**

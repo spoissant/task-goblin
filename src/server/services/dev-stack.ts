@@ -13,6 +13,10 @@
  * over HTTP. Stop ends the boot process (and the Docker stack), then switches
  * the checkout back to its base branch.
  *
+ * A task stack can carry more tasks: their branches are merged locally on
+ * top of the owner's (merge commits never leave the detached checkout) so
+ * several PRs are QA'd on one boot. Each of those tasks counts as an owner.
+ *
  * HARDCODED per repository: alumni_connect mirrors the `hbup` zsh alias and
  * the repo's bin/dev tooling; front-monorepo runs Storybook.
  */
@@ -21,11 +25,11 @@ import { dirname } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, settings } from "../../db/schema";
-import { AppError, NotFoundError } from "../lib/errors";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
 import { parsePrUrl } from "../lib/validation";
-import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit } from "../lib/git";
+import { abortMerge, changedFileCount, fetchRef, getConflictedFiles, localBranchExists, remoteBranchExists, runGit } from "../lib/git";
 import { runCommand, runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
@@ -94,10 +98,16 @@ const STOP_TIMEOUT_MS = 3 * 60 * 1000;
 const EXIT_WAIT_MS = 60_000;
 const READY_TIMEOUT_MS = 30 * 60 * 1000;
 
+interface MergedTask {
+  taskId: number;
+  branch: string;
+}
+
 interface StoredStack {
   taskId: number | null;
   prUrl?: string | null; // set instead of taskId for a PR; absent on records from before PR boots
   branch: string; // task branch, or "repo#N" for a PR
+  merged?: MergedTask[]; // other tasks whose branches are merged on top of the owner's
   state: DevStackState;
   pid: number | null;
   detail: string | null;
@@ -264,9 +274,11 @@ function appendLog(cfg: StackConfig, text: string): void {
 
 async function toDevStack(cfg: StackConfig, repositoryId: number, stored: StoredStack): Promise<DevStack> {
   const log = await readLog(cfg);
+  const { merged, ...rest } = stored;
   return {
-    ...stored,
+    ...rest,
     prUrl: stored.prUrl ?? null,
+    mergedTaskIds: (merged ?? []).map((m) => m.taskId),
     repositoryId,
     alive: stored.pid !== null && runtime.isAlive(stored.pid),
     logTail: log.length > 4000 ? log.slice(-4000) : log,
@@ -306,7 +318,35 @@ function ownerOf(stored: StoredStack): DevStackOwner {
 }
 
 function owns(stored: StoredStack, owner: DevStackOwner): boolean {
-  return "prUrl" in owner ? stored.prUrl === parsePrUrl(owner.prUrl).url : stored.taskId === owner.taskId;
+  if ("prUrl" in owner) return stored.prUrl === parsePrUrl(owner.prUrl).url;
+  return stored.taskId === owner.taskId || (stored.merged ?? []).some((m) => m.taskId === owner.taskId);
+}
+
+/** The owner's branch, plus how many more are merged on top. */
+function label(stored: StoredStack): string {
+  const more = stored.merged?.length ?? 0;
+  return more > 0 ? `${stored.branch} + ${more} more` : stored.branch;
+}
+
+/** Tasks to merge on top of the owner's branch: same repository, each with a branch. */
+async function resolveMerged(owner: DevStackOwner, repositoryId: number, withTaskIds: number[]): Promise<MergedTask[]> {
+  const ownerId = "taskId" in owner ? owner.taskId : null;
+  const ids = [...new Set(withTaskIds)].filter((id) => id !== ownerId);
+  if (ids.length > 0 && ownerId === null) throw new ValidationError("Only a task stack can merge other tasks");
+  const merged: MergedTask[] = [];
+  for (const id of ids) {
+    const result = await getTaskWithRepository(id);
+    if (!result) throw new NotFoundError("Task", id);
+    if (result.repository?.id !== repositoryId) throw new ValidationError(`Task ${id} is in another repository`);
+    if (!result.headBranch) throw new ValidationError(`Task ${id} has no branch`);
+    merged.push({ taskId: id, branch: result.headBranch });
+  }
+  return merged;
+}
+
+function sameMerged(stored: StoredStack, merged: MergedTask[]): boolean {
+  const key = (list: MergedTask[]) => list.map((m) => m.taskId).sort((a, b) => a - b).join(",");
+  return key(stored.merged ?? []) === key(merged);
 }
 
 /** Every stack plus the repositories whose tasks may boot one (for table rows). */
@@ -334,8 +374,11 @@ export async function getDevStackStatus(owner: DevStackOwner): Promise<DevStackS
   };
 }
 
-/** Detach the main checkout at the owner's branch and start the stack in the background. */
-export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
+/**
+ * Detach the main checkout at the owner's branch, merge the branches of
+ * `withTaskIds` on top, and start the stack in the background.
+ */
+export async function bootDevStack(owner: DevStackOwner, withTaskIds: number[] = []): Promise<DevStack> {
   const { taskId, prUrl, branch, repository } = await resolveOwner(owner);
   const cfg = configFor(repository);
   if (!repository || !cfg || !branch) {
@@ -345,13 +388,19 @@ export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
       "DEV_STACK_UNSUPPORTED",
     );
   }
+  const merged = await resolveMerged(owner, repository.id, withTaskIds);
   const mainPath = await resolveMainPath(repository);
 
   const existing = await loadStack(cfg);
   if (existing && !owns(existing, owner)) {
-    throw new AppError(`Dev stack is already up for ${existing.branch}`, 409, "DEV_STACK_BUSY");
+    throw new AppError(`Dev stack is already up for ${label(existing)}`, 409, "DEV_STACK_BUSY");
   }
-  if (existing && existing.state !== "failed") return toDevStack(cfg, repository.id, existing);
+  if (existing && existing.state !== "failed") {
+    if (existing.taskId !== taskId || !sameMerged(existing, merged)) {
+      throw new AppError(`Dev stack is already up for ${label(existing)}; stop it first`, 409, "DEV_STACK_BUSY");
+    }
+    return toDevStack(cfg, repository.id, existing);
+  }
 
   // A previous attempt failed but may have left its process tree running
   // (e.g. a supervisor that respawned the dev server past the recorded
@@ -365,6 +414,7 @@ export async function bootDevStack(owner: DevStackOwner): Promise<DevStack> {
     taskId,
     prUrl,
     branch,
+    ...(merged.length > 0 && { merged }),
     state: "starting",
     pid: null,
     detail: "Checking out the branch",
@@ -385,10 +435,39 @@ async function resolveTarget(mainPath: string, stored: StoredStack): Promise<str
     const fetched = await fetchRef(mainPath, `pull/${parsePrUrl(stored.prUrl).number}/head`);
     return fetched.exitCode === 0 ? "FETCH_HEAD" : null;
   }
-  const branch = stored.branch;
+  return resolveBranch(mainPath, stored.branch);
+}
+
+async function resolveBranch(mainPath: string, branch: string): Promise<string | null> {
   await fetchRef(mainPath, branch);
   if (await localBranchExists(mainPath, branch)) return branch;
   if (await remoteBranchExists(mainPath, branch)) return `origin/${branch}`;
+  return null;
+}
+
+/**
+ * Detach the main checkout at the owner's target, then merge each merged
+ * task's branch on top. Hooks are off for the merges: these commits are
+ * throwaway and commit hooks (lint, message checks) would only slow or block
+ * them. Returns an error message, or null once checked out.
+ */
+async function checkoutStack(mainPath: string, stored: StoredStack, discardChanges: boolean): Promise<string | null> {
+  const target = await resolveTarget(mainPath, stored);
+  if (!target) return `${stored.branch} not found locally or on origin`;
+
+  const switched = await runGit(mainPath, ["switch", "--detach", ...(discardChanges ? ["--discard-changes"] : []), target]);
+  if (switched.exitCode !== 0) return switched.stderr || `git switch --detach ${target} failed`;
+
+  for (const m of stored.merged ?? []) {
+    const ref = await resolveBranch(mainPath, m.branch);
+    if (!ref) return `${m.branch} not found locally or on origin`;
+    const merge = await runGit(mainPath, ["-c", "core.hooksPath=/dev/null", "merge", "--no-edit", ref]);
+    if (merge.exitCode !== 0) {
+      const files = await getConflictedFiles(mainPath);
+      await abortMerge(mainPath);
+      return `${m.branch} does not merge cleanly on top of ${stored.branch}: ${files.length > 0 ? files.join(", ") : merge.stderr}`;
+    }
+  }
   return null;
 }
 
@@ -401,20 +480,14 @@ async function runBoot(cfg: StackConfig, stored: StoredStack, mainPath: string):
       return;
     }
 
-    const target = await resolveTarget(mainPath, stored);
-    if (!target) {
-      await fail(`${stored.branch} not found locally or on origin`);
-      return;
-    }
-
-    const switched = await runGit(mainPath, ["switch", "--detach", target]);
-    if (switched.exitCode !== 0) {
-      await fail(switched.stderr || `git switch --detach ${target} failed`);
+    const checkoutError = await checkoutStack(mainPath, stored, false);
+    if (checkoutError) {
+      await fail(checkoutError);
       return;
     }
 
     mkdirSync(dirname(cfg.logPath), { recursive: true });
-    await Bun.write(cfg.logPath, `# ${now()} boot ${stored.branch} (${target}) in ${mainPath}\n$ ${cfg.boot}\n`);
+    await Bun.write(cfg.logPath, `# ${now()} boot ${label(stored)} (${await shortHead(mainPath)}) in ${mainPath}\n$ ${cfg.boot}\n`);
     const { pid, exited } = runtime.spawn(mainPath, cfg.boot, cfg.logPath);
     const booting: StoredStack = { ...stored, pid, detail: cfg.bootDetail };
     await saveStack(cfg, booting);
@@ -482,32 +555,28 @@ async function shortHead(mainPath: string): Promise<string> {
 }
 
 /**
- * Move the running stack's detached checkout to the branch's latest commit,
- * leaving the stack up so the bundler (and Rails) reload in place. Local
- * changes (db/schema.rb from the boot migration) are discarded, like on stop.
- * New migrations and packages are not installed.
+ * Move the running stack's detached checkout to the branch's latest commit
+ * (merging the merged tasks' latest commits again), leaving the stack up so
+ * the bundler (and Rails) reload in place. Local changes (db/schema.rb from
+ * the boot migration) are discarded, like on stop. New migrations and
+ * packages are not installed.
  */
 export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRefresh> {
   const { repository, cfg } = await resolveStack(owner);
   const stored = await loadStack(cfg);
   if (!stored) throw new NotFoundError("Dev stack");
   if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
+    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
 
   const mainPath = await resolveMainPath(repository);
 
-  const target = await resolveTarget(mainPath, stored);
-  if (!target) throw new AppError(`${stored.branch} not found locally or on origin`, 404, "BRANCH_NOT_FOUND");
-
   const from = await shortHead(mainPath);
-  const switched = await runGit(mainPath, ["switch", "--detach", "--discard-changes", target]);
-  if (switched.exitCode !== 0) {
-    throw new AppError(switched.stderr || `git switch --detach ${target} failed`, 500, "DEV_STACK_REFRESH_FAILED");
-  }
+  const checkoutError = await checkoutStack(mainPath, stored, true);
+  if (checkoutError) throw new AppError(checkoutError, 500, "DEV_STACK_REFRESH_FAILED");
   const to = await shortHead(mainPath);
-  appendLog(cfg, `# ${now()} refresh ${stored.branch} (${target}): ${from} -> ${to}`);
+  appendLog(cfg, `# ${now()} refresh ${label(stored)}: ${from} -> ${to}`);
   return { from, to };
 }
 
@@ -553,7 +622,7 @@ export async function devStackLoginLink(owner: DevStackOwner, as: DevStackLoginA
   const stored = await loadStack(cfg);
   if (!stored) throw new NotFoundError("Dev stack");
   if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
+    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
 
@@ -577,7 +646,7 @@ export async function stopDevStack(owner: DevStackOwner): Promise<DevStack> {
   const stored = await loadStack(cfg);
   if (!stored) throw new NotFoundError("Dev stack");
   if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
+    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
   }
   if (stored.state === "stopping") return toDevStack(cfg, repository.id, stored);
 

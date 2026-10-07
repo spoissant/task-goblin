@@ -122,6 +122,7 @@ export interface DevStack {
   prUrl: string | null; // owner when booted from a PR without a task (Reviews page)
   repositoryId: number; // one stack per repository
   branch: string; // task branch, or "repo#N" for a PR
+  mergedTaskIds: number[]; // other tasks whose branches are merged on top of the owner's; each counts as an owner
   state: DevStackState;
   pid: number | null;
   alive: boolean; // boot process still running (checked on read)
