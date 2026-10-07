@@ -41,28 +41,30 @@ interface CustomPromptDialogProps {
   taskId: number;
   /** Pre-fills the chore's command; the session is still recorded as that chore. */
   chore?: PromptChore | null;
+  /** Pre-fills an ad-hoc prompt, e.g. the selected tasks' IDs. Ignored when a chore is given. */
+  initialPrompt?: string;
 }
 
 /**
  * Start a background session on a task. Opens blank for an ad-hoc prompt, or
  * pre-filled with a chore's command so it can be tweaked before it runs.
  */
-export function CustomPromptDialog({ open, onOpenChange, taskId, chore }: CustomPromptDialogProps) {
+export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialPrompt }: CustomPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<SessionModel>("sonnet");
   const [effort, setEffort] = useState<SessionEffort>("high");
   const [uploading, setUploading] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const startSession = useStartSession();
-  const chorePrompt = chore?.prompt ?? null;
+  const prefill = chore?.prompt ?? initialPrompt ?? null;
   const choreKey = chore?.key;
   const { getDefault } = useChoreModelDefaults();
   const defaults = getDefault(choreKey);
 
   // Keyed on the chore's fields, not the object, so typing is never wiped.
   useEffect(() => {
-    if (open) setPrompt(chorePrompt ? `${chorePrompt}\n` : "");
-  }, [open, chorePrompt]);
+    if (open) setPrompt(prefill ? `${prefill}\n` : "");
+  }, [open, prefill]);
 
   // Each time the dialog opens, start from the chore's configured model and effort.
   useEffect(() => {

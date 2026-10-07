@@ -3,12 +3,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/client/components/ui/dropdown-menu";
 import { useChoreDefinitionsQuery, type ChoreDefinition } from "@/client/lib/queries";
 import { useBootDevStack, useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { X, Sparkles, ChevronDown, CirclePlay } from "lucide-react";
+import { X, Sparkles, ChevronDown, CirclePlay, PenLine } from "lucide-react";
 import { toast } from "sonner";
 
 interface BulkActionsBarProps {
@@ -19,6 +20,7 @@ interface BulkActionsBarProps {
   repositoryId: number | null;
   onClearSelection: () => void;
   onRunChore: (chore: ChoreDefinition) => void;
+  onCustomPrompt: () => void;
 }
 
 export function BulkActionsBar({
@@ -27,6 +29,7 @@ export function BulkActionsBar({
   repositoryId,
   onClearSelection,
   onRunChore,
+  onCustomPrompt,
 }: BulkActionsBarProps) {
   const { data } = useChoreDefinitionsQuery();
   const isMulti = selectedIds.length > 1;
@@ -43,13 +46,18 @@ export function BulkActionsBar({
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button disabled={availableChores.length === 0}>
+          <Button>
             <Sparkles className="h-4 w-4 mr-2" />
             Run chore
             <ChevronDown className="h-4 w-4 ml-2" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
+          <DropdownMenuItem onClick={onCustomPrompt} className="flex items-center gap-2">
+            <PenLine className="h-3.5 w-6 text-muted-foreground" />
+            <span>Custom prompt...</span>
+          </DropdownMenuItem>
+          {availableChores.length > 0 && <DropdownMenuSeparator />}
           {availableChores.map((chore) => (
             <DropdownMenuItem
               key={chore.key}

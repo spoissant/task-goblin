@@ -28,7 +28,9 @@ export function TasksPage() {
   const [savedSearches, setSavedSearches] = useLocalStorage<SavedSearch[]>("tasksPage.namedSearches", []);
   const titleFilter = effectiveQuery(debouncedQuery, savedSearches);
 
-  const [bulkChoreTarget, setBulkChoreTarget] = useState<(PromptChore & { taskId: number }) | undefined>(undefined);
+  const [bulkPromptTarget, setBulkPromptTarget] = useState<
+    { taskId: number; chore: PromptChore | null; initialPrompt?: string } | undefined
+  >(undefined);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
@@ -51,7 +53,15 @@ export function TasksPage() {
     if (firstTaskId === undefined) return;
     const ids = Array.from(selectedIds).join(" ");
     const prompt = chore.prompt.replace("{{taskId}}", ids).replace("{{jiraKey}}", "");
-    setBulkChoreTarget({ number: chore.number, key: chore.key, name: chore.name, prompt, taskId: firstTaskId });
+    setBulkPromptTarget({ taskId: firstTaskId, chore: { number: chore.number, key: chore.key, name: chore.name, prompt } });
+  };
+
+  const handleCustomPromptForSelection = () => {
+    // Same as bulk chores: one session on the first selected task, told which tasks it covers.
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const initialPrompt = ids.length > 1 ? `Task Goblin tasks: ${ids.join(", ")}` : undefined;
+    setBulkPromptTarget({ taskId: ids[0], chore: null, initialPrompt });
   };
 
   return (
@@ -120,6 +130,7 @@ export function TasksPage() {
               repositoryId={sameRepo ? (selectedTasks[0]?.repositoryId ?? null) : null}
               onClearSelection={() => setSelectedIds(new Set())}
               onRunChore={handleRunChoreForSelection}
+              onCustomPrompt={handleCustomPromptForSelection}
             />
           </div>
         ) : (
@@ -171,10 +182,11 @@ export function TasksPage() {
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
       <CustomPromptDialog
-        open={bulkChoreTarget !== undefined}
-        onOpenChange={(open) => !open && setBulkChoreTarget(undefined)}
-        taskId={bulkChoreTarget?.taskId ?? 0}
-        chore={bulkChoreTarget ?? null}
+        open={bulkPromptTarget !== undefined}
+        onOpenChange={(open) => !open && setBulkPromptTarget(undefined)}
+        taskId={bulkPromptTarget?.taskId ?? 0}
+        chore={bulkPromptTarget?.chore ?? null}
+        initialPrompt={bulkPromptTarget?.initialPrompt}
       />
     </div>
   );
