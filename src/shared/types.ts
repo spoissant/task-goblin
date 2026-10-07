@@ -142,6 +142,15 @@ export interface DevStackRefresh {
   to: string; // short sha after; equal to `from` when already up to date
 }
 
+export type DevStackLoginAs = "member" | "admin" | "super_admin";
+
+export interface DevStackLoginLink {
+  url: string; // single-use claim link, valid 10 minutes
+  subjectId: number; // user, admin or super admin signed in
+  name: string;
+  networkId: number;
+}
+
 export interface DevStackOverview {
   supportedRepositoryIds: number[]; // repositories whose tasks and PRs may boot a stack
   stacks: DevStack[]; // at most one per repository

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DevStack, DevStackRefresh, DevStackStatus } from "@/shared/types";
+import type { DevStack, DevStackLoginLink, DevStackRefresh, DevStackStatus } from "@/shared/types";
 import { get, post, del } from "../client.js";
 
 const POLL_MS = 5_000;
@@ -84,6 +84,32 @@ export function registerDevStackTools(server: McpServer) {
     async ({ taskId }) => {
       try {
         return result(await post<DevStackRefresh>(`/api/v1/tasks/${taskId}/dev-stack/refresh`));
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  // dev_stack_login_link
+  server.registerTool(
+    "dev_stack_login_link",
+    {
+      description:
+        "Mint a one-time sign-in link into the running alumni_connect stack (single use, valid 10 minutes, no password needed). " +
+        "Open the returned url in the browser to be signed in. as: member (front office, lands on the member's profile), " +
+        "admin (a network admin, lands on the network back office) or super_admin (the network back office as super admin). " +
+        "id picks a specific user (member) or admin (admin); default is the first confirmed one of network 1 (pandora). " +
+        "Member and admin sessions are impersonations: a red bar shows, and its link returns to the back office. " +
+        "Only works when this task owns a stack that is up. Returns { url, subjectId, name, networkId }; takes ~20s.",
+      inputSchema: {
+        taskId: taskIdSchema,
+        as: z.enum(["member", "admin", "super_admin"]).describe("Who to sign in as"),
+        id: z.number().int().optional().describe("User id (member) or admin id (admin); ignored for super_admin"),
+      },
+    },
+    async ({ taskId, as, id }) => {
+      try {
+        return result(await post<DevStackLoginLink>(`/api/v1/tasks/${taskId}/dev-stack/login-link`, { as, id }));
       } catch (err) {
         return errorResult(err);
       }

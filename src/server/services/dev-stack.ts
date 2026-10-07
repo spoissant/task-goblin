@@ -30,7 +30,16 @@ import { runCommand, runShell, tailOutput } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
-import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh, DevStackState, DevStackStatus } from "../../shared/types";
+import type {
+  DevStack,
+  DevStackLoginAs,
+  DevStackLoginLink,
+  DevStackOverview,
+  DevStackOwner,
+  DevStackRefresh,
+  DevStackState,
+  DevStackStatus,
+} from "../../shared/types";
 
 interface StackConfig {
   /** Stays in the foreground while the stack runs. */
@@ -500,6 +509,66 @@ export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRef
   const to = await shortHead(mainPath);
   appendLog(cfg, `# ${now()} refresh ${stored.branch} (${target}): ${from} -> ${to}`);
   return { from, to };
+}
+
+/**
+ * Mints the same signed, single-use "log as" claim link the super-admin panel
+ * hands out (LogAs::Grant, 10 minutes), from the CLI with the first super
+ * admin as impersonator, so a browser signs in without a password or an
+ * existing session. Defaults to the first confirmed member / admin of network
+ * 1 (pandora). Prints one JSON line.
+ */
+const LOGIN_LINK_SCRIPT = `
+as, id = ARGV
+id = id.presence&.to_i
+sa = SuperAdmin.order(:id).first or abort("No super admin in the local DB")
+case as
+when "member"
+  subject = id ? User.kept.confirmed.find_by(id:) : Network.find(1).users.kept.confirmed.order(:id).first
+  kind, impersonator = :user, sa
+when "admin"
+  subject = id ? SimpleAdmin.find_by(id:) : SimpleAdmin.where(network_id: 1).order(:id).first
+  kind, impersonator = :simple_admin, sa
+when "super_admin"
+  subject = sa
+  kind, impersonator = :super_admin_network, nil
+else
+  abort("Unknown role #{as}")
+end
+abort("No #{as} found#{" with id #{id}" if id}") unless subject
+network = as == "super_admin" ? Network.find(1) : subject.network
+routing = SharedRouting.routing_for(network)
+destination_url = as == "member" ? routing.user_url(subject) : routing.backoffice_root_url
+token = LogAs::Grant.generate(subject:, network:, kind:, destination_url:, impersonator:)
+puts({url: routing.backoffice_log_as_claim_url(token:), subjectId: subject.id, name: subject.try(:name).presence || subject.email, networkId: network.id}.to_json)
+`;
+const LOGIN_LINK_TIMEOUT_MS = 3 * 60 * 1000;
+
+/** A one-time sign-in link into the running alumni_connect stack as a member, network admin or super admin. */
+export async function devStackLoginLink(owner: DevStackOwner, as: DevStackLoginAs, id: number | null): Promise<DevStackLoginLink> {
+  const { repository, cfg } = await resolveStack(owner);
+  if (repository.repo !== "alumni_connect") {
+    throw new AppError("Login links are only available for the alumni_connect stack", 400, "DEV_STACK_UNSUPPORTED");
+  }
+  const stored = await loadStack(cfg);
+  if (!stored) throw new NotFoundError("Dev stack");
+  if (!owns(stored, owner)) {
+    throw new AppError(`Dev stack belongs to ${stored.branch}`, 409, "DEV_STACK_BUSY");
+  }
+  if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
+
+  const mainPath = await resolveMainPath(repository);
+  // Script and arguments go through as positional parameters ($0, $@), so nothing needs shell quoting.
+  const result = await runCommand(
+    "/bin/zsh",
+    ["-lc", 'bin/dev dcx webapp bundle exec rails runner "$0" "$@"', LOGIN_LINK_SCRIPT, as, id === null ? "" : String(id)],
+    { cwd: mainPath, timeoutMs: LOGIN_LINK_TIMEOUT_MS },
+  );
+  const line = result.exitCode === 0 ? result.stdout.split("\n").reverse().find((l) => l.startsWith("{")) : undefined;
+  if (!line) {
+    throw new AppError(`Could not mint a login link: ${tailOutput(result, 1000)}`, 500, "DEV_STACK_LOGIN_FAILED");
+  }
+  return JSON.parse(line) as DevStackLoginLink;
 }
 
 /** Stop the stack of this owner and return the main checkout to its base branch, in the background. */

@@ -2,7 +2,8 @@ import { json } from "../response";
 import { ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
-import { bootDevStack, getDevStackOverview, getDevStackStatus, refreshDevStack, stopDevStack } from "../services/dev-stack";
+import { bootDevStack, devStackLoginLink, getDevStackOverview, getDevStackStatus, refreshDevStack, stopDevStack } from "../services/dev-stack";
+import type { DevStackLoginAs } from "../../shared/types";
 import type { Routes } from "../router";
 
 export const devStackRoutes: Routes = {
@@ -36,6 +37,18 @@ export const devStackRoutes: Routes = {
     },
   },
 
+  // One-time sign-in link into the running alumni_connect stack.
+  "/api/v1/tasks/:id/dev-stack/login-link": {
+    async POST(req, params) {
+      const body = await getBody(req);
+      if (!LOGIN_ROLES.includes(body.as as DevStackLoginAs)) {
+        throw new ValidationError(`as must be one of ${LOGIN_ROLES.join(", ")}`);
+      }
+      if (body.id != null && !Number.isInteger(body.id)) throw new ValidationError("id must be an integer");
+      return json(await devStackLoginLink({ taskId: parseId(params.id) }, body.as as DevStackLoginAs, (body.id as number | undefined) ?? null));
+    },
+  },
+
   // A PR without a task (colleagues' PRs on the Reviews page), by URL.
   "/api/v1/dev-stack/pr": {
     async POST(req) {
@@ -55,6 +68,8 @@ export const devStackRoutes: Routes = {
     },
   },
 };
+
+const LOGIN_ROLES: DevStackLoginAs[] = ["member", "admin", "super_admin"];
 
 async function prOwner(req: Request): Promise<{ prUrl: string }> {
   const body = await getBody(req);

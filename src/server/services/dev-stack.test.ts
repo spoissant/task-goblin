@@ -5,6 +5,7 @@ import { appendFileSync } from "fs";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import {
   bootDevStack,
+  devStackLoginLink,
   devStackSettled,
   getDevStackOverview,
   getDevStackStatus,
@@ -312,6 +313,40 @@ describe("dev stack", () => {
     await Bun.sleep(20);
     await expect(refreshDevStack({ taskId: 1 })).rejects.toMatchObject({ code: "DEV_STACK_NOT_UP" });
     await expect(refreshDevStack({ taskId: 2 })).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+  });
+
+  it("mints a login link through rails runner in the main checkout", async () => {
+    ready();
+    await bootDevStack({ taskId: 1 });
+    await devStackSettled();
+    const zshArgs: string[][] = [];
+    setCommandRunner(async (cmd, args) => {
+      if (cmd === "/bin/zsh") zshArgs.push(args);
+      return ok('W, deprecation noise\n{"url":"http://pandora.localhost.hvbrt.com/log-as/claim?token=t","subjectId":7,"name":"Ann","networkId":1}');
+    });
+
+    const link = await devStackLoginLink({ taskId: 1 }, "member", 7);
+    expect(link).toEqual({ url: "http://pandora.localhost.hvbrt.com/log-as/claim?token=t", subjectId: 7, name: "Ann", networkId: 1 });
+    expect(zshArgs[0][1]).toBe('bin/dev dcx webapp bundle exec rails runner "$0" "$@"');
+    expect(zshArgs[0][2]).toContain("LogAs::Grant.generate");
+    expect(zshArgs[0].slice(3)).toEqual(["member", "7"]);
+
+    await devStackLoginLink({ taskId: 1 }, "super_admin", null);
+    expect(zshArgs[1].slice(3)).toEqual(["super_admin", ""]);
+  });
+
+  it("refuses login links when the script fails or the stack is not this task's or not alumni_connect", async () => {
+    await expect(devStackLoginLink({ taskId: 1 }, "member", null)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(devStackLoginLink({ taskId: 3 }, "member", null)).rejects.toMatchObject({ code: "DEV_STACK_UNSUPPORTED" });
+    ready();
+    await bootDevStack({ taskId: 1 });
+    await devStackSettled();
+    await expect(devStackLoginLink({ taskId: 2 }, "member", null)).rejects.toMatchObject({ code: "DEV_STACK_BUSY" });
+    setCommandRunner(async () => ({ stdout: "", stderr: "No member found with id 9", exitCode: 1 }));
+    await expect(devStackLoginLink({ taskId: 1 }, "member", 9)).rejects.toMatchObject({
+      code: "DEV_STACK_LOGIN_FAILED",
+      message: expect.stringContaining("No member found with id 9"),
+    });
   });
 
   it("fails the stop when containers never go away", async () => {
