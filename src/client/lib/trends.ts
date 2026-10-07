@@ -1,14 +1,15 @@
 /**
  * Trend math for the analytics page: one sample per session (or per task),
- * then a rolling median per series for every day of the viewed period.
+ * then a rolling median per series for every day of the viewed period; and a
+ * rolling average of session and agent parallelism.
  *
  * Medians, not means: session cost is heavy-tailed and one big session would
  * swing a daily mean. Samples are dated by when the work ended, so a task's
  * cost lands on the day of its last session.
  */
-import type { SessionAnalyticsRow } from "./types";
+import type { ConcurrencyDay, SessionAnalyticsRow } from "./types";
 
-export type TrendMetric = "cost" | "active" | "wall";
+export type TrendMetric = "cost" | "active";
 export type TrendUnit = "session" | "task";
 /** Dimensions a line can be split on. Tasks live in one repo, so per-task series only split on repo. */
 export type TrendDimension = "model" | "effort" | "chore" | "repo";
@@ -47,7 +48,7 @@ export function median(values: number[]): number | null {
 }
 
 function sessionValue(row: SessionAnalyticsRow, metric: TrendMetric): number | null {
-  return metric === "cost" ? row.costUsd : metric === "active" ? row.activeMs : row.wallMs;
+  return metric === "cost" ? row.costUsd : row.activeMs;
 }
 
 /** Sum of the known values; null when none is known. */
@@ -56,14 +57,6 @@ function sumKnown(values: (number | null)[]): number | null {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 }
 
-function taskValue(sessions: SessionAnalyticsRow[], metric: TrendMetric): number | null {
-  if (metric !== "wall") return sumKnown(sessions.map((s) => sessionValue(s, metric)));
-  // Wall-clock per task: first session start to last session end. Unknown while a session still runs.
-  if (sessions.some((s) => s.wallMs === null)) return null;
-  const starts = sessions.map((s) => Date.parse(s.createdAt));
-  const ends = sessions.map((s) => Date.parse(s.createdAt) + (s.wallMs ?? 0));
-  return Math.max(...ends) - Math.min(...starts);
-}
 
 export function trendSamples(
   rows: SessionAnalyticsRow[],
@@ -82,7 +75,7 @@ export function trendSamples(
   const byTask = new Map<string, SessionAnalyticsRow[]>();
   for (const r of rows) byTask.set(r.task, [...(byTask.get(r.task) ?? []), r]);
   return [...byTask.values()].flatMap((sessions) => {
-    const value = taskValue(sessions, metric);
+    const value = sumKnown(sessions.map((s) => sessionValue(s, metric)));
     if (value === null) return [];
     const last = sessions.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
     return [{ day: dayOf(last.createdAt), series: dimension === "repo" ? (last.repo ?? "—") : ALL_SERIES, value }];
@@ -113,6 +106,26 @@ export function rollingMedian(samples: TrendSample[], series: string[], from: st
       values[name] = median(samples.filter((s) => s.series === name && s.day >= windowStart && s.day <= day).map((s) => s.value));
     }
     points.push({ day, values });
+  }
+  return points;
+}
+
+export const CONCURRENCY_SERIES = ["Sessions", "Agents"] as const;
+
+/**
+ * Average sessions and agents working at once, over the trailing window: the
+ * (slot, session) and (slot, agent) pairs divided by the active slots, so a
+ * busy day weighs more than one with a single short session.
+ */
+export function rollingConcurrency(days: ConcurrencyDay[], from: string, to: string): TrendPoint[] {
+  const points: TrendPoint[] = [];
+  for (let t = Date.parse(from); t <= Date.parse(to); t += DAY_MS) {
+    const day = dayOf(new Date(t).toISOString());
+    const windowStart = dayOf(new Date(t - (ROLLING_DAYS - 1) * DAY_MS).toISOString());
+    const inWindow = days.filter((d) => d.day >= windowStart && d.day <= day);
+    const slots = inWindow.reduce((sum, d) => sum + d.slots, 0);
+    const ratio = (key: "sessionSlots" | "agentSlots") => (slots === 0 ? null : inWindow.reduce((sum, d) => sum + d[key], 0) / slots);
+    points.push({ day, values: { Sessions: ratio("sessionSlots"), Agents: ratio("agentSlots") } });
   }
   return points;
 }

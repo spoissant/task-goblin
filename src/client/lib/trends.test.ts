@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionAnalyticsRow } from "../../shared/types";
-import { ALL_SERIES, OTHER_SERIES, pickSeries, rollingMedian, trendSamples } from "./trends";
+import { ALL_SERIES, OTHER_SERIES, pickSeries, rollingConcurrency, rollingMedian, trendSamples } from "./trends";
 
 function row(over: Partial<SessionAnalyticsRow>): SessionAnalyticsRow {
   return {
@@ -15,7 +15,6 @@ function row(over: Partial<SessionAnalyticsRow>): SessionAnalyticsRow {
     createdAt: "2026-10-01T10:00:00.000Z",
     costUsd: 1,
     activeMs: 60_000,
-    wallMs: 120_000,
     turnCount: 1,
     subagentCount: 0,
     ...over,
@@ -43,14 +42,19 @@ describe("trendSamples", () => {
       { day: "2026-10-02", series: ALL_SERIES, value: 7 },
     ]);
   });
+});
 
-  test("per task: wall-clock spans first start to last end, unknown while a session runs", () => {
-    const rows = [
-      row({ task: "PS-1", createdAt: "2026-10-01T10:00:00.000Z", wallMs: 3_600_000 }),
-      row({ task: "PS-1", createdAt: "2026-10-01T10:30:00.000Z", wallMs: 600_000 }), // overlaps the first
-      row({ task: "PS-2", wallMs: null }),
+describe("rollingConcurrency", () => {
+  test("weights days by their active slots and leaves empty windows null", () => {
+    const days = [
+      { day: "2026-10-01", slots: 10, sessionSlots: 10, agentSlots: 10 }, // one session alone
+      { day: "2026-10-02", slots: 30, sessionSlots: 90, agentSlots: 120 }, // three sessions, four agents
     ];
-    expect(trendSamples(rows, "wall", "task", "repo")).toEqual([{ day: "2026-10-01", series: "ac", value: 3_600_000 }]);
+    const points = rollingConcurrency(days, "2026-10-01", "2026-10-09");
+    expect(points[0].values).toEqual({ Sessions: 1, Agents: 1 });
+    expect(points[1].values).toEqual({ Sessions: 2.5, Agents: 3.25 });
+    expect(points[7].values).toEqual({ Sessions: 3, Agents: 4 }); // Oct 8 only sees Oct 2
+    expect(points[8].values).toEqual({ Sessions: null, Agents: null });
   });
 });
 

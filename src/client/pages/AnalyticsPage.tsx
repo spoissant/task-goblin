@@ -21,7 +21,7 @@ import {
   type GroupingState,
   type SortingState,
 } from "@tanstack/react-table";
-import { useSessionAnalyticsQuery } from "@/client/lib/queries/sessions";
+import { useConcurrencyQuery, useSessionAnalyticsQuery } from "@/client/lib/queries/sessions";
 import type { SessionAnalyticsRow } from "@/client/lib/types";
 import { Button } from "@/client/components/ui/button";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -30,11 +30,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatActive, formatCost, formatTime } from "@/client/components/tasks/SessionsTable";
 import { TrendChart } from "@/client/components/analytics/TrendChart";
 import {
+  CONCURRENCY_SERIES,
   ROLLING_DAYS,
   dayOf,
   daysAgo,
   median,
   pickSeries,
+  rollingConcurrency,
   rollingMedian,
   trendSamples,
   type TrendDimension,
@@ -57,10 +59,12 @@ const PERIODS = [
   { days: null, label: "All" },
 ] as const;
 
-const METRICS: { id: TrendMetric; label: string; format: (v: number | null) => string }[] = [
+type Metric = TrendMetric | "parallelism";
+
+const METRICS: { id: Metric; label: string; format: (v: number | null) => string }[] = [
   { id: "cost", label: "Cost", format: formatCost },
   { id: "active", label: "Active time", format: formatActive },
-  { id: "wall", label: "Wall-clock", format: formatActive },
+  { id: "parallelism", label: "Parallelism", format: (v) => (v === null ? "—" : `${v.toFixed(1)}×`) },
 ];
 
 const UNITS: { id: TrendUnit; label: string }[] = [
@@ -157,11 +161,12 @@ const columns = helper.columns([
 
 export function AnalyticsPage() {
   const { data, isLoading, error } = useSessionAnalyticsQuery();
+  const concurrency = useConcurrencyQuery();
   const [days, setDays] = useState<number | null>(30);
   const [grouping, setGrouping] = useState<GroupingState>(["task"]);
   const [sorting, setSorting] = useState<SortingState>([{ id: "cost", desc: true }]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
-  const [metric, setMetric] = useState<TrendMetric>("cost");
+  const [metric, setMetric] = useState<Metric>("cost");
   const [unit, setUnit] = useState<TrendUnit>("session");
 
   const rows = useMemo(() => {
@@ -173,15 +178,20 @@ export function AnalyticsPage() {
 
   // Lines split on the first grouped dimension (never task: one line per task is noise).
   // The rolling window reads every session, so the first days of a period are full medians.
+  // Parallelism is global: always the same two lines, sessions and agents.
   const trend = useMemo(() => {
     const items = data?.items ?? [];
     if (items.length === 0) return null;
-    const dimension = (grouping.find((g) => g !== "task" && (unit === "session" || g === "repo")) ?? null) as TrendDimension | null;
-    const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
     const first = dayOf(items.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b)).createdAt);
     const from = days === null ? first : [first, daysAgo(days - 1)].sort().at(-1)!;
-    return { dimension, series, points: rollingMedian(samples, series, from, dayOf(new Date().toISOString())) };
-  }, [data, grouping, metric, unit, days]);
+    const to = dayOf(new Date().toISOString());
+    if (metric === "parallelism") {
+      return { dimension: null, series: [...CONCURRENCY_SERIES], points: rollingConcurrency(concurrency.data?.items ?? [], from, to) };
+    }
+    const dimension = (grouping.find((g) => g !== "task" && (unit === "session" || g === "repo")) ?? null) as TrendDimension | null;
+    const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
+    return { dimension, series, points: rollingMedian(samples, series, from, to) };
+  }, [data, concurrency.data, grouping, metric, unit, days]);
   const metricDef = METRICS.find((m) => m.id === metric)!;
 
   const table = useTable({
@@ -244,15 +254,17 @@ export function AnalyticsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
                 <div>
                   <h2 className="text-sm font-medium">
-                    {metricDef.label} {UNITS.find((u) => u.id === unit)!.label}
+                    {metricDef.label} {metric !== "parallelism" && UNITS.find((u) => u.id === unit)!.label}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {ROLLING_DAYS}-day rolling median
-                    {trend.dimension
-                      ? `, one line per ${trend.dimension}`
-                      : unit === "task" && grouping.some((g) => g !== "task")
-                        ? "; a task spans chores and models, so only Repo splits lines"
-                        : ""}
+                    {metric === "parallelism"
+                      ? `${ROLLING_DAYS}-day rolling average of sessions, and agents with sub-agents counted, making requests in the same 5-minute slot`
+                      : `${ROLLING_DAYS}-day rolling median` +
+                        (trend.dimension
+                          ? `, one line per ${trend.dimension}`
+                          : unit === "task" && grouping.some((g) => g !== "task")
+                            ? "; a task spans chores and models, so only Repo splits lines"
+                            : "")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-4">
@@ -263,7 +275,7 @@ export function AnalyticsPage() {
                       </Button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className={cn("flex items-center gap-1", metric === "parallelism" && "invisible")}>
                     {UNITS.map((u) => (
                       <Button key={u.id} size="sm" variant={unit === u.id ? "default" : "outline"} onClick={() => setUnit(u.id)}>
                         {u.label}

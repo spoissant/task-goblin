@@ -18,7 +18,7 @@ import {
   stopSession,
   toApi,
 } from "../services/claude-sessions";
-import { listSessionAnalytics } from "../services/session-usage";
+import { listDailyConcurrency, listSessionAnalytics } from "../services/session-usage";
 import { SESSION_EFFORTS, SESSION_MODELS } from "../../shared/types";
 import type { Routes } from "../router";
 
@@ -46,6 +46,14 @@ export const sessionRoutes: Routes = {
   "/api/v1/sessions/analytics": {
     async GET() {
       const items = await listSessionAnalytics();
+      return json({ items, total: items.length });
+    },
+  },
+
+  // Sessions and agents working in the same 5-minute slots, per day, for the parallelism trend.
+  "/api/v1/sessions/concurrency": {
+    async GET() {
+      const items = listDailyConcurrency();
       return json({ items, total: items.length });
     },
   },

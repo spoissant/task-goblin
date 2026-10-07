@@ -30,7 +30,7 @@ function TrendTooltip({
   return (
     <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
       <div className="text-muted-foreground mb-1">
-        {formatDay(label)} · {ROLLING_DAYS}-day median
+        {formatDay(label)} · {ROLLING_DAYS}-day rolling
       </div>
       {payload.map((p) => (
         <div key={String(p.dataKey)} className="flex items-center gap-2">

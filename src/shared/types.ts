@@ -214,9 +214,21 @@ export interface SessionAnalyticsRow {
   createdAt: string;
   costUsd: number | null;
   activeMs: number | null;
-  wallMs: number | null; // start to first terminal state; null while the session runs
   turnCount: number | null;
   subagentCount: number | null;
+}
+
+/**
+ * One day of session parallelism: how many 5-minute slots saw an API request,
+ * and how many (slot, session) and (slot, agent) pairs there were. Dividing the
+ * pairs by the slots gives the average number of sessions (or agents, sub-agents
+ * included) working at the same time while anything was working at all.
+ */
+export interface ConcurrencyDay {
+  day: string; // YYYY-MM-DD, UTC
+  slots: number;
+  sessionSlots: number;
+  agentSlots: number;
 }
 
 /** A session listed across tasks, carrying its task's title (null for PR reviews). */

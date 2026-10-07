@@ -13,7 +13,7 @@ import { eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessionRequests, claudeSessions, repositories, tasks } from "../../db/schema";
 import { now } from "../lib/timestamp";
-import type { SessionAnalyticsRow } from "../../shared/types";
+import type { ConcurrencyDay, SessionAnalyticsRow } from "../../shared/types";
 
 export function projectsDir(): string {
   return process.env.CLAUDE_PROJECTS_DIR ?? `${homedir()}/.claude/projects`;
@@ -280,8 +280,30 @@ export async function listSessionAnalytics(): Promise<SessionAnalyticsRow[]> {
     createdAt: s.createdAt,
     costUsd: s.costUsd,
     activeMs: s.activeMs,
-    wallMs: s.firstTerminalAt === null ? null : Date.parse(s.firstTerminalAt) - Date.parse(s.createdAt),
     turnCount: s.turnCount,
     subagentCount: s.subagentCount,
   }));
+}
+
+const SLOT_SECONDS = 300;
+
+/** Per day, the 5-minute slots with a request and the sessions and agents active in them. */
+export function listDailyConcurrency(): ConcurrencyDay[] {
+  return db.all<ConcurrencyDay>(sql`
+    with active as (
+      select substr(timestamp, 1, 10) as day,
+             cast(strftime('%s', timestamp) as integer) / ${SLOT_SECONDS} as slot,
+             session_id,
+             coalesce(agent_id, '') as agent
+      from claude_session_requests
+      group by 1, 2, 3, 4
+    )
+    select day,
+           count(distinct slot) as slots,
+           count(distinct slot || ':' || session_id) as sessionSlots,
+           count(*) as agentSlots
+    from active
+    group by day
+    order by day
+  `);
 }

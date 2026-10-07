@@ -1,6 +1,15 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { ClaudeSession, ListResponse, PaginatedResponse, RecentClaudeSession, SessionAnalyticsRow, SessionEffort, SessionModel } from "../types";
+import type {
+  ClaudeSession,
+  ConcurrencyDay,
+  ListResponse,
+  PaginatedResponse,
+  RecentClaudeSession,
+  SessionAnalyticsRow,
+  SessionEffort,
+  SessionModel,
+} from "../types";
 import { taskKeys } from "./tasks";
 
 export const sessionKeys = {
@@ -9,6 +18,7 @@ export const sessionKeys = {
   recent: (pagination: { limit: number; offset: number }) => [...sessionKeys.all, "recent", pagination] as const,
   reviews: () => [...sessionKeys.all, "reviews"] as const,
   analytics: () => [...sessionKeys.all, "analytics"] as const,
+  concurrency: () => [...sessionKeys.all, "concurrency"] as const,
   task: (taskId: number) => [...sessionKeys.all, "task", taskId] as const,
 };
 
@@ -34,6 +44,14 @@ export function useSessionAnalyticsQuery() {
   return useQuery({
     queryKey: sessionKeys.analytics(),
     queryFn: () => api.get<ListResponse<SessionAnalyticsRow>>("/sessions/analytics"),
+  });
+}
+
+/** Daily session and agent parallelism, for the analytics page. */
+export function useConcurrencyQuery() {
+  return useQuery({
+    queryKey: sessionKeys.concurrency(),
+    queryFn: () => api.get<ListResponse<ConcurrencyDay>>("/sessions/concurrency"),
   });
 }
 
