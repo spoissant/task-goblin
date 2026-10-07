@@ -23,8 +23,12 @@ export function useDevStackOverviewQuery() {
 }
 
 // Task stacks live under the task; task-less PR stacks are addressed by URL.
-const bootStack = (owner: DevStackOwner) =>
-  "taskId" in owner ? api.post<DevStack>(`/tasks/${owner.taskId}/dev-stack`) : api.post<DevStack>("/dev-stack/pr", owner);
+// withTaskIds merges those tasks' branches on top of the owner task's.
+type BootRequest = DevStackOwner & { withTaskIds?: number[] };
+const bootStack = ({ withTaskIds, ...owner }: BootRequest) =>
+  "taskId" in owner
+    ? api.post<DevStack>(`/tasks/${owner.taskId}/dev-stack`, withTaskIds && { withTaskIds })
+    : api.post<DevStack>("/dev-stack/pr", owner);
 const stopStack = (owner: DevStackOwner) =>
   "taskId" in owner ? api.delete<DevStack>(`/tasks/${owner.taskId}/dev-stack`) : api.post<DevStack>("/dev-stack/pr/stop", owner);
 const refreshStack = (owner: DevStackOwner) =>

@@ -117,6 +117,7 @@ export function TasksPage() {
             <BulkActionsBar
               selectedIds={Array.from(selectedIds)}
               sameRepo={sameRepo}
+              repositoryId={sameRepo ? (selectedTasks[0]?.repositoryId ?? null) : null}
               onClearSelection={() => setSelectedIds(new Set())}
               onRunChore={handleRunChoreForSelection}
             />
