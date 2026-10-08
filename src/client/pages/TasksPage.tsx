@@ -21,6 +21,7 @@ export function TasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [repoFilter, setRepoFilter] = useState<number | null>(null);
   const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
+  const [backlogOnly, setBacklogOnly] = useLocalStorage("tasksPage.backlogOnly", false);
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
   const [hideIdle, setHideIdle] = useLocalStorage("tasksPage.hideIdle", false);
@@ -73,10 +74,26 @@ export function TasksPage() {
             <Checkbox
               id="hide-low-priority"
               checked={hideLowPriority}
-              onCheckedChange={(checked) => setHideLowPriority(checked === true)}
+              onCheckedChange={(checked) => {
+                setHideLowPriority(checked === true);
+                if (checked === true) setBacklogOnly(false);
+              }}
             />
             <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
               Sprint view
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="backlog-only"
+              checked={backlogOnly}
+              onCheckedChange={(checked) => {
+                setBacklogOnly(checked === true);
+                if (checked === true) setHideLowPriority(false);
+              }}
+            />
+            <Label htmlFor="backlog-only" className="text-sm cursor-pointer whitespace-nowrap">
+              Backlog
             </Label>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -173,6 +190,7 @@ export function TasksPage() {
         onSelectionChange={setSelectedIds}
         titleFilter={titleFilter}
         hideLowPriority={hideLowPriority}
+        backlogOnly={backlogOnly}
         hideOnIce={hideOnIce}
         hideParents={hideParents}
         hideIdle={hideIdle}
