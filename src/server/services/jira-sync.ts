@@ -1,6 +1,5 @@
 import { eq, isNotNull } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
-import { convert as adfToMd } from "adf-to-md";
 import { db } from "../../db";
 import { tasks, settings } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
@@ -20,22 +19,6 @@ export class JiraApiError extends Error {
   }
 }
 
-function stringifyDescription(description: unknown): string | null {
-  if (!description) return null;
-  if (typeof description === "string") return description;
-  // ADF (Atlassian Document Format) - convert to markdown
-  try {
-    const _log = console.log;
-    console.log = () => {};
-    const { result } = adfToMd(description);
-    console.log = _log;
-    return result || null;
-  } catch {
-    // Fallback to JSON if conversion fails
-    return JSON.stringify(description);
-  }
-}
-
 function extractParent(issue: { fields: Record<string, unknown> }): { key: string; isEpic: boolean } | null {
   const parent = issue.fields.parent as { key?: string; fields?: { issuetype?: { name?: string } } } | undefined;
   if (!parent?.key) return null;
@@ -51,7 +34,6 @@ interface Sprint {
 
 interface IssueFields {
   summary?: string;
-  description?: unknown;
   status?: { name?: string };
   issuetype?: { name?: string };
   assignee?: { displayName?: string };
@@ -77,7 +59,6 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
   return {
     jiraKey: issue.key!,
     title: fields.summary || issue.key!,
-    description: stringifyDescription(fields.description),
     status: fields.status?.name || "todo",
     type: fields.issuetype?.name || null,
     assignee: fields.assignee?.displayName || null,
@@ -117,7 +98,6 @@ async function setSetting(key: string, value: string): Promise<void> {
 // given sync, and there are hundreds of them.
 const SYNCED_FIELDS = [
   "title",
-  "description",
   "status",
   "type",
   "assignee",
@@ -145,7 +125,6 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
       .update(tasks)
       .set({
         title: taskData.title,
-        description: taskData.description,
         status: taskData.status,
         type: taskData.type,
         assignee: taskData.assignee,
@@ -217,7 +196,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
   const syncedKeys = new Set<string>();
 
   // Build fields array, optionally including sprint field
-  const baseFields = ["summary", "description", "status", "issuetype", "assignee", "priority", "parent"];
+  const baseFields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
   const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
 
   // Keys already tracked locally. The delta and reconcile passes only ever
@@ -347,7 +326,7 @@ export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | 
   const client = getJiraClient(config);
 
   // Build fields array, optionally including sprint field
-  const baseFields = ["summary", "description", "status", "issuetype", "assignee", "priority", "parent"];
+  const baseFields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
   const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
 
   try {

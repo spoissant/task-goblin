@@ -24,7 +24,6 @@ import {
   fetchMyTeams,
   selectCodeownerTeams,
 } from "../services/github-teams";
-import { backfillDescriptions } from "../services/backfill-descriptions";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
 import type { Endpoints } from "@octokit/types";
@@ -196,13 +195,6 @@ export const githubRoutes: Routes = {
         }
         throw err;
       }
-    },
-  },
-
-  "/api/v1/backfill/descriptions": {
-    async POST() {
-      const result = await backfillDescriptions();
-      return json(result);
     },
   },
 

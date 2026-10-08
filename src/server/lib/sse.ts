@@ -47,8 +47,7 @@ export function autoBroadcast(pathname: string) {
     pathname.includes("/tasks") ||
     pathname.includes("/sync") ||
     pathname.includes("/deploy") ||
-    pathname.includes("/sync-branch") ||
-    pathname.includes("/backfill")
+    pathname.includes("/sync-branch")
   ) entity = "task";
   if (entity) broadcast(entity);
 }

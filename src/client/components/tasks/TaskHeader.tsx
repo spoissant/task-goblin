@@ -3,7 +3,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useUpdateTask } from "@/client/lib/queries";
 import { useSelectableStatusesQuery } from "@/client/lib/queries/settings";
-import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/client/components/ui/card";
 import { Input } from "@/client/components/ui/input";
 import { Textarea } from "@/client/components/ui/textarea";
 import {
@@ -48,7 +53,7 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
         onError: () => {
           toast.error("Failed to update task");
         },
-      }
+      },
     );
   };
 
@@ -75,7 +80,11 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Select value={task.status} onValueChange={onStatusChange} disabled={!!task.jiraKey}>
+            <Select
+              value={task.status}
+              onValueChange={onStatusChange}
+              disabled={!!task.jiraKey}
+            >
               <SelectTrigger className="w-36">
                 <SelectValue />
               </SelectTrigger>
@@ -97,45 +106,51 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
                 </Button>
               </>
             ) : !task.jiraKey ? (
-              <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setIsEditing(true)}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
             ) : null}
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        {isEditing ? (
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add a description..."
-            rows={3}
-          />
-        ) : task.description ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {task.description}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <p className="text-muted-foreground">No description</p>
-        )}
-      </CardContent>
+      {!task.jiraKey && (
+        <CardContent>
+          {isEditing ? (
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add a description..."
+              rows={3}
+            />
+          ) : task.description ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
+                {task.description}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No description</p>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

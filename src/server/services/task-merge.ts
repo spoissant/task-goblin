@@ -133,9 +133,6 @@ export async function mergeSingleTask(
     if (jiraTask.title && jiraTask.title !== prTask.headBranch) {
       mergedFields.title = jiraTask.title;
     }
-    if (jiraTask.description) {
-      mergedFields.description = jiraTask.description;
-    }
   }
 
   // The source's worktree moves to the target below; if the target already has
