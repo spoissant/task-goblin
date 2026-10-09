@@ -1,8 +1,8 @@
 /**
  * Trend math for the analytics page: one sample per session (or per task),
  * then a rolling median per series for every day of the viewed period; a
- * rolling average of sessions started per day; and a rolling average of
- * session and agent parallelism.
+ * rolling average per day (daily totals, or sessions started); and a rolling
+ * average of session and agent parallelism.
  *
  * Medians, not means: session cost is heavy-tailed and one big session would
  * swing a daily mean. Samples are dated by when the work ended, so a task's
@@ -11,7 +11,8 @@
 import type { ConcurrencyDay, SessionAnalyticsRow } from "./types";
 
 export type TrendMetric = "cost" | "active";
-export type TrendUnit = "session" | "task";
+/** "day" samples per session too: the daily average sums them. */
+export type TrendUnit = "session" | "task" | "day";
 /** Dimensions a line can be split on. Tasks live in one repo, so per-task series only split on repo. */
 export type TrendDimension = "model" | "effort" | "chore" | "repo";
 
@@ -65,7 +66,7 @@ export function trendSamples(
   unit: TrendUnit,
   dimension: TrendDimension | null,
 ): TrendSample[] {
-  if (unit === "session") {
+  if (unit !== "task") {
     return rows.flatMap((r) => {
       const value = sessionValue(r, metric);
       if (value === null) return [];
@@ -117,11 +118,11 @@ export function countSamples(rows: SessionAnalyticsRow[], dimension: TrendDimens
 }
 
 /**
- * Sessions started per day per series, averaged over the trailing window. The
- * window never reaches before `first` (the first session's day), so the
- * opening days aren't diluted by days with no data yet.
+ * Daily total per series (a count when every sample is 1), averaged over the
+ * trailing window. The window never reaches before `first` (the first
+ * session's day), so the opening days aren't diluted by days with no data yet.
  */
-export function rollingCount(samples: TrendSample[], series: string[], from: string, to: string, first: string): TrendPoint[] {
+export function rollingDailyAverage(samples: TrendSample[], series: string[], from: string, to: string, first: string): TrendPoint[] {
   const points: TrendPoint[] = [];
   for (let t = Date.parse(from); t <= Date.parse(to); t += DAY_MS) {
     const day = dayOf(new Date(t).toISOString());
@@ -129,7 +130,8 @@ export function rollingCount(samples: TrendSample[], series: string[], from: str
     const windowDays = (t - Date.parse(windowStart)) / DAY_MS + 1;
     const values: Record<string, number | null> = {};
     for (const name of series) {
-      values[name] = samples.filter((s) => s.series === name && s.day >= windowStart && s.day <= day).length / windowDays;
+      const inWindow = samples.filter((s) => s.series === name && s.day >= windowStart && s.day <= day);
+      values[name] = inWindow.reduce((sum, s) => sum + s.value, 0) / windowDays;
     }
     points.push({ day, values });
   }

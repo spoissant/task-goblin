@@ -38,7 +38,7 @@ import {
   median,
   pickSeries,
   rollingConcurrency,
-  rollingCount,
+  rollingDailyAverage,
   rollingMedian,
   trendSamples,
   type TrendDimension,
@@ -73,6 +73,7 @@ const METRICS: { id: Metric; label: string; format: (v: number | null) => string
 const UNITS: { id: TrendUnit; label: string }[] = [
   { id: "session", label: "per session" },
   { id: "task", label: "per task" },
+  { id: "day", label: "per day" },
 ];
 
 const NUMERIC = new Set(["sessions", "cost", "medianCost", "active", "medianActive", "turns", "subagents"]);
@@ -195,11 +196,12 @@ export function AnalyticsPage() {
     if (metric === "sessions") {
       const dimension = (grouping.find((g) => g !== "task") ?? null) as TrendDimension | null;
       const { series, samples } = pickSeries(countSamples(items, dimension));
-      return { dimension, series, points: rollingCount(samples, series, from, to, first) };
+      return { dimension, series, points: rollingDailyAverage(samples, series, from, to, first) };
     }
-    const dimension = (grouping.find((g) => g !== "task" && (unit === "session" || g === "repo")) ?? null) as TrendDimension | null;
+    const dimension = (grouping.find((g) => g !== "task" && (unit !== "task" || g === "repo")) ?? null) as TrendDimension | null;
     const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
-    return { dimension, series, points: rollingMedian(samples, series, from, to) };
+    const points = unit === "day" ? rollingDailyAverage(samples, series, from, to, first) : rollingMedian(samples, series, from, to);
+    return { dimension, series, points };
   }, [data, concurrency.data, grouping, metric, unit, days]);
   const metricDef = METRICS.find((m) => m.id === metric)!;
 
@@ -268,7 +270,7 @@ export function AnalyticsPage() {
                   <p className="text-xs text-muted-foreground">
                     {metric === "parallelism"
                       ? `${ROLLING_DAYS}-day rolling average of sessions, and agents with sub-agents counted, making requests in the same 5-minute slot`
-                      : `${ROLLING_DAYS}-day rolling ${metric === "sessions" ? "average" : "median"}` +
+                      : `${ROLLING_DAYS}-day rolling ${metric === "sessions" || unit === "day" ? "average" : "median"}` +
                         (trend.dimension
                           ? `, one line per ${trend.dimension}`
                           : metric !== "sessions" && unit === "task" && grouping.some((g) => g !== "task")
