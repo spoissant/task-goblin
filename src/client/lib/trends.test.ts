@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionAnalyticsRow } from "../../shared/types";
-import { ALL_SERIES, OTHER_SERIES, pickSeries, rollingConcurrency, rollingMedian, trendSamples } from "./trends";
+import {
+  ALL_SERIES,
+  OTHER_SERIES,
+  countSamples,
+  pickSeries,
+  rollingConcurrency,
+  rollingCount,
+  rollingMedian,
+  trendSamples,
+} from "./trends";
 
 function row(over: Partial<SessionAnalyticsRow>): SessionAnalyticsRow {
   return {
@@ -86,5 +95,22 @@ describe("rollingMedian", () => {
     expect(points[6].values.A).toBe(5); // Oct 7 still sees Oct 1 and 2
     expect(points[7].values.A).toBe(7); // Oct 8 only sees Oct 2
     expect(points[8].values.A).toBeNull();
+  });
+});
+
+describe("rollingCount", () => {
+  test("averages sessions per day over the trailing 7 days, never before the first day", () => {
+    const rows = [
+      row({ chore: "A", createdAt: "2026-10-01T10:00:00.000Z" }),
+      row({ chore: "A", createdAt: "2026-10-02T10:00:00.000Z" }),
+      row({ chore: "A", createdAt: "2026-10-02T11:00:00.000Z" }),
+      row({ chore: "B", createdAt: "2026-10-02T12:00:00.000Z" }),
+    ];
+    const points = rollingCount(countSamples(rows, "chore"), ["A", "B"], "2026-10-01", "2026-10-09", "2026-10-01");
+    expect(points[0].values).toEqual({ A: 1, B: 0 });
+    expect(points[1].values).toEqual({ A: 1.5, B: 0.5 }); // two days of data so far
+    expect(points[6].values.A).toBeCloseTo(3 / 7); // Oct 7 sees Oct 1 to 7
+    expect(points[7].values.A).toBeCloseTo(2 / 7); // Oct 8 only sees Oct 2
+    expect(points[8].values).toEqual({ A: 0, B: 0 });
   });
 });

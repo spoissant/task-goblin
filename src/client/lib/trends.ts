@@ -1,7 +1,8 @@
 /**
  * Trend math for the analytics page: one sample per session (or per task),
- * then a rolling median per series for every day of the viewed period; and a
- * rolling average of session and agent parallelism.
+ * then a rolling median per series for every day of the viewed period; a
+ * rolling average of sessions started per day; and a rolling average of
+ * session and agent parallelism.
  *
  * Medians, not means: session cost is heavy-tailed and one big session would
  * swing a daily mean. Samples are dated by when the work ended, so a task's
@@ -104,6 +105,31 @@ export function rollingMedian(samples: TrendSample[], series: string[], from: st
     const values: Record<string, number | null> = {};
     for (const name of series) {
       values[name] = median(samples.filter((s) => s.series === name && s.day >= windowStart && s.day <= day).map((s) => s.value));
+    }
+    points.push({ day, values });
+  }
+  return points;
+}
+
+/** One sample per session started, for counting. */
+export function countSamples(rows: SessionAnalyticsRow[], dimension: TrendDimension | null): TrendSample[] {
+  return rows.map((r) => ({ day: dayOf(r.createdAt), series: dimension ? (r[dimension] ?? "—") : ALL_SERIES, value: 1 }));
+}
+
+/**
+ * Sessions started per day per series, averaged over the trailing window. The
+ * window never reaches before `first` (the first session's day), so the
+ * opening days aren't diluted by days with no data yet.
+ */
+export function rollingCount(samples: TrendSample[], series: string[], from: string, to: string, first: string): TrendPoint[] {
+  const points: TrendPoint[] = [];
+  for (let t = Date.parse(from); t <= Date.parse(to); t += DAY_MS) {
+    const day = dayOf(new Date(t).toISOString());
+    const windowStart = [first, dayOf(new Date(t - (ROLLING_DAYS - 1) * DAY_MS).toISOString())].sort().at(-1)!;
+    const windowDays = (t - Date.parse(windowStart)) / DAY_MS + 1;
+    const values: Record<string, number | null> = {};
+    for (const name of series) {
+      values[name] = samples.filter((s) => s.series === name && s.day >= windowStart && s.day <= day).length / windowDays;
     }
     points.push({ day, values });
   }

@@ -32,11 +32,13 @@ import { TrendChart } from "@/client/components/analytics/TrendChart";
 import {
   CONCURRENCY_SERIES,
   ROLLING_DAYS,
+  countSamples,
   dayOf,
   daysAgo,
   median,
   pickSeries,
   rollingConcurrency,
+  rollingCount,
   rollingMedian,
   trendSamples,
   type TrendDimension,
@@ -59,11 +61,12 @@ const PERIODS = [
   { days: null, label: "All" },
 ] as const;
 
-type Metric = TrendMetric | "parallelism";
+type Metric = TrendMetric | "sessions" | "parallelism";
 
 const METRICS: { id: Metric; label: string; format: (v: number | null) => string }[] = [
   { id: "cost", label: "Cost", format: formatCost },
   { id: "active", label: "Active time", format: formatActive },
+  { id: "sessions", label: "Sessions", format: (v) => (v === null ? "—" : `${v.toFixed(1)}/day`) },
   { id: "parallelism", label: "Parallelism", format: (v) => (v === null ? "—" : `${v.toFixed(1)}×`) },
 ];
 
@@ -178,6 +181,7 @@ export function AnalyticsPage() {
 
   // Lines split on the first grouped dimension (never task: one line per task is noise).
   // The rolling window reads every session, so the first days of a period are full medians.
+  // Sessions counts starts per day, split like per-session lines.
   // Parallelism is global: always the same two lines, sessions and agents.
   const trend = useMemo(() => {
     const items = data?.items ?? [];
@@ -187,6 +191,11 @@ export function AnalyticsPage() {
     const to = dayOf(new Date().toISOString());
     if (metric === "parallelism") {
       return { dimension: null, series: [...CONCURRENCY_SERIES], points: rollingConcurrency(concurrency.data?.items ?? [], from, to) };
+    }
+    if (metric === "sessions") {
+      const dimension = (grouping.find((g) => g !== "task") ?? null) as TrendDimension | null;
+      const { series, samples } = pickSeries(countSamples(items, dimension));
+      return { dimension, series, points: rollingCount(samples, series, from, to, first) };
     }
     const dimension = (grouping.find((g) => g !== "task" && (unit === "session" || g === "repo")) ?? null) as TrendDimension | null;
     const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
@@ -254,15 +263,15 @@ export function AnalyticsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
                 <div>
                   <h2 className="text-sm font-medium">
-                    {metricDef.label} {metric !== "parallelism" && UNITS.find((u) => u.id === unit)!.label}
+                    {metricDef.label} {metric === "sessions" ? "started per day" : metric !== "parallelism" && UNITS.find((u) => u.id === unit)!.label}
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     {metric === "parallelism"
                       ? `${ROLLING_DAYS}-day rolling average of sessions, and agents with sub-agents counted, making requests in the same 5-minute slot`
-                      : `${ROLLING_DAYS}-day rolling median` +
+                      : `${ROLLING_DAYS}-day rolling ${metric === "sessions" ? "average" : "median"}` +
                         (trend.dimension
                           ? `, one line per ${trend.dimension}`
-                          : unit === "task" && grouping.some((g) => g !== "task")
+                          : metric !== "sessions" && unit === "task" && grouping.some((g) => g !== "task")
                             ? "; a task spans chores and models, so only Repo splits lines"
                             : "")}
                   </p>
@@ -275,7 +284,7 @@ export function AnalyticsPage() {
                       </Button>
                     ))}
                   </div>
-                  <div className={cn("flex items-center gap-1", metric === "parallelism" && "invisible")}>
+                  <div className={cn("flex items-center gap-1", (metric === "parallelism" || metric === "sessions") && "invisible")}>
                     {UNITS.map((u) => (
                       <Button key={u.id} size="sm" variant={unit === u.id ? "default" : "outline"} onClick={() => setUnit(u.id)}>
                         {u.label}
