@@ -1,0 +1,103 @@
+{
+  "deniedMcpServers": [
+    {
+      "serverName": "claude.ai Asana"
+    },
+    {
+      "serverName": "claude.ai Atlassian (2)"
+    },
+    {
+      "serverName": "claude.ai Beehive"
+    },
+    {
+      "serverName": "claude.ai Booking.com"
+    },
+    {
+      "serverName": "claude.ai Costory"
+    },
+    {
+      "serverName": "claude.ai Excalidraw"
+    },
+    {
+      "serverName": "claude.ai Fathom"
+    },
+    {
+      "serverName": "claude.ai Gmail"
+    },
+    {
+      "serverName": "claude.ai Google Calendar"
+    },
+    {
+      "serverName": "claude.ai Google Cloud BigQuery"
+    },
+    {
+      "serverName": "claude.ai Google Drive"
+    },
+    {
+      "serverName": "claude.ai Google Sheets"
+    },
+    {
+      "serverName": "claude.ai HB4HB"
+    },
+    {
+      "serverName": "claude.ai HB4HB User"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Admin Mcp (barney env)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Admin Mcp (eusandbox / preprod)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Admin Mcp (integration env)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Admin Mcp (ussandbox)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Admin Mcp (wip env)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Community"
+    },
+    {
+      "serverName": "claude.ai Hivebrite Community (User)"
+    },
+    {
+      "serverName": "claude.ai Hivebrite MCP Admin Staging"
+    },
+    {
+      "serverName": "claude.ai Linear"
+    },
+    {
+      "serverName": "claude.ai Lovable"
+    },
+    {
+      "serverName": "claude.ai Mermaid Chart"
+    },
+    {
+      "serverName": "claude.ai Mesmer"
+    },
+    {
+      "serverName": "claude.ai Omni Analytics"
+    },
+    {
+      "serverName": "claude.ai Planhat"
+    },
+    {
+      "serverName": "claude.ai Postman"
+    },
+    {
+      "serverName": "claude.ai ProductBoard (beta)"
+    },
+    {
+      "serverName": "claude.ai Sentry"
+    },
+    {
+      "serverName": "claude.ai Tray AI"
+    },
+    {
+      "serverName": "claude.ai Vanta"
+    }
+  ]
+}

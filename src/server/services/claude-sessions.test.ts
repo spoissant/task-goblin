@@ -10,6 +10,7 @@ import { pollActiveSessions, reapIdleProcesses, setCapacityCheck, syncProcessLiv
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
+const CHORE_SETTINGS = `${import.meta.dir}/chore-session-settings.json`;
 const MAIN_PATH = `${import.meta.dir}/../../..`; // any existing directory works as the "main checkout"
 
 describe("claude sessions", () => {
@@ -98,8 +99,8 @@ describe("claude sessions", () => {
 
       await new Promise((r) => setTimeout(r, 50));
       expect(commands.filter((c) => c.startsWith("claude --bg"))).toEqual([
-        "claude --bg --rc --name alumni_connect#42 · Code review /chore-code-review-pr https://github.com/HB/alumni_connect/pull/42",
-        "claude --bg --rc --name alumni_connect#43 · Code review /chore-code-review-pr https://github.com/hb/alumni_connect/pull/43",
+        `claude --bg --rc --name alumni_connect#42 · Code review --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/HB/alumni_connect/pull/42`,
+        `claude --bg --rc --name alumni_connect#43 · Code review --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/hb/alumni_connect/pull/43`,
       ]);
 
       const list = await (await request("GET", "/api/v1/review-sessions")).json();
@@ -128,7 +129,7 @@ describe("claude sessions", () => {
     // let the background start run
     await new Promise((r) => setTimeout(r, 50));
     const spawn = commands.find((c) => c.startsWith("claude --bg"));
-    expect(spawn).toBe("claude --bg --rc --name EV-1 · Request Code Reviews /chore-request-reviews 1");
+    expect(spawn).toBe(`claude --bg --rc --name EV-1 · Request Code Reviews --settings ${CHORE_SETTINGS} /chore-request-reviews 1`);
 
     let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("working");

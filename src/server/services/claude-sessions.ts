@@ -315,6 +315,12 @@ export async function runStart(sessionId: number): Promise<void> {
   }
 }
 
+/**
+ * Chores never call most claude.ai connectors, yet each one's deferred tool
+ * names ride on every API call. Custom prompts keep them all.
+ */
+const CHORE_SESSION_SETTINGS = `${import.meta.dir}/chore-session-settings.json`;
+
 async function spawnGated(sessionId: number, cwd: string): Promise<void> {
   const row = await getRow(sessionId);
   if (!row || (row.state !== "preparing" && row.state !== "queued")) return; // stopped meanwhile
@@ -331,6 +337,7 @@ async function spawnGated(sessionId: number, cwd: string): Promise<void> {
     prompt: row.prompt,
     model: row.model,
     effort: row.effort,
+    settings: row.choreKey === CUSTOM_CHORE.key ? undefined : CHORE_SESSION_SETTINGS,
   });
   if ("error" in spawned) {
     await updateRow(sessionId, { state: "failed", cwd, error: spawned.error });

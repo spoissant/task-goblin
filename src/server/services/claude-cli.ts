@@ -64,6 +64,8 @@ export interface SpawnOptions {
   model?: string | null;
   /** `--effort` level; omitted falls back to the CLI default. */
   effort?: string | null;
+  /** `--settings` file layered over the user's settings for this session only. */
+  settings?: string;
 }
 
 /** Start a background session with Remote Control in `cwd`. */
@@ -72,6 +74,7 @@ export async function spawnBackground(opts: SpawnOptions): Promise<SpawnResult> 
   const args = ["--bg", "--rc", "--name", opts.name];
   if (opts.model) args.push("--model", opts.model);
   if (opts.effort) args.push("--effort", opts.effort);
+  if (opts.settings) args.push("--settings", opts.settings);
   args.push(opts.prompt);
   const result = await runCommand("claude", args, {
     cwd: opts.cwd,
