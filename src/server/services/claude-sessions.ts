@@ -430,6 +430,11 @@ export async function pollActiveSessions(): Promise<void> {
     }
 
     const nextState = effectiveState(job);
+    // A finished run whose idle process dies later (e.g. its worktree was reaped) stays done.
+    if (row.state === "done" && nextState === "failed") {
+      await updateRow(row.id, { processStoppedAt: now() });
+      continue;
+    }
     const updates: Partial<SessionRow> = {};
     if (nextState && nextState !== row.state) updates.state = nextState;
     if ((job.detail ?? null) !== row.detail) updates.detail = job.detail ?? null;

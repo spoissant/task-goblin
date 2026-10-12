@@ -294,6 +294,29 @@ describe("claude sessions", () => {
     expect(list.items[0].state).toBe("working");
   });
 
+  it("keeps a finished session done when its idle process later crashes", async () => {
+    await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
+    await new Promise((r) => setTimeout(r, 50));
+    writeState("abcd1234", { state: "working", tempo: "idle", detail: "pushed", updatedAt: "2026-01-01T00:01:00.000Z" });
+    await pollActiveSessions();
+    let row = (await (await request("GET", "/api/v1/tasks/1/sessions")).json()).items[0];
+    expect(row.state).toBe("done");
+    const finishedAt = row.firstTerminalAt;
+
+    // worktree reaped under the still-alive process: the daemon settles it as crashed
+    writeState("abcd1234", {
+      state: "failed",
+      tempo: "idle",
+      detail: "working directory no longer exists or is not accessible: /wt",
+      updatedAt: "2026-01-01T01:15:00.000Z",
+      firstTerminalAt: "2026-01-01T01:15:00.000Z",
+    });
+    await pollActiveSessions();
+    row = (await (await request("GET", "/api/v1/tasks/1/sessions")).json()).items[0];
+    expect(row).toMatchObject({ state: "done", detail: "pushed", firstTerminalAt: finishedAt });
+    expect(row.processStoppedAt).not.toBeNull();
+  });
+
   it("marks a session failed when state.json never appears and the daemon does not know it", async () => {
     await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
     await new Promise((r) => setTimeout(r, 50));
