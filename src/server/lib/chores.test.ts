@@ -81,3 +81,23 @@ describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
     expect(keys).not.toContain("ai-qa");
   });
 });
+
+describe("getChores — chore 10 request-reviews", () => {
+  it("suggests request-reviews for an open, ready PR short of approvals", async () => {
+    const task = await seedTask();
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("request-reviews");
+  });
+
+  it("stops suggesting request-reviews once its chore skip is set", async () => {
+    const task = await seedTask();
+    await db.update(tasks).set({ choreSkips: JSON.stringify({ "request-reviews": true }) }).where(eq(tasks.id, task.id));
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).not.toContain("request-reviews");
+    expect(keys).toContain("continue-work");
+  });
+});
