@@ -68,6 +68,8 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
   const details = parseChecksDetails(checksDetails);
   const { passed, total } = countChecks(details);
   const countText = total > 0 ? `${passed}/${total}` : null;
+  // The status icon only counts required checks when the repo has any; mark the rest.
+  const hasRequired = details.some((check) => check.isRequired);
   if (details.length === 0) {
     const content = <span className="inline-flex">{icon}</span>;
     return prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{content}</a> : content;
@@ -104,6 +106,7 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
               ) : (
                 <span className="truncate max-w-[200px]">{check.name}</span>
               )}
+              {hasRequired && !check.isRequired && <span className="text-muted-foreground">optional</span>}
             </div>
           ))}
         </div>

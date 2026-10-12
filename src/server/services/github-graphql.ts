@@ -16,12 +16,15 @@ export interface GqlCheckRun {
   detailsUrl: string | null;
   startedAt: string | null;
   databaseId: number | null;
+  /** Whether branch protection requires this check on the PR. */
+  isRequired?: boolean;
 }
 
 export interface GqlStatusContext {
   context: string;
   state: string;
   targetUrl: string | null;
+  isRequired?: boolean;
 }
 
 export interface GqlPrCore {
@@ -197,19 +200,25 @@ const REVIEW_INFO_FIELDS = `
 // re-run check), which would let a failing run go unseen. `checkSuites`
 // matches REST's checks.listForRef exactly. It's also the expensive half of
 // the fetch, which is why it's issued as its own concurrent query.
-const CHECK_FIELDS = `
+// `isRequired` takes the PR number, so the fields are built per PR. It's a
+// scalar, so it adds nothing to the query's rate-limit cost.
+const checkFields = (number: number) => `
   number
   commits(last: 1) { nodes { commit {
     checkSuites(first: 50) { nodes { checkRuns(first: 100) {
-      nodes { name status conclusion detailsUrl startedAt databaseId }
+      nodes { name status conclusion detailsUrl startedAt databaseId isRequired(pullRequestNumber: ${number}) }
     } } }
-    status { contexts { context state targetUrl } }
+    status { contexts { context state targetUrl isRequired(pullRequestNumber: ${number}) } }
   } } }`;
 
-function buildPrQuery(groups: Array<{ owner: string; repo: string; numbers: number[] }>, fields: string): string {
+function buildPrQuery(
+  groups: Array<{ owner: string; repo: string; numbers: number[] }>,
+  fields: string | ((number: number) => string)
+): string {
+  const fieldsFor = typeof fields === "string" ? () => fields : fields;
   const repoBlocks = groups.map(
     (g, ri) => `  r${ri}: repository(owner: ${lit(g.owner)}, name: ${lit(g.repo)}) {
-${g.numbers.map((n, i) => `    p${i}: pullRequest(number: ${n}) { ${fields} }`).join("\n")}
+${g.numbers.map((n, i) => `    p${i}: pullRequest(number: ${n}) { ${fieldsFor(n)} }`).join("\n")}
   }`
   );
   return `query {\n${repoBlocks.join("\n")}\n}`;
@@ -284,7 +293,7 @@ export async function fetchPullRequestChecks(
     const groups = groupByRepo(batch);
     const data = await graphqlPartial<Record<string, Record<string, any>>>(
       client,
-      buildPrQuery(groups, CHECK_FIELDS)
+      buildPrQuery(groups, checkFields)
     );
 
     groups.forEach((g, ri) => {
@@ -475,7 +484,10 @@ ${reqs
 /**
  * Aggregate check runs and commit statuses into the stored checks summary.
  * Mirrors the previous REST implementation, including its treatment of commit
- * statuses, so existing `checksDetails` payloads stay byte-compatible.
+ * statuses. Every check stays in `checksDetails`, flagged `isRequired`, but
+ * `checksStatus` only counts the required ones, so an advisory check failing
+ * alone doesn't mark the PR failing. With no required check (none configured,
+ * or none reported yet) every check counts.
  */
 export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
   if (!checks || (checks.checkRuns.length === 0 && checks.statusContexts.length === 0)) {
@@ -503,6 +515,7 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
     status: run.status.toLowerCase(),
     conclusion: run.conclusion ? run.conclusion.toLowerCase() : null,
     url: run.detailsUrl ?? null,
+    isRequired: !!run.isRequired,
   }));
 
   const statusDetails = checks.statusContexts.map((status) => {
@@ -512,6 +525,7 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
       status: state === "pending" ? "in_progress" : "completed",
       conclusion: state === "success" ? "success" : state === "pending" ? null : "failure",
       url: status.targetUrl ?? null,
+      isRequired: !!status.isRequired,
     };
   });
 
@@ -521,8 +535,10 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
   for (const detail of checkRunDetails) byName.set(detail.name, detail);
   const details = [...byName.values()];
 
-  const hasFailed = details.some((d) => d.conclusion === "failure" || d.conclusion === "timed_out");
-  const hasPending = details.some((d) => d.status !== "completed");
+  const required = details.filter((d) => d.isRequired);
+  const counted = required.length > 0 ? required : details;
+  const hasFailed = counted.some((d) => d.conclusion === "failure" || d.conclusion === "timed_out");
+  const hasPending = counted.some((d) => d.status !== "completed");
 
   return {
     checksStatus: hasFailed ? "failing" : hasPending ? "pending" : "passing",

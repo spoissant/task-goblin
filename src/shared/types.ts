@@ -6,6 +6,7 @@ export interface CheckDetail {
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
   url: string | null;
+  isRequired?: boolean; // absent on details synced before required checks were tracked
 }
 
 // Unified Task - can be manual, Jira-only, PR-only, or merged
