@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
 import { sqlite } from "../../db";
 import { createTestTables } from "../../test/createSchema";
-import { appendFileSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, rmSync } from "fs";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import {
+  blockingNodeModules,
   bootDevStack,
   devStackLoginLink,
   devStackSettled,
@@ -30,6 +31,8 @@ describe("dev stack", () => {
   let conflictOn: string | null = null; // branch whose merge conflicts
   const killTreeCalls: number[] = [];
   const spawnedCommands: string[] = [];
+  const exits: ((code: number) => void)[] = []; // resolves each spawned boot process
+  let bootOutput = ""; // written to the log by each spawn
   const LOG = process.env.DEV_STACK_LOG!;
   const COMPILED_LINE = "\n  \u001b[32m✓\u001b[39m Compiled successfully 14.97s\n";
   const STORYBOOK_LINE = "\n╭──────────╮\n│  Storybook ready!  │\n";
@@ -48,6 +51,8 @@ describe("dev stack", () => {
     conflictOn = null;
     killTreeCalls.length = 0;
     spawnedCommands.length = 0;
+    exits.length = 0;
+    bootOutput = "";
     for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
@@ -81,7 +86,8 @@ describe("dev stack", () => {
         alive = true;
         // Boot truncates the log first, so the ready line goes in here when the test wants it.
         if (compiled) appendFileSync(logPath, command.includes("storybook") ? STORYBOOK_LINE : COMPILED_LINE);
-        return { pid: 4000 + spawned, exited: new Promise<number>(() => {}) };
+        if (bootOutput) appendFileSync(logPath, bootOutput);
+        return { pid: 4000 + spawned, exited: new Promise<number>((resolve) => exits.push(resolve)) };
       },
       isAlive: () => alive,
       async killTree(pid) {
@@ -196,6 +202,46 @@ describe("dev stack", () => {
     expect(commands).toContain("git switch main");
     expect((await getDevStackStatus({ taskId: 3 })).stack).toBeNull();
     expect((await getDevStackStatus({ taskId: 1 })).stack?.state).toBe("up");
+  });
+
+  // pnpm's error as it lands in the log: coloured, with long paths wrapped over indented lines.
+  const symlinkFailure = (path: string) =>
+    "\u001b[31m ERR_PNPM_PACKAGE_MANAGER_SYMLINK_FAILED\u001b[0m\n\n  × installing dependencies\n" +
+    `  ╰─▶ Failed to symlink "@types/node": Failed to create symlink at "${path.slice(0, 30)}\n\u001b[31m      \u001b[0m${path.slice(30)}" to "/elsewhere": Directory not empty (os error 66)\n`;
+
+  it("finds the node_modules directory that blocked pnpm's symlink, only inside the checkout", () => {
+    const blocked = `${MAIN}/packages/tooling/tsconfig/node_modules/@types/node`;
+    expect(blockingNodeModules(MAIN, symlinkFailure(blocked))).toBe(`${MAIN}/packages/tooling/tsconfig/node_modules`);
+    expect(blockingNodeModules(MAIN, symlinkFailure("/tmp/other/node_modules/@types/node"))).toBeNull();
+    expect(blockingNodeModules(MAIN, symlinkFailure(`${MAIN}/packages/tooling/tsconfig/src`))).toBeNull();
+    expect(blockingNodeModules(MAIN, "ERR_PNPM_FROZEN_LOCKFILE")).toBeNull();
+  });
+
+  it("removes the node_modules that blocked pnpm and boots once more", async () => {
+    const dir = `${MAIN}/logs/dev-stack-test-pkg/node_modules`;
+    mkdirSync(`${dir}/@types/node`, { recursive: true });
+    bootOutput = symlinkFailure(`${dir}/@types/node`);
+    try {
+      await bootDevStack({ taskId: 3 });
+      await Bun.sleep(30);
+      exits[0](1);
+      await Bun.sleep(30);
+      expect(existsSync(dir)).toBe(false);
+      expect(commands).toContain(`git ls-files -- ${dir}`);
+      expect(spawned).toBe(2);
+      let { stack } = await getDevStackStatus({ taskId: 3 });
+      expect(stack).toMatchObject({ state: "starting", pid: 4002 });
+      expect(stack?.logTail).toContain(`removed ${dir}`);
+
+      // Only once: the second failure fails the stack.
+      exits[1](1);
+      await Bun.sleep(30);
+      ({ stack } = await getDevStackStatus({ taskId: 3 }));
+      expect(stack?.state).toBe("failed");
+      expect(spawned).toBe(2);
+    } finally {
+      rmSync(`${MAIN}/logs/dev-stack-test-pkg`, { recursive: true, force: true });
+    }
   });
 
   it("refuses a dirty main checkout", async () => {

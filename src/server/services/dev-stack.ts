@@ -20,8 +20,8 @@
  * HARDCODED per repository: alumni_connect mirrors the `hbup` zsh alias and
  * the repo's bin/dev tooling; front-monorepo runs Storybook.
  */
-import { appendFileSync, closeSync, mkdirSync, openSync } from "fs";
-import { dirname } from "path";
+import { appendFileSync, closeSync, mkdirSync, openSync, rmSync } from "fs";
+import { dirname, join, relative, resolve, sep } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, settings } from "../../db/schema";
@@ -491,20 +491,64 @@ async function runBoot(cfg: StackConfig, stored: StoredStack, mainPath: string):
     const { pid, exited } = runtime.spawn(mainPath, cfg.boot, cfg.logPath);
     const booting: StoredStack = { ...stored, pid, detail: cfg.bootDetail };
     await saveStack(cfg, booting);
-    watchExit(cfg, pid, exited);
+    watchExit(cfg, pid, exited, mainPath);
     await waitUntilReady(cfg, booting, mainPath);
   } catch (err) {
     await fail(err instanceof Error ? err.message : String(err));
   }
 }
 
-/** A boot process that ends on its own (while starting or up) means the stack is broken. */
-function watchExit(cfg: StackConfig, pid: number, exited: Promise<number>): void {
+/**
+ * A boot process that ends on its own (while starting or up) means the stack
+ * is broken. A boot that pnpm failed on a blocking node_modules directory is
+ * cleared and retried once.
+ */
+function watchExit(cfg: StackConfig, pid: number, exited: Promise<number>, mainPath: string, retried = false): void {
   void exited.then(async (code) => {
     const current = await loadStack(cfg);
     if (current?.pid !== pid || (current.state !== "up" && current.state !== "starting")) return; // stopped by us, or superseded
+    if (!retried && current.state === "starting" && code !== 0 && (await clearBlockingNodeModules(cfg, mainPath))) {
+      const latest = await loadStack(cfg);
+      if (latest?.pid !== pid || latest.state !== "starting") return; // stopped while clearing
+      const next = runtime.spawn(mainPath, cfg.boot, cfg.logPath);
+      const booting: StoredStack = { ...latest, pid: next.pid };
+      await saveStack(cfg, booting);
+      watchExit(cfg, next.pid, next.exited, mainPath, true);
+      track(waitUntilReady(cfg, booting, mainPath));
+      return;
+    }
     await saveStack(cfg, { ...current, state: "failed", detail: null, error: `Boot process exited with code ${code}; see log` });
   });
+}
+
+/**
+ * pnpm can't symlink a dependency where a real directory sits (e.g. a
+ * package's node_modules left by an older install). Its error names the
+ * symlink path; the first node_modules directory on that path, inside the
+ * checkout, is what blocks it. Null when the log has no such error.
+ */
+export function blockingNodeModules(checkout: string, log: string): string | null {
+  if (!log.includes("ERR_PNPM_PACKAGE_MANAGER_SYMLINK_FAILED")) return null;
+  // pnpm wraps long paths over indented, coloured lines.
+  const text = log.replace(/\u001b\[[0-9;]*m/g, "").replace(/\n */g, "");
+  const at = /Failed to create symlink at "([^"]+)"/.exec(text)?.[1];
+  if (!at) return null;
+  const root = resolve(expandPath(checkout));
+  const parts = relative(root, resolve(root, at)).split(sep);
+  const i = parts.indexOf("node_modules");
+  if (parts[0] === ".." || i < 0) return null;
+  return join(root, ...parts.slice(0, i + 1));
+}
+
+/** Remove the untracked node_modules directory pnpm's error names; true when one was removed. */
+async function clearBlockingNodeModules(cfg: StackConfig, mainPath: string): Promise<boolean> {
+  const dir = blockingNodeModules(mainPath, await readLog(cfg));
+  if (!dir) return false;
+  const tracked = await runGit(mainPath, ["ls-files", "--", dir]);
+  if (tracked.exitCode !== 0 || tracked.stdout.trim() !== "") return false;
+  rmSync(dir, { recursive: true, force: true });
+  appendLog(cfg, `# ${now()} removed ${dir} (it blocked pnpm's symlink); booting again\n$ ${cfg.boot}`);
+  return true;
 }
 
 /**
