@@ -342,6 +342,12 @@ export async function refreshWorktreeGitStatuses(): Promise<void> {
   for (const row of rows) await refreshGitStatus(row);
 }
 
+/** Refresh one task's worktree git status, e.g. after a single-task sync. */
+export async function refreshTaskGitStatus(taskId: number): Promise<void> {
+  const row = await getTaskWorktreeRow(taskId);
+  if (row) await refreshGitStatus(row);
+}
+
 /** Push the worktree's branch to origin (setting upstream), then refresh its status. */
 export async function pushTaskWorktree(taskId: number): Promise<void> {
   const row = await getTaskWorktreeRow(taskId);

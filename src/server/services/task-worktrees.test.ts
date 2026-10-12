@@ -225,6 +225,20 @@ describe("task worktree routes", () => {
     expect(await getTaskWorktreeRow(1)).toBeNull();
   });
 
+  it("recounts a task's uncommitted files and unpushed commits on demand", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const path = mkdtempSync(join(tmpdir(), "tg-wt-"));
+    sqlite.exec(`UPDATE tasks SET uncommitted_files = 573, unpushed_commits = 2 WHERE id = 1`);
+    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+      VALUES (1, 1, '${path}', 'ready', ${ts}, ${ts})`);
+    setCommandRunner(async (_cmd, args) => ok(args[0] === "rev-list" ? "0" : ""));
+
+    const res = await request("POST", "/api/v1/tasks/1/worktree/git-status");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: 1, uncommittedFiles: 0, unpushedCommits: 0 });
+  });
+
   it("tears down the stack of a deleted task even when its worktree folder is gone", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");

@@ -8,6 +8,7 @@ import { getTaskOrThrow } from "../lib/queries";
 import {
   getTaskWorktreeStatus,
   pushTaskWorktree,
+  refreshTaskGitStatus,
   removeTaskWorktree,
   startTaskWorktreePreparation,
 } from "../services/task-worktrees";
@@ -82,6 +83,16 @@ export const taskWorktreeRoutes: Routes = {
     async POST(_req, params) {
       const id = parseId(params.id);
       await pushTaskWorktree(id);
+      return json(await getTaskOrThrow(id));
+    },
+  },
+
+  // Recount the worktree's uncommitted files and unpushed commits now, instead of on the next GitHub sync.
+  "/api/v1/tasks/:id/worktree/git-status": {
+    async POST(_req, params) {
+      const id = parseId(params.id);
+      await getTaskOrThrow(id);
+      await refreshTaskGitStatus(id);
       return json(await getTaskOrThrow(id));
     },
   },

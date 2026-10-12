@@ -157,7 +157,7 @@ export function registerTaskTools(server: McpServer) {
     "sync_task",
     {
       description:
-        "Sync a single task from its sources: re-pulls its Jira issue and GitHub PR (whichever it has). " +
+        "Sync a single task from its sources: re-pulls its Jira issue and GitHub PR (whichever it has), and recounts its worktree's uncommitted files and unpushed commits. " +
         "A task without a PR gets the PR opened from its branch (headBranch or worktree branch) linked. " +
         "Located by ID, Jira key, PR number, or branch name. Returns the refreshed task.",
       inputSchema: {
@@ -200,6 +200,12 @@ export function registerTaskTools(server: McpServer) {
           } catch (err) {
             errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
           }
+        }
+
+        try {
+          await post(`/api/v1/tasks/${taskId}/worktree/git-status`);
+        } catch (err) {
+          errors.push(`Git status: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         const refreshed = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
