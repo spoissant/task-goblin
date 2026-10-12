@@ -158,6 +158,7 @@ export function registerTaskTools(server: McpServer) {
     {
       description:
         "Sync a single task from its sources: re-pulls its Jira issue and GitHub PR (whichever it has). " +
+        "A task without a PR gets the PR opened from its branch (headBranch or worktree branch) linked. " +
         "Located by ID, Jira key, PR number, or branch name. Returns the refreshed task.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
@@ -184,7 +185,15 @@ export function registerTaskTools(server: McpServer) {
           }
         }
 
-        if (task.prNumber && task.repository) {
+        // A PR just opened from the task's branch isn't linked yet: look it up by branch.
+        // Linking fetches the PR, so the sync below only runs for an already-linked PR.
+        if (!task.prNumber) {
+          try {
+            await post(`/api/v1/tasks/${taskId}/link-pr-by-branch`);
+          } catch (err) {
+            errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (task.repository) {
           const { owner, repo: repoName } = task.repository;
           try {
             await post(`/api/v1/sync/github/${owner}/${repoName}/${task.prNumber}`);

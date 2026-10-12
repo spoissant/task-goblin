@@ -214,6 +214,30 @@ describe("Task repository changes", () => {
   });
 });
 
+describe("Link PR by branch", () => {
+  beforeEach(() => {
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
+  });
+
+  it("leaves a task without a branch unchanged, without asking GitHub", async () => {
+    const created = await (await request("POST", "/api/v1/tasks", { title: "No branch yet" })).json();
+    sqlite.exec(`UPDATE tasks SET repository_id = 1 WHERE id = ${created.id}`);
+
+    const res = await request("POST", `/api/v1/tasks/${created.id}/link-pr-by-branch`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).prNumber).toBe(null);
+  });
+
+  it("leaves a task that already has a PR unchanged", async () => {
+    const created = await (await request("POST", "/api/v1/tasks", { title: "Has a PR" })).json();
+    sqlite.exec(`UPDATE tasks SET repository_id = 1, pr_number = 42, head_branch = 'fix/EV-1' WHERE id = ${created.id}`);
+
+    const res = await request("POST", `/api/v1/tasks/${created.id}/link-pr-by-branch`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).prNumber).toBe(42);
+  });
+});
+
 describe("Task merge and Jira assignment", () => {
   const ts = "'2026-01-01T00:00:00.000Z'";
 

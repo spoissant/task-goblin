@@ -1,10 +1,10 @@
 import { eq, and, sql, ne, isNull, isNotNull, or } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks, repositories, taskWorktrees } from "../../db/schema";
 import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors";
-import { fetchPrTaskData, GitHubApiError } from "../services/github-sync";
+import { fetchPrTaskData, findPrNumberByBranch, GitHubApiError } from "../services/github-sync";
 import { GitHubConfigError } from "../lib/github-client";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
@@ -28,6 +28,82 @@ async function validateManualStatus(status: string) {
 }
 import { teardownBeforeTaskDelete } from "../services/task-worktrees";
 import type { Routes } from "../router";
+
+/**
+ * Link a GitHub PR to an existing task: fetch it, reject it when another task
+ * already has it, and copy its fields onto the task.
+ */
+async function linkPrToTask(id: number, owner: string, repo: string, prNumber: number) {
+  try {
+    const data = await fetchPrTaskData(owner, repo, prNumber);
+
+    // Reject if another task already has this PR
+    const conflict = await db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.repositoryId, data.repositoryId),
+          eq(tasks.prNumber, data.prNumber),
+          ne(tasks.id, id)
+        )
+      )
+      .limit(1);
+
+    if (conflict.length > 0) {
+      throw new AppError(
+        `PR #${prNumber} is already linked to task #${conflict[0].id}: ${conflict[0].title}`,
+        409,
+        "PR_ALREADY_LINKED"
+      );
+    }
+
+    const result = await db
+      .update(tasks)
+      .set({
+        prNumber: data.prNumber,
+        repositoryId: data.repositoryId,
+        prState: data.prState,
+        prAuthor: data.prAuthor,
+        headBranch: data.headBranch,
+        baseBranch: data.baseBranch,
+        isDraft: data.isDraft,
+        checksStatus: data.checksStatus,
+        checksDetails: data.checksDetails,
+        approvedReviewCount: data.approvedReviewCount,
+        unresolvedCommentCount: data.unresolvedCommentCount,
+        hasConflicts: data.hasConflicts,
+        onDeploymentBranches: data.onDeploymentBranches,
+        labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
+        deployedOnBranches: data.deployedOnBranches,
+        changedFiles: data.changedFiles,
+        additions: data.additions,
+        deletions: data.deletions,
+        prSyncedAt: data.prSyncedAt,
+        updatedAt: now(),
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+
+    return result[0];
+  } catch (err) {
+    throw toGitHubAppError(err);
+  }
+}
+
+function toGitHubAppError(err: unknown): unknown {
+  if (err instanceof GitHubConfigError) {
+    return new AppError(err.message, 400, err.code);
+  }
+  if (err instanceof GitHubApiError) {
+    const statusCode =
+      err.code === "GITHUB_AUTH_FAILED" ? 401 :
+      err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
+      err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
+    return new AppError(err.message, statusCode, err.code);
+  }
+  return err;
+}
 
 export const taskRoutes: Routes = {
   "/api/v1/tasks": {
@@ -388,71 +464,36 @@ export const taskRoutes: Routes = {
         throw new ValidationError("Task already has a PR assigned");
       }
 
+      return json(await linkPrToTask(id, owner, repo, prNumber));
+    },
+  },
+
+  // Link the PR opened from the task's branch (its headBranch, else its worktree's
+  // branch). A no-op that returns the task when it already has a PR, has no
+  // branch or repository, or no PR exists for the branch yet.
+  "/api/v1/tasks/:id/link-pr-by-branch": {
+    async POST(_req, params) {
+      const id = parseId(params.id);
+      const task = await getTaskOrThrow(id);
+      if (task.prNumber) return json(task);
+
+      const [worktree] = await db.select().from(taskWorktrees).where(eq(taskWorktrees.taskId, id));
+      const branch = task.headBranch ?? worktree?.branch ?? null;
+      const repositoryId = task.repositoryId ?? worktree?.repositoryId ?? null;
+      if (!branch || !repositoryId) return json(task);
+
+      const [repo] = await db.select().from(repositories).where(eq(repositories.id, repositoryId));
+      if (!repo) return json(task);
+
+      let prNumber: number | null;
       try {
-        const data = await fetchPrTaskData(owner, repo, prNumber);
-
-        // Reject if another task already has this PR
-        const conflict = await db
-          .select({ id: tasks.id, title: tasks.title })
-          .from(tasks)
-          .where(
-            and(
-              eq(tasks.repositoryId, data.repositoryId),
-              eq(tasks.prNumber, data.prNumber),
-              ne(tasks.id, id)
-            )
-          )
-          .limit(1);
-
-        if (conflict.length > 0) {
-          throw new AppError(
-            `PR #${prNumber} is already linked to task #${conflict[0].id}: ${conflict[0].title}`,
-            409,
-            "PR_ALREADY_LINKED"
-          );
-        }
-
-        const result = await db
-          .update(tasks)
-          .set({
-            prNumber: data.prNumber,
-            repositoryId: data.repositoryId,
-            prState: data.prState,
-            prAuthor: data.prAuthor,
-            headBranch: data.headBranch,
-            baseBranch: data.baseBranch,
-            isDraft: data.isDraft,
-            checksStatus: data.checksStatus,
-            checksDetails: data.checksDetails,
-            approvedReviewCount: data.approvedReviewCount,
-            unresolvedCommentCount: data.unresolvedCommentCount,
-            hasConflicts: data.hasConflicts,
-            onDeploymentBranches: data.onDeploymentBranches,
-            labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
-            deployedOnBranches: data.deployedOnBranches,
-            changedFiles: data.changedFiles,
-            additions: data.additions,
-            deletions: data.deletions,
-            prSyncedAt: data.prSyncedAt,
-            updatedAt: now(),
-          })
-          .where(eq(tasks.id, id))
-          .returning();
-
-        return json(result[0]);
+        prNumber = await findPrNumberByBranch(repo.owner, repo.repo, branch);
       } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        if (err instanceof GitHubApiError) {
-          const statusCode =
-            err.code === "GITHUB_AUTH_FAILED" ? 401 :
-            err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
-            err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
-          throw new AppError(err.message, statusCode, err.code);
-        }
-        throw err;
+        throw toGitHubAppError(err);
       }
+      if (!prNumber) return json(task);
+
+      return json(await linkPrToTask(id, repo.owner, repo.repo, prNumber));
     },
   },
 

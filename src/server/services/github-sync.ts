@@ -342,6 +342,26 @@ export async function fetchPrTaskData(
   }
 }
 
+/** Newest PR (any state) opened from `branch` in owner/repo, or null when there is none. */
+export async function findPrNumberByBranch(owner: string, repo: string, branch: string): Promise<number | null> {
+  try {
+    const { data } = await getGitHubClient().rest.pulls.list({
+      owner,
+      repo,
+      head: `${owner}:${branch}`,
+      state: "all",
+      per_page: 1,
+    });
+    return data[0]?.number ?? null;
+  } catch (err: unknown) {
+    if (err instanceof GitHubConfigError || !isApiError(err)) throw err;
+    if (err.status === 401) {
+      throw new GitHubApiError("GitHub authentication failed. Check your GITHUB_TOKEN.", "GITHUB_AUTH_FAILED");
+    }
+    throw new GitHubApiError(err.message || `Failed to look up the PR for ${branch}`, "GITHUB_API_ERROR");
+  }
+}
+
 export async function syncGitHubPullRequestByNumber(
   owner: string,
   repo: string,
