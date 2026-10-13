@@ -23,19 +23,25 @@ The chores (start task, AI QA, self review, deploy, reviews...) run Claude Code 
 **Tools**
 - [Bun](https://bun.sh), Docker, and the `gh` CLI logged in (`gh auth login`)
 - A recent `claude` CLI logged into claude.ai (background sessions use `claude --bg --rc`, `claude agents`, `claude stop`)
-- The `hivebrite-engineering` Claude Code plugin (Atlassian and Buildkite MCPs, `github-commit`, `github-pr`, `request-pr-review`, `staging-deploy`)
+- The `hivebrite-engineering` Claude Code plugin (Atlassian and Buildkite MCPs, `github-commit`, `github-pr`, `request-pr-review`, `staging-deploy`). In Claude Code:
+  ```
+  /plugin marketplace add git@github.com:Hivebrite/claude-code-plugins
+  /plugin install hivebrite-engineering@hivebrite-claude-plugins
+  ```
 - The Claude in Chrome extension (used by `/chore-ai-qa`)
-- `lavish-axi` on your `PATH`
+- Optional: `lavish-axi` on your `PATH` for browser review of plans and findings (skills fall back to the terminal without it)
 - npm publish rights on `@hivebrite/*` if you publish front-monorepo alphas
 
 **Checkouts** live under `~/Code/hivebrite/`: `alumni_connect/alumni_connect`, `front-monorepo`, and any other repo you track. The shared settings and some skills assume this layout; if yours differs, fix the paths on the Settings page. The dev stack only supports alumni_connect and front-monorepo (hardcoded in `src/server/services/dev-stack.ts`).
 
+Task Goblin itself can be cloned anywhere; only the MCP registration points at its path.
+
 **Steps**
-1. Create `.env` (see [Step 1](#step-1-environment-variables)).
+1. Create `.env` with both tokens (see [Getting tokens](#step-1-environment-variables)).
 2. `bun install && bun run db:push`
 3. Load the shared settings: ask a teammate for `hivebrite_settings.sql` (kept out of this public repo), then `sqlite3 task-goblin.db < hivebrite_settings.sql`. It holds the Jira host and sprint field, status mappings, the 9 Hivebrite repositories with their checkout paths, GitHub team → Slack channels and chore models.
 4. On the Settings page, fill in what's personal: Jira email and JQL, GitHub username, team members, and your squad's Slack channel on alumni_connect.
-5. Register the MCP server (see [MCP Server → Setup](#setup)).
+5. Register the MCP server (use your clone path): `claude mcp add task-goblin -s user -- bun run ~/Code/task-goblin/src/mcp/index.ts`
 6. `scripts/link-skills.sh` symlinks the chore skills from `skills/` into `~/.claude/skills/`. A `git pull` then updates them; rerun the script when a skill is added.
 
 To refresh the shared file from your own DB: `scripts/export-hivebrite-settings.sh` (writes the gitignored `hivebrite_settings.sql`; personal values and squad channels are left out).
@@ -53,9 +59,14 @@ JIRA_API_TOKEN=your-jira-api-token
 GITHUB_TOKEN=your-github-personal-access-token
 ```
 
-**Getting tokens:**
-- **Jira:** Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
-- **GitHub:** Create a PAT at https://github.com/settings/tokens (needs `repo` scope)
+**Getting tokens.** Task Goblin only reads from Jira and GitHub; writes go through the skills and `gh`.
+
+- **GitHub** needs the `repo` and `read:org` scopes (PR search, files, checks, reviews, your teams). Easiest is to reuse the token `gh` already holds:
+  ```bash
+  echo "GITHUB_TOKEN=$(gh auth token)" >> .env
+  ```
+  Or create one at https://github.com/settings/tokens → **Generate new token (classic)**, tick `repo` and `read:org`. If GitHub shows **Configure SSO** next to it, authorize your org, or its repos won't sync.
+- **Jira:** at https://id.atlassian.com/manage-profile/security/api-tokens click **Create API token** (*not* "Create API token with scopes": scoped tokens need a different API URL and fail here). Name it, pick an expiry (1 year max), then `echo "JIRA_API_TOKEN=<token>" >> .env`. It pairs with the Jira email set on the Settings page. When it expires, Jira sync fails with an auth error: create a new one and replace it in `.env`.
 
 ### Step 2: Configure Jira
 
