@@ -7,7 +7,6 @@ import { CompletedPage } from "./pages/CompletedPage";
 import { ReviewsPage } from "./pages/ReviewsPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
-import { StandupPage } from "./pages/StandupPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -38,10 +37,6 @@ export const router = createBrowserRouter([
       {
         path: "analytics",
         element: <AnalyticsPage />,
-      },
-      {
-        path: "standup",
-        element: <StandupPage />,
       },
       {
         path: "settings",

@@ -28,7 +28,7 @@ Response formats:
 2. If missing, **apply the SQL manually**: `sqlite3 task-goblin.db < drizzle/<migration>.sql`
 
 ## MCP Server
-Standalone process (`bun run mcp`) providing programmatic access for AI agents. Consumes the REST API. Can: list/read/create/update/delete tasks, trigger syncs, list chores, reserve/release tasks for chores, check/start/refresh/stop the local dev stack (optionally with several tasks' branches merged on one boot), mint one-time login links into the alumni_connect stack (member, network admin, super admin), start and list background Claude sessions for a task (chore or custom prompt), and look up review-request data (team → Slack channel map, PR size and FE/BE split).
+Standalone process (`bun run mcp`) providing programmatic access for AI agents. Consumes the REST API. Can: list/read/create/update/delete tasks, trigger syncs, list chores, reserve/release tasks for chores, check/start/refresh/stop the local dev stack (optionally with several tasks' branches merged on one boot), mint one-time login links into the alumni_connect stack (member, network admin, super admin), start and list background Claude sessions for a task (chore or custom prompt), list sessions across all tasks active since a time (the `standup` skill), and look up review-request data (team → Slack channel map, PR size and FE/BE split).
 
 ## Skills
 The chore skills live in `skills/` and are symlinked into `~/.claude/skills/` by `scripts/link-skills.sh` (sessions run in other repos, so they must be user-level). Editing `~/.claude/skills/<chore>` edits this repo: commit the change here. Fresh DBs use `bun run db:push`; `hivebrite_settings.sql` (from `scripts/export-hivebrite-settings.sh`) is gitignored because the repo is public.

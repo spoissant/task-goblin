@@ -113,6 +113,14 @@ describe("claude sessions", () => {
       const page2 = await (await request("GET", "/api/v1/sessions/recent?limit=1&offset=1")).json();
       expect(page2.items.map((s: { id: number }) => s.id)).toEqual([recent.items[1].id]);
       expect(page2.total).toBe(2);
+
+      // since: last Claude activity, falling back to creation
+      sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = NULL WHERE id = ${recent.items[1].id}`);
+      sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = '2026-01-03T00:00:00.000Z' WHERE id = ${recent.items[0].id}`);
+      const since = await (await request("GET", "/api/v1/sessions/recent?since=2026-01-02T00:00:00-05:00")).json();
+      expect(since.items.map((s: { id: number }) => s.id)).toEqual([recent.items[0].id]);
+      expect(since.total).toBe(1);
+      expect((await request("GET", "/api/v1/sessions/recent?since=yesterday")).status).toBe(400);
     } finally {
       setCapacityCheck(async () => "ok");
     }

@@ -32,11 +32,15 @@ export const sessionRoutes: Routes = {
   },
 
   // Sessions across all tasks, newest first and paginated, for the sessions page.
+  // ?since=<ISO> keeps only sessions active since then (the standup skill).
   "/api/v1/sessions/recent": {
     async GET(req) {
       const url = new URL(req.url);
       const { limit, offset } = validatePagination(url.searchParams.get("limit"), url.searchParams.get("offset"));
-      const { rows, total } = await listRecentSessions(limit, offset);
+      const sinceParam = url.searchParams.get("since");
+      const since = sinceParam === null ? null : new Date(sinceParam);
+      if (since && Number.isNaN(since.getTime())) throw new ValidationError("since must be an ISO 8601 timestamp");
+      const { rows, total } = await listRecentSessions(limit, offset, since?.toISOString() ?? null);
       const items = rows.map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
       return json({ items, total, limit, offset });
     },

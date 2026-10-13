@@ -8,4 +8,3 @@ export * from "./worktrees";
 
 export * from "./reviews";
 export * from "./github-teams";
-export * from "./standup";

@@ -102,18 +102,22 @@ export async function listLatestReviewSessions(): Promise<SessionRow[]> {
 }
 
 /** A page of sessions across all tasks and PR reviews, newest first, with the task title, for the sessions page. */
+/** `since` (ISO) keeps sessions Claude was active in from then on: last activity, or creation if it never ran. */
 export async function listRecentSessions(
   limit: number,
   offset: number,
+  since: string | null = null,
 ): Promise<{ rows: (SessionRow & { taskTitle: string | null })[]; total: number }> {
+  const where = since ? sql`coalesce(${claudeSessions.claudeUpdatedAt}, ${claudeSessions.createdAt}) >= ${since}` : undefined;
   const rows = await db
     .select({ session: claudeSessions, taskTitle: tasks.title })
     .from(claudeSessions)
     .leftJoin(tasks, eq(tasks.id, claudeSessions.taskId))
+    .where(where)
     .orderBy(desc(claudeSessions.id))
     .limit(limit)
     .offset(offset);
-  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(claudeSessions);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(claudeSessions).where(where);
   return { rows: rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle })), total: count };
 }
 

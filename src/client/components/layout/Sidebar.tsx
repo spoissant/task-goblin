@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   GitPullRequestArrow,
-  Mic,
   Bot,
   ChartColumn,
 } from "lucide-react";
@@ -24,7 +23,6 @@ const navItems = [
   { to: "/completed", icon: CheckCircle, label: "Completed" },
   { to: "/sessions", icon: Bot, label: "AI Sessions" },
   { to: "/analytics", icon: ChartColumn, label: "AI Analytics" },
-  { to: "/standup", icon: Mic, label: "Standup" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

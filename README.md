@@ -137,6 +137,7 @@ Task Goblin exposes an MCP server for AI agent integration. The server provides 
 | `delete_task` | Permanently delete a task (and tear down its worktree) |
 | `list_team_channels` | List GitHub team → Slack channel mappings for review requests |
 | `get_pr_changes_by_category` | Get a PR's size and frontend/backend/other file split |
+| `list_sessions` | List AI sessions across all tasks, optionally only those active since a timestamp |
 
 ### Setup
 
@@ -158,17 +159,8 @@ The MCP server requires the API server to be running (`bun run dev:api`).
 
 ## Standup Summaries
 
-Task Goblin keeps no history, so summaries come from comparing daily snapshots
-of your board. Read them in the app at **`/standup`** — the page builds the
-diff on demand from the snapshots on disk, with a date picker for any two of
-them and a Copy button for pasting into Slack.
-
-```bash
-bun run standup:snapshot     # sync, then write snapshots/<today>.json
-bun run standup              # same diff from the CLI -> standup/<date>.md
-```
-
-Snapshots are manual: hit **Snapshot now** on the Standup page just before your
-meeting, and the report compares it to the one from the previous meeting.
-See [src/standup/README.md](src/standup/README.md) for scoping rules, the full
-list of detected events, and the optional launchd agents.
+Run `/standup` in Claude Code before the meeting. The skill reads the AI
+sessions that were active since the previous workday's standup (`list_sessions`
+with `since`), groups their results per task, and adds the live board state for
+what is waiting on someone else. Sessions you start by hand outside Task Goblin
+are not tracked, so mention those yourself.
