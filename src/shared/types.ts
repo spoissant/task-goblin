@@ -202,6 +202,20 @@ export interface ClaudeSession {
   updatedAt: string;
 }
 
+/** A /standup run started from the Standup page; `markdown` is the skill's final message. */
+export type StandupState = "running" | "done" | "failed";
+
+export interface Standup {
+  id: number;
+  state: StandupState;
+  markdown: string | null;
+  error: string | null;
+  costUsd: number | null;
+  durationMs: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** One collected session for the analytics page; model and effort are what the main agent mostly ran on. */
 export interface SessionAnalyticsRow {
   id: number;

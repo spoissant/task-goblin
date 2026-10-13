@@ -1,6 +1,6 @@
 ---
 name: standup
-description: Build a standup summary of what I worked on since the last standup, from Task Goblin's AI sessions plus the live board state. Use for /standup [since], "prep my standup", or "what did I do yesterday".
+description: Build a standup summary of what I worked on since the last standup, from Task Goblin's AI sessions plus the live board state. Run by the Standup page (claude -p /standup) or by hand. Use for /standup [since], "prep my standup", or "what did I do yesterday".
 allowed-tools: "Bash(date:*),ToolSearch,mcp__task-goblin__sync,mcp__task-goblin__list_sessions,mcp__task-goblin__get_task"
 ---
 
@@ -18,7 +18,7 @@ Prints a summary to paste into the meeting or Slack. Read-only: it sends nothing
 
 4. **Group.** Group sessions by `taskId`. Sessions with `taskId` null are PR reviews of teammates' work, keyed by `prUrl`: list them together as one "Reviewed" line. For each task, `get_task` gives the Jira key, title, status, PR state, draft flag, checks, approvals, unresolved comments, conflicts, and the on-ice and high-priority flags.
 
-5. **Write.** Keep one line per task: Jira key, short title, then what changed in plain words, merged from all its sessions without listing chore names. Sections:
+5. **Write.** The final message is the summary alone, in Markdown with no preamble. The Standup page in Task Goblin renders it as is. Open with `## Standup, since <weekday date, time>`. Keep one line per task: the bare Jira key in bold (the page links it), a short title, then what changed in plain words, merged from all its sessions without listing chore names. Link PR numbers as `[#N](https://github.com/<owner>/<repo>/pull/N)`, using the repository from `get_task` or the session's `prUrl`. Use these `###` sections:
    - **Done**: PR merged, or ticket moved to a done status in the window.
    - **In progress**: everything else touched, with where it stands now (in review with N approvals, deployed to a test env, waiting on QA).
    - **Blocked / waiting**: failing checks, conflicts, unanswered comments, a session in `blocked` with its `needs`, a task on ice with its reason.

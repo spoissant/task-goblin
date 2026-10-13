@@ -159,8 +159,12 @@ The MCP server requires the API server to be running (`bun run dev:api`).
 
 ## Standup Summaries
 
-Run `/standup` in Claude Code before the meeting. The skill reads the AI
-sessions that were active since the previous workday's standup (`list_sessions`
-with `since`), groups their results per task, and adds the live board state for
-what is waiting on someone else. Sessions you start by hand outside Task Goblin
-are not tracked, so mention those yourself.
+Hit **Generate** on the **Standup** page before the meeting. The server runs the
+`standup` skill headless (`claude -p /standup`, Sonnet, about a minute and
+$0.30) and renders its Markdown, with Jira keys linked and a Copy button for
+Slack. Recent runs stay in a dropdown. The skill reads the AI sessions that were
+active since the previous workday's 10:00 standup (`list_sessions` with
+`since`), groups their results per task, and adds the live board state for what
+is waiting on someone else. `/standup` also works straight from Claude Code.
+Sessions you start by hand outside Task Goblin are not tracked, so mention those
+yourself.

@@ -14,6 +14,7 @@ import { ensureStackCapacity, sweepIdleStacks } from "./docker-stacks";
 import { reapCompletedWorktrees } from "./task-worktrees";
 import { reconcileDevStack } from "./dev-stack";
 import { collectSessionUsage } from "./session-usage";
+import { reconcileStandups } from "./standup";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
@@ -29,6 +30,7 @@ export function startClaudeRuntime(): void {
   setCapacityCheck(ensureStackCapacity);
   reconcileOnStartup().catch((err) => console.error("[claude] reconcile failed", err));
   reconcileDevStack().catch((err) => console.error("[dev-stack] reconcile failed", err));
+  reconcileStandups().catch((err) => console.error("[standup] reconcile failed", err));
 
   const poll = setInterval(async () => {
     if (polling) return;

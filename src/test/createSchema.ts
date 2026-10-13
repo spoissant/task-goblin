@@ -71,6 +71,7 @@ export function generateTestSchema(): string {
     schema.claudeSessionRequests,
     schema.teamChannels,
     schema.statusCategories,
+    schema.standups,
   ];
 
   return tables.map((table) => generateCreateTable(table)).join("\n\n");

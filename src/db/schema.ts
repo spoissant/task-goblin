@@ -180,3 +180,15 @@ export const statusCategories = sqliteTable("status_categories", {
 });
 
 
+
+// 8. Standups - one row per /standup run started from the Standup page (claude -p)
+export const standups = sqliteTable("standups", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  state: text("state").notNull(), // running | done | failed
+  markdown: text("markdown"), // the skill's final message, rendered as is
+  error: text("error"),
+  costUsd: real("cost_usd"), // as reported by claude -p
+  durationMs: integer("duration_ms"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
