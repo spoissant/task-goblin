@@ -65,11 +65,12 @@ interface TaskTableProps {
   hideOnIce?: boolean;
   hideParents?: boolean;
   hideIdle?: boolean;
+  idleOnly?: boolean;
   compactMode?: boolean;
   repoFilter?: number | null;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, backlogOnly, hideOnIce, hideParents, hideIdle, compactMode, repoFilter }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, backlogOnly, hideOnIce, hideParents, hideIdle, idleOnly, compactMode, repoFilter }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -120,6 +121,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
     if (backlogOnly && t.sprint) return false;
     if (hideOnIce && t.onIce) return false;
     if (hideIdle && !choreMap.has(t.id)) return false;
+    if (idleOnly && choreMap.has(t.id)) return false;
     if (repoFilter != null && t.repositoryId !== repoFilter) return false;
     return true;
   });

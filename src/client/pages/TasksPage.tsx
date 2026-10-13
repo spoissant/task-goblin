@@ -25,6 +25,7 @@ export function TasksPage() {
   const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
   const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
   const [hideIdle, setHideIdle] = useLocalStorage("tasksPage.hideIdle", false);
+  const [idleOnly, setIdleOnly] = useLocalStorage("tasksPage.idleOnly", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
   const [savedSearches, setSavedSearches] = useLocalStorage<SavedSearch[]>("tasksPage.namedSearches", []);
   const titleFilter = effectiveQuery(debouncedQuery, savedSearches);
@@ -120,10 +121,26 @@ export function TasksPage() {
             <Checkbox
               id="hide-idle"
               checked={hideIdle}
-              onCheckedChange={(checked) => setHideIdle(checked === true)}
+              onCheckedChange={(checked) => {
+                setHideIdle(checked === true);
+                if (checked === true) setIdleOnly(false);
+              }}
             />
             <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
               Hide idle
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Checkbox
+              id="idle-only"
+              checked={idleOnly}
+              onCheckedChange={(checked) => {
+                setIdleOnly(checked === true);
+                if (checked === true) setHideIdle(false);
+              }}
+            />
+            <Label htmlFor="idle-only" className="text-sm cursor-pointer whitespace-nowrap">
+              Show idle
             </Label>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -194,6 +211,7 @@ export function TasksPage() {
         hideOnIce={hideOnIce}
         hideParents={hideParents}
         hideIdle={hideIdle}
+        idleOnly={idleOnly}
         compactMode={compactMode}
         repoFilter={repoFilter}
       />
