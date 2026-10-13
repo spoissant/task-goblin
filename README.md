@@ -8,10 +8,39 @@ Single-user, local-only. No authentication required—just run it on your machin
 
 ```bash
 bun install          # Install dependencies
+bun run db:push      # Create the SQLite schema (first run)
 bun run dev          # Start all dev servers
 ```
 
 The API runs on `http://localhost:3456` and the frontend on `http://localhost:5173`.
+
+On a fresh DB use `db:push`, not `db:migrate`: the migration journal does not cover every file in `drizzle/` (several were applied by hand), so `push` builds the schema straight from `src/db/schema.ts`. Check with `sqlite3 task-goblin.db .tables`.
+
+## Setting Up at Hivebrite
+
+The chores (start task, AI QA, self review, deploy, reviews...) run Claude Code skills against your local alumni_connect and front-monorepo checkouts. Beyond the Quick Start you need:
+
+**Tools**
+- [Bun](https://bun.sh), Docker, and the `gh` CLI logged in (`gh auth login`)
+- A recent `claude` CLI logged into claude.ai (background sessions use `claude --bg --rc`, `claude agents`, `claude stop`)
+- The `hivebrite-engineering` Claude Code plugin (Atlassian and Buildkite MCPs, `github-commit`, `github-pr`, `request-pr-review`, `staging-deploy`)
+- The Claude in Chrome extension (used by `/chore-ai-qa`)
+- `lavish-axi` on your `PATH`
+- npm publish rights on `@hivebrite/*` if you publish front-monorepo alphas
+
+**Checkouts** live under `~/Code/hivebrite/`: `alumni_connect/alumni_connect`, `front-monorepo`, and any other repo you track. The shared settings and some skills assume this layout; if yours differs, fix the paths on the Settings page. The dev stack only supports alumni_connect and front-monorepo (hardcoded in `src/server/services/dev-stack.ts`).
+
+**Steps**
+1. Create `.env` (see [Step 1](#step-1-environment-variables)).
+2. `bun install && bun run db:push`
+3. Load the shared settings: ask a teammate for `hivebrite_settings.sql` (kept out of this public repo), then `sqlite3 task-goblin.db < hivebrite_settings.sql`. It holds the Jira host and sprint field, status mappings, the 9 Hivebrite repositories with their checkout paths, GitHub team → Slack channels and chore models.
+4. On the Settings page, fill in what's personal: Jira email and JQL, GitHub username, team members, and your squad's Slack channel on alumni_connect.
+5. Register the MCP server (see [MCP Server → Setup](#setup)).
+6. `scripts/link-skills.sh` symlinks the chore skills from `skills/` into `~/.claude/skills/`. A `git pull` then updates them; rerun the script when a skill is added.
+
+To refresh the shared file from your own DB: `scripts/export-hivebrite-settings.sh` (writes the gitignored `hivebrite_settings.sql`; personal values and squad channels are left out).
+
+If `db:push` fails with `NODE_MODULE_VERSION` / `ERR_DLOPEN_FAILED`, `better-sqlite3` was built for another Node version: run `npm rebuild better-sqlite3`.
 
 ## Initial Setup
 

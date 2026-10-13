@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./task-goblin.db"
+    url: process.env.DATABASE_URL ?? "./task-goblin.db"
   }
 });

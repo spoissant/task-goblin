@@ -49,3 +49,6 @@ plans/
 
 # Archived Claude Code transcripts of AI sessions
 /transcripts/
+
+# Shared Hivebrite settings dump (internal, shared directly)
+/hivebrite_settings.sql

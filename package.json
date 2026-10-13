@@ -11,6 +11,7 @@
     "test": "bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
     "mcp": "bun run src/mcp/index.ts",
     "standup": "bun run src/standup/cli.ts report",
     "standup:snapshot": "bun run src/standup/cli.ts snapshot"
