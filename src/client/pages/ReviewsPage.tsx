@@ -153,6 +153,7 @@ export function ReviewsPage() {
   }, [scope]);
 
   const [hideReadyToMerge, setHideReadyToMerge] = useLocalStorage("reviewsPage.hideReadyToMerge", true);
+  const [showIgnored, setShowIgnored] = useLocalStorage("reviewsPage.showIgnored", false);
 
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery(scope);
   const { data: reposData } = useRepositoriesQuery();
@@ -200,15 +201,16 @@ export function ReviewsPage() {
     if (!data?.items) return null;
     // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
     // Others' PRs with enough approvals and no blocking codeowner don't need
-    // another review, so they can be hidden too. Ignored authors (bots) never show.
+    // another review, so they can be hidden too. Ignored authors (bots) only
+    // show when asked for.
     if (scope === "mine") return data.items;
     return data.items.filter(
       (item) =>
         !item.isDraft &&
-        !ignored.has(item.author.toLowerCase()) &&
+        (showIgnored || !ignored.has(item.author.toLowerCase())) &&
         !(hideReadyToMerge && isReviewSatisfied(item)),
     );
-  }, [data, scope, hideReadyToMerge, ignored]);
+  }, [data, scope, hideReadyToMerge, showIgnored, ignored]);
 
   const groups = useMemo(() => {
     if (!visibleItems) return null;
@@ -273,6 +275,15 @@ export function ReviewsPage() {
               />
               <Label htmlFor="hide-ready-to-merge" className="text-sm cursor-pointer whitespace-nowrap">
                 Hide ready to merge
+              </Label>
+              <Checkbox
+                id="show-ignored"
+                checked={showIgnored}
+                onCheckedChange={(checked) => setShowIgnored(checked === true)}
+                className="ml-2"
+              />
+              <Label htmlFor="show-ignored" className="text-sm cursor-pointer whitespace-nowrap">
+                Show ignored
               </Label>
             </div>
           )}
