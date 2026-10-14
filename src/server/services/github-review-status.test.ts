@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { toReviewStatus, type GqlReviewStatusNode } from "./github-review-status";
 
 const rulesetRef = (requiredApprovingReviewCount: number, requireCodeOwnerReview: boolean) => ({
+  name: "sprint",
   branchProtectionRule: null,
   rules: {
     nodes: [
@@ -35,11 +36,13 @@ describe("toReviewStatus", () => {
       approvedCount: 1,
       requiredApprovals: 1,
       missingCodeOwners: ["squad-connect-and-learn-frontend"],
+      optionalCodeOwners: [],
       changesRequestedBy: [],
+      baseBranch: "sprint",
     });
   });
 
-  it("keeps code-owner requests out when the ruleset doesn't require code owners", () => {
+  it("reports code-owner requests as optional when the ruleset doesn't require code owners", () => {
     const status = toReviewStatus({
       reviewDecision: "REVIEW_REQUIRED",
       reviewRequests: { nodes: [codeOwnerRequest("front-admins")] },
@@ -48,6 +51,7 @@ describe("toReviewStatus", () => {
     });
 
     expect(status.missingCodeOwners).toEqual([]);
+    expect(status.optionalCodeOwners).toEqual(["front-admins"]);
     expect(status.requiredApprovals).toBe(1);
     expect(status.approvedCount).toBe(0);
   });
@@ -60,6 +64,21 @@ describe("toReviewStatus", () => {
     });
 
     expect(status.missingCodeOwners).toEqual([]);
+    expect(status.optionalCodeOwners).toEqual(["squad-fe"]);
+  });
+
+  it("keeps a PR stacked on an unprotected feature branch ready, its code owners optional", () => {
+    const status = toReviewStatus({
+      reviewDecision: "APPROVED",
+      reviewRequests: { nodes: [codeOwnerRequest("squad-connect-and-learn-frontend")] },
+      latestOpinionatedReviews: { nodes: [{ state: "APPROVED", author: { login: "cygnauh" } }] },
+      baseRef: { name: "refactor/TT-14450-react-fontawesome-icons", branchProtectionRule: null, rules: { nodes: [] } },
+    });
+
+    expect(status.missingCodeOwners).toEqual([]);
+    expect(status.optionalCodeOwners).toEqual(["squad-connect-and-learn-frontend"]);
+    expect(status.requiredApprovals).toBe(0);
+    expect(status.baseBranch).toBe("refactor/TT-14450-react-fontawesome-icons");
   });
 
   it("lists code owners still owed alongside a changes request", () => {
@@ -117,7 +136,9 @@ describe("toReviewStatus", () => {
       approvedCount: 0,
       requiredApprovals: 0,
       missingCodeOwners: [],
+      optionalCodeOwners: [],
       changesRequestedBy: [],
+      baseBranch: null,
     });
     expect(toReviewStatus({ reviewDecision: "SOMETHING_NEW" }).decision).toBeNull();
     expect(toReviewStatus({ baseRef: { rules: { nodes: [{ type: "PULL_REQUEST", parameters: null }] } } }).requiredApprovals).toBe(0);

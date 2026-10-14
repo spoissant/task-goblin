@@ -214,6 +214,7 @@ export function TasksPage() {
         idleOnly={idleOnly}
         compactMode={compactMode}
         repoFilter={repoFilter}
+        onSearch={setSearchQuery}
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />

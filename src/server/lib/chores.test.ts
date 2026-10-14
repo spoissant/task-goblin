@@ -84,7 +84,15 @@ describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
 });
 
 const reviewStatus = (decision: ReviewDecision, approvedCount: number, missingCodeOwners: string[] = []) =>
-  JSON.stringify({ decision, approvedCount, requiredApprovals: 1, missingCodeOwners, changesRequestedBy: [] } satisfies ReviewStatus);
+  JSON.stringify({
+    decision,
+    approvedCount,
+    requiredApprovals: 1,
+    missingCodeOwners,
+    optionalCodeOwners: [],
+    changesRequestedBy: [],
+    baseBranch: "main",
+  } satisfies ReviewStatus);
 
 describe("getChores — chore 10 request-reviews", () => {
   it("suggests request-reviews for an open, ready PR short of approvals", async () => {

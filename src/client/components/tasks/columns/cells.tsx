@@ -457,15 +457,24 @@ export function HighPriorityCell({ task }: { task: Task }) {
 }
 
 // Derived flag (not editable): the task has sub-tasks or child issues.
-export function IsParentCell({ isParent }: { isParent?: boolean }) {
+// Clicking searches the Jira key, which matches the task and every child (via parent/epic key).
+export function IsParentCell({ task, isParent, onSearch }: { task: Task; isParent?: boolean; onSearch?: (query: string) => void }) {
   if (!isParent) return null;
 
+  const jiraKey = task.jiraKey;
+  const icon = <ListTree className="h-4 w-4 text-violet-400" />;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <ListTree className="h-4 w-4 text-violet-400" />
+        {onSearch && jiraKey ? (
+          <button type="button" className="cursor-pointer hover:opacity-80" onClick={() => onSearch(jiraKey)}>
+            {icon}
+          </button>
+        ) : (
+          icon
+        )}
       </TooltipTrigger>
-      <TooltipContent>Has sub-tasks</TooltipContent>
+      <TooltipContent>{onSearch && jiraKey ? "Has sub-tasks: show parent + children" : "Has sub-tasks"}</TooltipContent>
     </Tooltip>
   );
 }

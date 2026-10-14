@@ -20,8 +20,16 @@ export interface ReviewStatus {
    * the base ref requires code-owner review and GitHub still owes one.
    */
   missingCodeOwners: string[];
+  /**
+   * Code owners still asked to review whose review doesn't gate this merge:
+   * the base ref doesn't require code owners (a PR stacked on a feature
+   * branch), or GitHub's requirements are already met.
+   */
+  optionalCodeOwners: string[];
   /** Reviewers whose latest review requests changes. */
   changesRequestedBy: string[];
+  /** The base branch whose rules set these requirements. */
+  baseBranch: string | null;
 }
 
 /** One thing standing between a PR and a mergeable review state. */
@@ -58,7 +66,10 @@ export function parseReviewStatus(json: string | null): ReviewStatus | null {
   if (!json) return null;
   try {
     const parsed: unknown = JSON.parse(json);
-    return parsed && typeof parsed === "object" ? (parsed as ReviewStatus) : null;
+    if (!parsed || typeof parsed !== "object") return null;
+    // Rows synced before these fields existed (completed tasks stop syncing) lack them.
+    const status = parsed as ReviewStatus;
+    return { ...status, optionalCodeOwners: status.optionalCodeOwners ?? [], baseBranch: status.baseBranch ?? null };
   } catch {
     return null;
   }

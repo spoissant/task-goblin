@@ -6,7 +6,9 @@ const status = (overrides: Partial<ReviewStatus>): ReviewStatus => ({
   approvedCount: 0,
   requiredApprovals: 1,
   missingCodeOwners: [],
+  optionalCodeOwners: [],
   changesRequestedBy: [],
+  baseBranch: "sprint",
   ...overrides,
 });
 
@@ -61,6 +63,11 @@ describe("parseReviewStatus", () => {
   it("reads stored JSON", () => {
     const stored = status({ decision: "APPROVED", approvedCount: 2 });
     expect(parseReviewStatus(JSON.stringify(stored))).toEqual(stored);
+  });
+
+  it("fills fields that rows synced before them lack", () => {
+    const legacy = { decision: "APPROVED", approvedCount: 1, requiredApprovals: 1, missingCodeOwners: [], changesRequestedBy: [] };
+    expect(parseReviewStatus(JSON.stringify(legacy))).toEqual({ ...legacy, optionalCodeOwners: [], baseBranch: null } as ReviewStatus);
   });
 
   it("treats absent or malformed values as unknown", () => {

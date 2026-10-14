@@ -1,4 +1,4 @@
-import { CheckCircle, CircleDashed, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle, ShieldAlert } from "lucide-react";
+import { CheckCircle, CircleDashed, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle, Shield, ShieldAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   Tooltip,
@@ -9,15 +9,18 @@ import { reviewGaps, type ReviewGap, type ReviewStatus } from "@/shared/review-s
 
 const plural = (n: number, word: string) => `${n} ${word}${n !== 1 ? "s" : ""}`;
 
-interface GapDisplay {
+interface LineDisplay {
   Icon: LucideIcon;
   color: string;
   text: string;
   tooltip: string;
+  /** Your review unblocks the merge. */
   mine?: boolean;
+  /** Asked for, but doesn't gate the merge. */
+  muted?: boolean;
 }
 
-function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]): GapDisplay {
+function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]): LineDisplay {
   switch (gap.kind) {
     case "changes":
       return { Icon: XCircle, color: "text-red-500", text: gap.who, tooltip: `Changes requested by ${gap.who}` };
@@ -66,35 +69,47 @@ export function ReviewStatusIcon({ status, prUrl, highlight = [] }: ReviewStatus
   }
 
   const gaps = reviewGaps(status);
-  const content = gaps.length ? (
+  const lines = gaps.map((gap) => describeGap(gap, status, highlight));
+  // A courtesy request still tells you who was asked, e.g. on a PR stacked on a feature branch.
+  for (const name of status.optionalCodeOwners) {
+    lines.push({
+      Icon: Shield,
+      color: "text-muted-foreground/50",
+      text: name,
+      tooltip: `Code owner review requested, not required to merge${status.baseBranch ? ` into ${status.baseBranch}` : ""}`,
+      muted: true,
+    });
+  }
+
+  const content = (
     <span className="inline-flex flex-col gap-0.5">
-      {gaps.map((gap) => {
-        const { Icon, color, text, tooltip, mine } = describeGap(gap, status, highlight);
-        return (
-          <Tooltip key={`${gap.kind}:${text}`}>
-            <TooltipTrigger asChild>
-              <span className={`inline-flex items-center gap-1 text-xs${mine ? " font-semibold" : ""}`}>
-                <Icon className={`h-4 w-4 shrink-0 ${color}`} />
-                {/* Long team slugs wrap at their hyphens: truncating them would make sibling teams look alike. */}
-                <span className="max-w-48 whitespace-normal">{text}</span>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{tooltip}</TooltipContent>
-          </Tooltip>
-        );
-      })}
+      {!gaps.length && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {status.decision ? `Reviews done: ${plural(status.approvedCount, "approval")}` : "No review required"}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {lines.map(({ Icon, color, text, tooltip, mine, muted }, i) => (
+        <Tooltip key={`${i}:${text}`}>
+          <TooltipTrigger asChild>
+            <span
+              className={`inline-flex items-center gap-1 text-xs${mine ? " font-semibold" : ""}${muted ? " text-muted-foreground" : ""}`}
+            >
+              <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+              {/* Long team slugs wrap at their hyphens: truncating them would make sibling teams look alike. */}
+              <span className="max-w-48 whitespace-normal">{text}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      ))}
     </span>
-  ) : (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {status.decision ? `Reviews done: ${plural(status.approvedCount, "approval")}` : "No review required"}
-      </TooltipContent>
-    </Tooltip>
   );
 
   return prUrl ? (

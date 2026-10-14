@@ -7,12 +7,14 @@ import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 // reads as null under rulesets).
 //
 // GitHub opens a review request per code owner (`asCodeOwner`) and drops it
-// once a member reviews, so the open ones are the owners still missing.
+// once a member reviews, so the open ones are the owners still missing — or,
+// when the base ref doesn't gate on them, a courtesy.
 export const REVIEW_STATUS_FIELDS = `
   reviewDecision
   reviewRequests(first: 50) { nodes { asCodeOwner requestedReviewer { __typename ... on Team { slug } ... on User { login } } } }
   latestOpinionatedReviews(first: 50, writersOnly: true) { nodes { state author { login } } }
   baseRef {
+    name
     branchProtectionRule { requiredApprovingReviewCount requiresCodeOwnerReviews }
     rules(first: 20) { nodes { type parameters { ... on PullRequestParameters { requiredApprovingReviewCount requireCodeOwnerReview } } } }
   }`;
@@ -30,6 +32,7 @@ export interface GqlReviewStatusNode {
   }> | null;
   latestOpinionatedReviews?: Nodes<{ state?: string | null; author?: { login?: string } | null }> | null;
   baseRef?: {
+    name?: string | null;
     branchProtectionRule?: {
       requiredApprovingReviewCount?: number | null;
       requiresCodeOwnerReviews?: boolean | null;
@@ -65,13 +68,11 @@ export function toReviewStatus(pr: GqlReviewStatusNode): ReviewStatus {
   // Open code-owner requests are a courtesy unless the ref requires them and
   // GitHub still says reviews are owed.
   const owesReviews = decision === "REVIEW_REQUIRED" || decision === "CHANGES_REQUESTED";
-  const missingCodeOwners =
-    codeOwnersRequired && owesReviews
-      ? present(pr.reviewRequests)
-          .filter((r) => r.asCodeOwner)
-          .map((r) => r.requestedReviewer?.slug ?? r.requestedReviewer?.login)
-          .filter((name): name is string => !!name)
-      : [];
+  const codeOwnerRequests = present(pr.reviewRequests)
+    .filter((r) => r.asCodeOwner)
+    .map((r) => r.requestedReviewer?.slug ?? r.requestedReviewer?.login)
+    .filter((name): name is string => !!name);
+  const gating = codeOwnersRequired && owesReviews;
 
   const reviews = present(pr.latestOpinionatedReviews);
   const loginsIn = (state: string) =>
@@ -84,7 +85,9 @@ export function toReviewStatus(pr: GqlReviewStatusNode): ReviewStatus {
     decision,
     approvedCount: loginsIn("APPROVED").length,
     requiredApprovals,
-    missingCodeOwners,
+    missingCodeOwners: gating ? codeOwnerRequests : [],
+    optionalCodeOwners: gating ? [] : codeOwnerRequests,
     changesRequestedBy: loginsIn("CHANGES_REQUESTED"),
+    baseBranch: pr.baseRef?.name ?? null,
   };
 }

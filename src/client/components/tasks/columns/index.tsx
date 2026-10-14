@@ -65,6 +65,7 @@ export interface ColumnContext {
   nextChore?: ChoreEntry;
   session?: ClaudeSession; // latest AI session for the task
   isParent?: boolean; // task has sub-tasks or child issues
+  onSearch?: (query: string) => void; // replace the page's search query
 }
 
 // Shared Column Definitions
@@ -106,7 +107,7 @@ export const COLUMNS = {
       </Tooltip>
     ),
     width: "40px",
-    render: (_task, ctx) => <IsParentCell isParent={ctx.isParent} />,
+    render: (task, ctx) => <IsParentCell task={task} isParent={ctx.isParent} onSearch={ctx.onSearch} />,
   },
   type: {
     key: "type",

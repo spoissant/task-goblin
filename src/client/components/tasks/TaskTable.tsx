@@ -68,9 +68,10 @@ interface TaskTableProps {
   idleOnly?: boolean;
   compactMode?: boolean;
   repoFilter?: number | null;
+  onSearch?: (query: string) => void;
 }
 
-export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, backlogOnly, hideOnIce, hideParents, hideIdle, idleOnly, compactMode, repoFilter }: TaskTableProps) {
+export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLowPriority, backlogOnly, hideOnIce, hideParents, hideIdle, idleOnly, compactMode, repoFilter, onSearch }: TaskTableProps) {
   const { data, isLoading, error } = useTasksQuery({ title: titleFilter });
   const { data: reposData } = useRepositoriesQuery();
   const { data: settingsData } = useSettingsQuery();
@@ -191,6 +192,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
               nextChore={choreMap.get(task.id)}
               session={sessionMap.get(task.id)}
               isParent={task.hasChildren}
+              onSearch={onSearch}
               isSelected={selectedIds?.has(task.id) ?? false}
               onSelectionChange={onSelectionChange ? (selected) => {
                 const newSelection = new Set(selectedIds);
@@ -218,11 +220,12 @@ interface TaskRowProps {
   nextChore?: ChoreEntry;
   session?: ClaudeSession;
   isParent: boolean;
+  onSearch?: (query: string) => void;
   isSelected: boolean;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, isSelected, onSelectionChange }: TaskRowProps) {
+function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, onSearch, isSelected, onSelectionChange }: TaskRowProps) {
   const syncTask = useSyncTask();
 
   // Build GitHub PR URL if we have repo info
@@ -244,6 +247,7 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, s
     nextChore,
     session,
     isParent,
+    onSearch,
   };
 
   const isDark = document.documentElement.classList.contains("dark");
