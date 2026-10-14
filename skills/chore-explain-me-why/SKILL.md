@@ -27,10 +27,10 @@ A bare number is a Task Goblin task ID: `get_task(id)` → `prNumber`, `reposito
 Print one markdown document, sized to the PR: a few lines per section for a small fix, a ten-minute read for a large feature. Sections in this order, skipping any with nothing real to say:
 
 1. **TL;DR**: the problem and the fix in two sentences, in terms of what people experience.
-2. **Who benefits**: which users or roles (members, network admins, super admins, developers, support, ops), where they meet the change, and what was wrong or missing for them before.
-3. **What changes**: behavior before and after, walked along the request or data flow rather than file order, with `file:line` references. Mechanical changes (specs, locales, renames, generated files) get one line together.
-4. **Why this is the right fix**: root cause versus symptom, why at this layer, how it follows existing patterns (cite them), and which constraints it respects: tenancy, permissions, performance, backwards compatibility, feature flags, migrations.
-5. **Concepts you need**: each domain concept, codebase pattern or library feature the PR leans on that a non-expert would lack: what it is, how this codebase uses it, and another place to see it.
+2. **Concepts you need**: each domain concept, codebase pattern or library feature the PR leans on that a non-expert would lack: what it is, how this codebase uses it, and another place to see it. It comes early so the sections below can use these terms freely.
+3. **Who benefits**: which users or roles (members, network admins, super admins, developers, support, ops), where they meet the change, and what was wrong or missing for them before.
+4. **What changes**: behavior before and after, walked along the request or data flow rather than file order, with `file:line` references. Mechanical changes (specs, locales, renames, generated files) get one line together.
+5. **Why this is the right fix**: root cause versus symptom, why at this layer, how it follows existing patterns (cite them), and which constraints it respects: tenancy, permissions, performance, backwards compatibility, feature flags, migrations.
 6. **Alternatives weighed**: two or three realistic other approaches and why this one wins, then the tradeoffs and risks it accepts and what it deliberately leaves out. If an alternative is arguably better, say so.
 
 Keep what the code or ticket shows separate from what you infer, and mark inferences. Never invent a business reason: "the ticket doesn't say why" is a useful answer, a made-up justification defeats the chore.
