@@ -33,9 +33,10 @@ After any change, `sync_task(id)` once so task-goblin shows it.
 **Lavish plan review.** Present the fix plan as a Lavish artifact at `.lavish/plan-<jiraKey>.html` (issue understanding, root cause, proposed solution, risks, confidence); it replaces `jira-plan-fix-bug`'s `bug-fix-plan-*.md`, so don't write one. Run `lavish-axi playbook plan` first, plus `diagram`/`comparison`/`code` if used. Each open decision states today's behaviour and what each option changes for the user. Open it, `lavish-axi poll` in the background, treat browser annotations as plan revisions (update the HTML, `--agent-reply` what changed), and start implementing only on approval from the browser or the terminal, then `lavish-axi end`. Without `lavish-axi`, use the skill's normal terminal plan.
 
 **Finish override.** Once the implementation is done and tests pass, do not offer next steps (no deploy/PR/more-tests question). Always finish with, in order and without asking:
-1. Run the checks CI most often fails on: in front-monorepo, when `__stories__` changed, `apps/playground/e2e/specs/storybook-coverage.spec.ts` (give a new story a playground specimen; a `storybook-coverage.json` entry only if the specimen can't show it); and any test that `jest.mock`s a module the diff changed or newly calls into.
-2. Commit via `Skill(hivebrite-engineering:github-commit)`.
-3. Push and create or update the PR via `Skill(hivebrite-engineering:github-pr)`, with its Step 4 quality suggestions skipped (no simplify/code-review prompt) and the plan summarised in an Investigation section. A new PR is always a draft. If a PR already exists, keep its draft state as it is.
-4. Never deploy to staging here. That is `/chore-deploy-to-test-env`.
+1. In front-monorepo, when the diff changes how a component looks, add or update its stories so every new prop and state is visible, including long or oversized content and a dark or primary-colour background. AI QA and reviewers test from these stories.
+2. Run the checks CI most often fails on: in front-monorepo, when `__stories__` changed, `apps/playground/e2e/specs/storybook-coverage.spec.ts` (give a new story a playground specimen; a `storybook-coverage.json` entry only if the specimen can't show it); and any test that `jest.mock`s a module the diff changed or newly calls into.
+3. Commit via `Skill(hivebrite-engineering:github-commit)`.
+4. Push and create or update the PR via `Skill(hivebrite-engineering:github-pr)`, with its Step 4 quality suggestions skipped (no simplify/code-review prompt) and the plan summarised in an Investigation section. A new PR is always a draft. If a PR already exists, keep its draft state as it is.
+5. Never deploy to staging here. That is `/chore-deploy-to-test-env`.
 
 Lavish: use the globally installed `lavish-axi` binary, never `npx -y` even where Lavish's own help suggests it; only open HTML you generated; keep `.lavish/` in `.git/info/exclude`.

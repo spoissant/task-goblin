@@ -32,7 +32,7 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
 8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟢 clean), a header with file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, and the severity counts. Severity glyphs: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
 
-9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, bold summary, `file:line`, and the fix. Defaults: CRITICAL and WARNING → Fix, SUGGESTION → Skip. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
+9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, bold summary, `file:line`, and the fix. Defaults: every finding → Fix, except those step 7 default-skips as already resolved. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
 
    Prefer a Lavish artifact at `.lavish/review-<prNumber>.html`: one card per finding with a Fix/Skip choice and a single submit, plain inline CSS. Skip `lavish-axi --help`, `design` and the playbooks; open it, then `lavish-axi poll` in the background; annotations on a card are directives for that number). Without `lavish-axi`, use a single AskUserQuestion with the same content and grammar.
 
