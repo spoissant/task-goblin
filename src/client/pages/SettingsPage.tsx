@@ -68,8 +68,8 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">Code Owner Teams</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Your GitHub teams, read straight from the token. The Code Owners column on the Reviews page
-            flags PRs the selected teams own but haven't reviewed yet. All teams count until you narrow it.
+            Your GitHub teams, read straight from the token. When a selected team is a missing code owner,
+            the Reviews column on the Reviews page flags it as yours. All teams count until you narrow it.
           </p>
           <CodeownerTeamsForm />
         </section>

@@ -1,97 +1,108 @@
-import { CheckCircle, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { CheckCircle, CircleDashed, XCircle, GitMerge, GitPullRequestClosed, FileEdit, MessageSquare, AlertTriangle, ShieldAlert } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/client/components/ui/tooltip";
-import type { CodeownerReview } from "@/shared/types";
+import { reviewGaps, type ReviewGap, type ReviewStatus } from "@/shared/review-status";
+
+const plural = (n: number, word: string) => `${n} ${word}${n !== 1 ? "s" : ""}`;
+
+interface GapDisplay {
+  Icon: LucideIcon;
+  color: string;
+  text: string;
+  tooltip: string;
+  mine?: boolean;
+}
+
+function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]): GapDisplay {
+  switch (gap.kind) {
+    case "changes":
+      return { Icon: XCircle, color: "text-red-500", text: gap.who, tooltip: `Changes requested by ${gap.who}` };
+    case "approvals":
+      return {
+        Icon: CircleDashed,
+        color: "text-yellow-500",
+        text: `+${plural(gap.count, "approval")}`,
+        tooltip: `${status.approvedCount} of ${plural(status.requiredApprovals, "required approval")}`,
+      };
+    case "codeOwner": {
+      const mine = highlight.includes(gap.name);
+      return {
+        Icon: ShieldAlert,
+        color: mine ? "text-red-500" : "text-yellow-500",
+        text: gap.name,
+        tooltip: `Code owner approval missing: ${gap.name}${mine ? " (yours)" : ""}`,
+        mine,
+      };
+    }
+    case "review":
+      return {
+        Icon: CircleDashed,
+        color: "text-yellow-500",
+        text: "Review required",
+        tooltip: "GitHub still requires a review: open the PR to see which",
+      };
+  }
+}
 
 interface ReviewStatusIconProps {
-  approvedCount: number | null;
-  requiredReviews?: number;
+  status: ReviewStatus | null;
   prUrl?: string | null;
+  /** Missing code owners to flag as yours (you or your teams): your review unblocks the merge. */
+  highlight?: string[];
 }
-
-export function ReviewStatusIcon({ approvedCount, requiredReviews = 1, prUrl }: ReviewStatusIconProps) {
-  if (approvedCount === null) {
-    return <span className="text-muted-foreground">—</span>;
-  }
-
-  const required = requiredReviews;
-  const countText = `${approvedCount}/${required}`;
-
-  let icon: React.ReactNode;
-  let tooltip: string;
-
-  if (approvedCount >= required) {
-    icon = <CheckCircle className="h-4 w-4 text-green-500" />;
-    tooltip = `${approvedCount} approving reviews`;
-  } else if (approvedCount > 0) {
-    icon = <CheckCircle className="h-4 w-4 text-yellow-500" />;
-    tooltip = `${approvedCount} approving review${approvedCount !== 1 ? "s" : ""} (needs ${required})`;
-  } else {
-    icon = <XCircle className="h-4 w-4 text-red-500" />;
-    tooltip = "No approving reviews";
-  }
-
-  const trigger = (
-    <span className="inline-flex items-center gap-1">
-      {icon}
-      <span className="text-xs">{countText}</span>
-    </span>
-  );
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-interface CodeownerStatusIconProps {
-  codeowner: CodeownerReview;
-}
-
-const CODEOWNER_STATE_DISPLAY = {
-  blocking: { Icon: ShieldAlert, color: "text-red-500", label: "Blocking — awaiting review" },
-  reviewed: { Icon: ShieldCheck, color: "text-green-500", label: "Reviewed" },
-  optional: {
-    Icon: Shield,
-    color: "text-muted-foreground/50",
-    label: "Review requested (not required to merge)",
-  },
-};
 
 /**
- * Where each of your teams stands on a PR. Red is reserved for a review the PR
- * genuinely can't merge without; a team asked for a courtesy review reads as
- * muted, and blank means none of your teams was asked at all.
+ * Whether the PR's reviews let it merge once checks pass, as GitHub decides
+ * it, and otherwise one line per thing still missing. Unresolved threads have
+ * their own column and don't count here.
  */
-export function CodeownerStatusIcon({ codeowner }: CodeownerStatusIconProps) {
-  if (!codeowner.length) {
+export function ReviewStatusIcon({ status, prUrl, highlight = [] }: ReviewStatusIconProps) {
+  if (!status) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  return (
-    <div className="flex flex-col gap-0.5">
-      {codeowner.map(({ slug, state }) => {
-        const { Icon, color, label } = CODEOWNER_STATE_DISPLAY[state];
+  const gaps = reviewGaps(status);
+  const content = gaps.length ? (
+    <span className="inline-flex flex-col gap-0.5">
+      {gaps.map((gap) => {
+        const { Icon, color, text, tooltip, mine } = describeGap(gap, status, highlight);
         return (
-          <Tooltip key={slug}>
+          <Tooltip key={`${gap.kind}:${text}`}>
             <TooltipTrigger asChild>
-              <span className="inline-flex items-center gap-1 text-xs">
+              <span className={`inline-flex items-center gap-1 text-xs${mine ? " font-semibold" : ""}`}>
                 <Icon className={`h-4 w-4 shrink-0 ${color}`} />
-                {slug}
+                {/* Long team slugs wrap at their hyphens: truncating them would make sibling teams look alike. */}
+                <span className="max-w-48 whitespace-normal">{text}</span>
               </span>
             </TooltipTrigger>
-            <TooltipContent>{label}</TooltipContent>
+            <TooltipContent>{tooltip}</TooltipContent>
           </Tooltip>
         );
       })}
-    </div>
+    </span>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <CheckCircle className="h-4 w-4 text-green-500" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {status.decision ? `Reviews done: ${plural(status.approvedCount, "approval")}` : "No review required"}
+      </TooltipContent>
+    </Tooltip>
+  );
+
+  return prUrl ? (
+    <a href={prUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
+      {content}
+    </a>
+  ) : (
+    content
   );
 }
 

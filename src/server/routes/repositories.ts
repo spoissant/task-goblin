@@ -12,12 +12,6 @@ function normalizeText(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-// Coerce a required-reviews input to a positive integer, defaulting to 1 when absent/invalid.
-function normalizeRequiredReviews(v: unknown): number {
-  const n = Number(v);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 export const repositoryRoutes: Routes = {
   "/api/v1/repositories": {
     async GET() {
@@ -71,7 +65,6 @@ export const repositoryRoutes: Routes = {
           badgeColor: body.badgeColor ?? null,
           deploymentBranches,
           deploymentUrls,
-          requiredReviews: normalizeRequiredReviews(body.requiredReviews),
         })
         .returning();
 
@@ -141,9 +134,6 @@ export const repositoryRoutes: Routes = {
           badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
           deploymentBranches,
           deploymentUrls,
-          requiredReviews: body.requiredReviews !== undefined
-            ? normalizeRequiredReviews(body.requiredReviews)
-            : existing[0].requiredReviews,
           setupCommand: body.setupCommand !== undefined ? normalizeText(body.setupCommand) : existing[0].setupCommand,
           teardownCommand: body.teardownCommand !== undefined ? normalizeText(body.teardownCommand) : existing[0].teardownCommand,
           defaultBaseBranch: body.defaultBaseBranch !== undefined ? normalizeText(body.defaultBaseBranch) : existing[0].defaultBaseBranch,
@@ -173,7 +163,6 @@ export const repositoryRoutes: Routes = {
         updates.alias = typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null;
       }
       if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
-      if (body.requiredReviews !== undefined) updates.requiredReviews = normalizeRequiredReviews(body.requiredReviews);
       if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
       if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel || null;
       if (body.setupCommand !== undefined) updates.setupCommand = normalizeText(body.setupCommand);

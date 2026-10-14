@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { getJiraUrl, getPrUrl, ParentCell } from "@/client/components/tasks/columns/cells";
 import type { TaskWithRepository } from "@/client/lib/types";
+import { parseReviewStatus } from "@/shared/review-status";
 
 const PAGE_SIZE = 25;
 
@@ -342,10 +343,7 @@ function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
 
       {/* Review */}
       <TableCell>
-        <ReviewStatusIcon
-          approvedCount={task.approvedReviewCount}
-          requiredReviews={repo?.requiredReviews ?? 1}
-        />
+        <ReviewStatusIcon status={parseReviewStatus(task.reviewStatus)} />
       </TableCell>
     </TableRow>
   );

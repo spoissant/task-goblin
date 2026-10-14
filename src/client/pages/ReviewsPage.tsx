@@ -18,7 +18,8 @@ import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
-import { ReviewStatusIcon, PrStatusIcon, CodeownerStatusIcon } from "@/client/components/tasks/StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
+import { isReviewReady } from "@/shared/review-status";
 import {
   Table,
   TableBody,
@@ -126,12 +127,17 @@ function parseHighPriority(value: string | null | undefined): Set<string> {
   }
 }
 
-/** Unknown approvals (null) never count as satisfied, so the PR stays listed. */
+/**
+ * Another review from you can't move the PR: GitHub says its reviews are done,
+ * or it has its approvals and only owes code-owner reviews from others.
+ * Unknown (null) never counts, so the PR stays listed.
+ */
 function isReviewSatisfied(request: ReviewRequest): boolean {
+  const status = request.reviewStatus;
+  if (!status) return false;
   return (
-    request.approvedCount != null &&
-    request.approvedCount >= request.requiredReviews &&
-    !request.codeowner.some((t) => t.state === "blocking")
+    isReviewReady(status) ||
+    (status.approvedCount >= status.requiredApprovals && request.myMissingCodeOwners.length === 0)
   );
 }
 
@@ -200,9 +206,8 @@ export function ReviewsPage() {
   const visibleItems = useMemo(() => {
     if (!data?.items) return null;
     // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
-    // Others' PRs with enough approvals and no blocking codeowner don't need
-    // another review, so they can be hidden too. Ignored authors (bots) only
-    // show when asked for.
+    // Others' PRs your review can't move don't need it, so they can be hidden
+    // too. Ignored authors (bots) only show when asked for.
     if (scope === "mine") return data.items;
     return data.items.filter(
       (item) =>
@@ -398,8 +403,7 @@ function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost,
           <TableHead className="w-[120px]">Created</TableHead>
           {showSize && <TableHead className="w-[110px]">Size</TableHead>}
           <TableHead className="w-[100px]">Changes</TableHead>
-          <TableHead className="w-[80px]">Reviews</TableHead>
-          <TableHead>Code Owners</TableHead>
+          <TableHead>Reviews</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -640,12 +644,7 @@ function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraH
 
       {/* Reviews */}
       <TableCell>
-        <ReviewStatusIcon approvedCount={request.approvedCount} requiredReviews={request.requiredReviews} prUrl={request.url} />
-      </TableCell>
-
-      {/* Code Owners */}
-      <TableCell>
-        <CodeownerStatusIcon codeowner={request.codeowner} />
+        <ReviewStatusIcon status={request.reviewStatus} prUrl={request.url} highlight={isMine ? undefined : request.myMissingCodeOwners} />
       </TableCell>
     </TableRow>
   );

@@ -11,7 +11,7 @@ import type { GitHubTeam } from "@/client/lib/types";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
 
 /**
- * No stored value means every team counts, so the column works unconfigured.
+ * No stored value means every team counts, so the flag works unconfigured.
  * Returns null for that case rather than a full list, so the meaning survives
  * teams being added or removed on GitHub later.
  */
@@ -99,7 +99,7 @@ export function CodeownerTeamsForm() {
 
         {!selected.size && (
           <p className="text-sm text-amber-600 dark:text-amber-500">
-            No teams selected — the Code Owners column will stay empty.
+            No teams selected — no missing code owner will be flagged as yours.
           </p>
         )}
 

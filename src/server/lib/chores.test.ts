@@ -4,6 +4,7 @@ import { db, sqlite } from "../../db";
 import { tasks, statusCategories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { getChores } from "./chores";
+import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 
 const NOW = "2026-08-21T00:00:00.000Z";
 
@@ -82,9 +83,33 @@ describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
   });
 });
 
+const reviewStatus = (decision: ReviewDecision, approvedCount: number, missingCodeOwners: string[] = []) =>
+  JSON.stringify({ decision, approvedCount, requiredApprovals: 1, missingCodeOwners, changesRequestedBy: [] } satisfies ReviewStatus);
+
 describe("getChores — chore 10 request-reviews", () => {
   it("suggests request-reviews for an open, ready PR short of approvals", async () => {
     const task = await seedTask();
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("request-reviews");
+  });
+
+  it("stops suggesting request-reviews once GitHub says the reviews are done", async () => {
+    const task = await seedTask();
+    await db.update(tasks).set({ reviewStatus: reviewStatus("APPROVED", 1) }).where(eq(tasks.id, task.id));
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).not.toContain("request-reviews");
+  });
+
+  it("keeps suggesting request-reviews while a code owner is missing despite enough approvals", async () => {
+    const task = await seedTask();
+    await db
+      .update(tasks)
+      .set({ reviewStatus: reviewStatus("REVIEW_REQUIRED", 1, ["squad-fe"]) })
+      .where(eq(tasks.id, task.id));
 
     const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
 

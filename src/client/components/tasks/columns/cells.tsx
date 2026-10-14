@@ -10,6 +10,7 @@ import { DeploymentBadges } from "../DeploymentBadges";
 import { AlertTriangle, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
+import { parseReviewStatus } from "@/shared/review-status";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
 import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
 import {
@@ -318,14 +319,8 @@ export function ChecksCell({ task, prUrl }: { task: Task; prUrl?: string | null 
   );
 }
 
-export function ReviewsCell({ task, prUrl }: { task: Task & { repository?: Repository | null }; prUrl?: string | null }) {
-  return (
-    <ReviewStatusIcon
-      approvedCount={task.approvedReviewCount}
-      requiredReviews={task.repository?.requiredReviews ?? 1}
-      prUrl={prUrl}
-    />
-  );
+export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
+  return <ReviewStatusIcon status={parseReviewStatus(task.reviewStatus)} prUrl={prUrl} />;
 }
 
 export function ChangesCell({ task }: { task: Task }) {

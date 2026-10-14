@@ -71,6 +71,7 @@ async function linkPrToTask(id: number, owner: string, repo: string, prNumber: n
         checksStatus: data.checksStatus,
         checksDetails: data.checksDetails,
         approvedReviewCount: data.approvedReviewCount,
+        reviewStatus: data.reviewStatus,
         unresolvedCommentCount: data.unresolvedCommentCount,
         hasConflicts: data.hasConflicts,
         onDeploymentBranches: data.onDeploymentBranches,

@@ -115,6 +115,7 @@ export async function mergeSingleTask(
     mergedFields.checksStatus = prTask.checksStatus;
     mergedFields.checksDetails = prTask.checksDetails;
     mergedFields.approvedReviewCount = prTask.approvedReviewCount;
+    mergedFields.reviewStatus = prTask.reviewStatus;
     mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
     mergedFields.prSyncedAt = prTask.prSyncedAt;
   }

@@ -1,4 +1,5 @@
 import { now } from "../lib/timestamp";
+import type { ReviewStatus } from "@/shared/review-status";
 
 export interface ChecksResult {
   checksStatus: string | null;
@@ -17,6 +18,7 @@ export interface PrTaskData {
   checksStatus: string | null;
   checksDetails: string | null;
   approvedReviewCount: number;
+  reviewStatus: string; // JSON ReviewStatus
   unresolvedCommentCount: number;
   hasConflicts: number;
   changedFiles: number | null;
@@ -45,6 +47,7 @@ export interface GqlPrLike {
   baseRefName: string | null;
   approvedReviewCount: number;
   unresolvedCommentCount: number;
+  reviewStatus: ReviewStatus;
 }
 
 export function mapGqlPrToTaskData(
@@ -70,6 +73,7 @@ export function mapGqlPrToTaskData(
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,
     approvedReviewCount: pr.approvedReviewCount,
+    reviewStatus: JSON.stringify(pr.reviewStatus),
     unresolvedCommentCount: pr.unresolvedCommentCount,
     // UNKNOWN means GitHub is still computing the merge; treated as no conflict,
     // matching REST's null mergeable.

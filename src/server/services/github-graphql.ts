@@ -1,5 +1,7 @@
 import { getGitHubClient } from "../lib/github-client";
 import type { ChecksResult } from "./github-mappers";
+import { REVIEW_STATUS_FIELDS, toReviewStatus } from "./github-review-status";
+import type { ReviewStatus } from "@/shared/review-status";
 
 type GitHubClient = ReturnType<typeof getGitHubClient>;
 
@@ -43,25 +45,12 @@ export interface GqlPrCore {
   labels: string[];
   approvedReviewCount: number;
   unresolvedCommentCount: number;
+  reviewStatus: ReviewStatus;
 }
 
 export interface GqlPrChecks {
   checkRuns: GqlCheckRun[];
   statusContexts: GqlStatusContext[];
-}
-
-/** Team-level review state on a PR, which is how CODEOWNERS ownership surfaces. */
-export interface GqlPrTeamReviews {
-  /**
-   * GitHub's verdict on the PR's own review requirements: REVIEW_REQUIRED,
-   * CHANGES_REQUESTED, APPROVED, or null when the base ref requires no reviews.
-   * A team request only gates the merge when this says reviews are outstanding.
-   */
-  reviewDecision: string | null;
-  /** Teams with a review request still open, flagged if CODEOWNERS opened it. */
-  pendingTeams: Array<{ slug: string; asCodeOwner: boolean }>;
-  /** Slugs of teams a submitted review was made on behalf of. */
-  reviewedTeams: string[];
 }
 
 export type GqlPullRequest = GqlPrCore & GqlPrChecks;
@@ -77,6 +66,7 @@ export interface GqlPrReviewInfo {
    */
   reviews: Array<{ authorLogin: string; state: string }>;
   files: Array<{ filename: string; additions: number; deletions: number }>;
+  reviewStatus: ReviewStatus;
 }
 
 /** Comparison targets for one PR: env branch names and/or deployed SHAs. */
@@ -168,24 +158,8 @@ const CORE_FIELDS = `
   headRefName headRefOid baseRefName
   labels(first: 100) { nodes { name } }
   reviews(first: 100) { nodes { state author { login } } }
-  reviewThreads(first: 100) { nodes { isResolved } }`;
-
-// CODEOWNERS ownership isn't exposed as a field: GitHub applies it by opening a
-// review request for each owning team, then drops the team from `reviewRequests`
-// as soon as any member submits a review, stamping that review with `onBehalfOf`.
-// So neither field alone separates "never asked" from "already reviewed" —
-// pending requests answer the first, `onBehalfOf` the second.
-//
-// `asCodeOwner` separates an ownership request from a hand-picked one, and
-// `reviewDecision` says whether the base ref gates merging on reviews at all —
-// CODEOWNERS requests still get opened on refs that require no review, where
-// they're a courtesy rather than a gate. `branchProtectionRule` would answer
-// that directly but reads as null under repository rulesets.
-const TEAM_REVIEW_FIELDS = `
-  number
-  reviewDecision
-  reviewRequests(first: 50) { nodes { asCodeOwner requestedReviewer { __typename ... on Team { slug } } } }
-  reviews(first: 100) { nodes { state onBehalfOf(first: 10) { nodes { slug } } } }`;
+  reviewThreads(first: 100) { nodes { isResolved } }
+  ${REVIEW_STATUS_FIELDS}`;
 
 // REST clamps listFiles to 100 per page anyway, so `files(first: 100)` covers
 // exactly what the REST path did; beyond that the category split is a sample.
@@ -193,7 +167,8 @@ const REVIEW_INFO_FIELDS = `
   number
   additions deletions changedFiles
   reviews(first: 100) { nodes { state author { login } } }
-  files(first: 100) { nodes { path additions deletions } }`;
+  files(first: 100) { nodes { path additions deletions } }
+  ${REVIEW_STATUS_FIELDS}`;
 
 // Check runs live under check suites rather than `statusCheckRollup`: the
 // rollup returns a filtered subset (it can omit the most recent run of a
@@ -271,6 +246,7 @@ export async function fetchPullRequestCore(
           labels: (pr.labels?.nodes ?? []).map((l: any) => l?.name).filter(Boolean),
           approvedReviewCount: [...latestReviewByUser.values()].filter((s) => s === "APPROVED").length,
           unresolvedCommentCount: (pr.reviewThreads?.nodes ?? []).filter((t: any) => t && !t.isResolved).length,
+          reviewStatus: toReviewStatus(pr),
         });
       });
     });
@@ -346,54 +322,7 @@ export async function fetchPullRequestReviewInfo(
               additions: f.additions ?? 0,
               deletions: f.deletions ?? 0,
             })),
-        });
-      });
-    });
-
-    return result;
-  });
-}
-
-/**
- * Which teams still owe a review on each PR, and which have already given one.
- * Issued as its own batched query so callers that don't need it pay nothing.
- */
-export async function fetchPullRequestTeamReviews(
-  client: GitHubClient,
-  targets: PrTarget[]
-): Promise<Map<string, GqlPrTeamReviews>> {
-  return runChunked(targets, async (batch) => {
-    const result = new Map<string, GqlPrTeamReviews>();
-    const groups = groupByRepo(batch);
-    const data = await graphqlPartial<Record<string, Record<string, any>>>(
-      client,
-      buildPrQuery(groups, TEAM_REVIEW_FIELDS)
-    );
-
-    groups.forEach((g, ri) => {
-      g.numbers.forEach((number, i) => {
-        const pr = data?.[`r${ri}`]?.[`p${i}`];
-        if (!pr) return;
-
-        const pendingTeams = (pr.reviewRequests?.nodes ?? [])
-          .filter((n: any) => n?.requestedReviewer?.__typename === "Team" && n.requestedReviewer.slug)
-          .map((n: any) => ({
-            slug: n.requestedReviewer.slug as string,
-            asCodeOwner: !!n.asCodeOwner,
-          }));
-
-        // PENDING is an unsubmitted draft review — it hasn't answered the
-        // team's request yet, so it mustn't count as one.
-        const reviewedTeams = (pr.reviews?.nodes ?? [])
-          .filter((r: any) => r && r.state !== "PENDING")
-          .flatMap((r: any) =>
-            (r.onBehalfOf?.nodes ?? []).map((t: any) => t?.slug).filter(Boolean) as string[]
-          );
-
-        result.set(prKey(g.owner, g.repo, number), {
-          reviewDecision: pr.reviewDecision ?? null,
-          pendingTeams,
-          reviewedTeams: [...new Set<string>(reviewedTeams)],
+          reviewStatus: toReviewStatus(pr),
         });
       });
     });

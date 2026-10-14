@@ -186,7 +186,7 @@ export const COLUMNS = {
   reviews: {
     key: "reviews",
     header: "Reviews",
-    width: "60px",
+    width: "120px",
     render: (task, ctx) => <ReviewsCell task={task} prUrl={ctx.prUrl} />,
   },
   comments: {

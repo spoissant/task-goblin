@@ -26,7 +26,7 @@ dump() { # <table> <select>
   dump team_channels "SELECT * FROM team_channels ORDER BY id"
   dump repositories "SELECT id, owner, repo, alias, enabled, badge_color, deployment_branches, deployment_urls,
     CASE WHEN slack_channel LIKE '#squad-%' THEN NULL ELSE slack_channel END AS slack_channel,
-    required_reviews, setup_command, teardown_command, default_base_branch
+    setup_command, teardown_command, default_base_branch
     FROM repositories ORDER BY id"
   dump worktrees "SELECT * FROM worktrees ORDER BY id"
   echo "COMMIT;"

@@ -1,5 +1,7 @@
 // Shared types for client, server, and MCP
 
+import type { ReviewStatus } from "./review-status";
+
 // Check detail for individual CI checks
 export interface CheckDetail {
   name: string;
@@ -44,6 +46,7 @@ export interface Task {
   checksStatus: string | null;
   checksDetails: string | null;
   approvedReviewCount: number | null;
+  reviewStatus: string | null; // JSON ReviewStatus, see shared/review-status
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on (detected via commit history)
   labelOnlyDeploymentBranches: string | null; // JSON array of deployment branches detected via PR labels (full set, for badge coloring)
@@ -84,7 +87,6 @@ export interface Repository {
   deploymentBranches: string | null; // JSON array of branch names
   deploymentUrls: string | null; // JSON object mapping branch -> environment URL
   slackChannel: string | null; // Slack channel for review requests
-  requiredReviews: number | null; // number of approving reviews required to merge (default 1)
   setupCommand: string | null; // shell line run inside a new task worktree
   teardownCommand: string | null; // shell line run before removing a task worktree; may use {{composeProject}}
   defaultBaseBranch: string | null; // base branch for tasks without a branch yet
@@ -386,17 +388,6 @@ export interface GitHubTeam {
   name: string;
 }
 
-/**
- * Where one of your teams stands on reviewing a PR:
- * - blocking: the team owns changed files and the PR can't merge until it reviews
- * - reviewed: a member of the team has already reviewed on the team's behalf
- * - optional: the team was asked, but its review doesn't gate the merge
- */
-export type CodeownerState = "blocking" | "reviewed" | "optional";
-
-/** Your teams involved in a PR's review, each with its own state. Empty when none was asked. */
-export type CodeownerReview = Array<{ slug: string; state: CodeownerState }>;
-
 export interface ReviewRequest {
   prNumber: number;
   title: string;
@@ -405,11 +396,11 @@ export interface ReviewRequest {
   author: string;
   state: "open" | "draft";
   isDraft: boolean;
-  /** null when GitHub wouldn't return the PR's reviews — unknown, not zero. */
-  approvedCount: number | null;
-  requiredReviews: number;
+  /** null when GitHub wouldn't return the PR's reviews — unknown, not ready. */
+  reviewStatus: ReviewStatus | null;
+  /** Missing code owners that are you or your selected teams: your review unblocks the merge. */
+  myMissingCodeOwners: string[];
   hasPendingReview: boolean;
-  codeowner: CodeownerReview;
   createdAt: string;
   changedFiles: number | null;
   additions: number | null;

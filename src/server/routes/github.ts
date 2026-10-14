@@ -14,16 +14,10 @@ import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira
 import { refreshWorktreeGitStatuses } from "../services/task-worktrees";
 import {
   fetchPullRequestReviewInfo,
-  fetchPullRequestTeamReviews,
   prKey,
   type GqlPrReviewInfo,
-  type GqlPrTeamReviews,
 } from "../services/github-graphql";
-import {
-  computeCodeownerReview,
-  fetchMyTeams,
-  selectCodeownerTeams,
-} from "../services/github-teams";
+import { fetchMyTeams, selectCodeownerTeams } from "../services/github-teams";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
 import type { Endpoints } from "@octokit/types";
@@ -219,8 +213,8 @@ export const githubRoutes: Routes = {
         const client = getGitHubClient();
         const scope = new URL(req.url).searchParams.get("scope") === "mine" ? "mine" : "others";
 
-        // Drives both the team-review-requested searches below and the codeowner
-        // column; empty when the token lacks read:org.
+        // Drives both the team-review-requested searches below and which missing
+        // code owners are flagged as yours; empty when the token lacks read:org.
         const myTeams = await fetchMyTeams(client);
 
         let queries: string[];
@@ -276,13 +270,8 @@ export const githubRoutes: Routes = {
 
         const items: ReviewRequest[] = [];
 
-        // Per-repo required-reviews threshold, keyed by "owner/repo" (default 1)
-        const repoRows = await db.select().from(repositories);
-        const requiredReviewsByRepo = new Map<string, number>(
-          repoRows.map((r) => [`${r.owner}/${r.repo}`, r.requiredReviews ?? 1])
-        );
-
         // Existing task per PR, keyed by "owner/repo#number"
+        const repoRows = await db.select().from(repositories);
         const repoSlugById = new Map<number, string>(
           repoRows.map((r) => [r.id, `${r.owner}/${r.repo}`])
         );
@@ -297,14 +286,14 @@ export const githubRoutes: Routes = {
           if (slug) taskByPr.set(`${slug}#${t.prNumber}`, { id: t.id, jiraKey: t.jiraKey });
         }
 
-        // Teams whose CODEOWNERS reviews the column tracks, keyed by org.
+        // Teams flagged as yours when they're a missing code owner, keyed by org.
         const codeownerSetting = await db
           .select()
           .from(settings)
           .where(eq(settings.key, CODEOWNER_TEAMS_SETTING));
         const codeownerTeamsByOrg = selectCodeownerTeams(myTeams, codeownerSetting[0]?.value ?? null);
 
-        // owner/repo/number per hit, shared by the batched team-review fetch below.
+        // owner/repo/number per hit, for the batched review-info fetch below.
         const prTargets = searchItems.map((item) => {
           const parts = item.repository_url.split("/");
           return {
@@ -314,22 +303,12 @@ export const githubRoutes: Routes = {
           };
         });
 
-        // Both fetches are batched over all PRs (~25 per query, bounded
-        // concurrency) instead of firing REST calls per PR — the unbounded
-        // per-PR fan-out tripped GitHub's secondary rate limit on busy boards.
-        // The team query is skipped entirely when no team is configured.
-        const teamReviewsPromise = codeownerTeamsByOrg.size
-          ? orNull("team reviews", fetchPullRequestTeamReviews(client, prTargets)).then(
-              (m) => m ?? new Map<string, GqlPrTeamReviews>()
-            )
-          : Promise.resolve(new Map<string, GqlPrTeamReviews>());
-
-        const [reviewInfoMap, teamReviews] = await Promise.all([
-          orNull("review info", fetchPullRequestReviewInfo(client, prTargets)).then(
-            (m) => m ?? new Map<string, GqlPrReviewInfo>()
-          ),
-          teamReviewsPromise,
-        ]);
+        // Batched over all PRs (~25 per query, bounded concurrency) instead of
+        // firing REST calls per PR — the unbounded per-PR fan-out tripped
+        // GitHub's secondary rate limit on busy boards.
+        const reviewInfoMap = await orNull("review info", fetchPullRequestReviewInfo(client, prTargets)).then(
+          (m) => m ?? new Map<string, GqlPrReviewInfo>()
+        );
 
         searchItems.forEach((item, idx) => {
           const { owner, repo, number: prNumber } = prTargets[idx];
@@ -337,16 +316,11 @@ export const githubRoutes: Routes = {
           // the row rendered from the search hit alone, extras shown as unknown.
           const info = reviewInfoMap.get(prKey(owner, repo, prNumber)) ?? null;
 
-          // Count unique approving reviewers (latest state per user)
+          // Latest review state per user
           const reviewerStates = new Map<string, string>();
           for (const review of info?.reviews ?? []) {
             reviewerStates.set(review.authorLogin, review.state);
           }
-          // null, not 0, when reviews are unavailable — "no approvals" and
-          // "unknown" must not look the same to whoever reads the column.
-          const approvedCount = info
-            ? Array.from(reviewerStates.values()).filter((state) => state === "APPROVED").length
-            : null;
 
           // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
           // i.e. the authenticated token user — so this flags the current user's own draft.
@@ -371,13 +345,13 @@ export const githubRoutes: Routes = {
             author: item.user?.login ?? "unknown",
             state: isDraft ? "draft" : "open",
             isDraft,
-            approvedCount,
-            requiredReviews: requiredReviewsByRepo.get(`${owner}/${repo}`) ?? 1,
-            hasPendingReview,
-            codeowner: computeCodeownerReview(
-              codeownerTeamsByOrg.get(owner),
-              teamReviews.get(prKey(owner, repo, prNumber))
+            // null, not a guess, when the PR's reviews are unavailable —
+            // "unknown" must not read as ready or as blocked.
+            reviewStatus: info?.reviewStatus ?? null,
+            myMissingCodeOwners: (info?.reviewStatus.missingCodeOwners ?? []).filter(
+              (name) => name === config.username || codeownerTeamsByOrg.get(owner)?.has(name)
             ),
+            hasPendingReview,
             createdAt: item.created_at,
             changedFiles: info?.changedFiles ?? null,
             additions: info?.additions ?? null,
