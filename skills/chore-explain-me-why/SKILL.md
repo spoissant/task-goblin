@@ -1,7 +1,7 @@
 ---
 name: chore-explain-me-why
 description: Explain a PR to its owner until they understand it — what changes and how it works, who benefits, why it is the right fix, the concepts it relies on, and the alternatives it beat — then answer follow-up questions. Read-only, it teaches and does not review. Use for /chore-explain-me-why <task ID or PR url>, "explain this PR", "help me understand this PR", or "why is this the right change".
-allowed-tools: "ToolSearch,Bash(gh:*),Bash(git:*),Read,Grep,Glob,Skill(checkout-branch),mcp__task-goblin__get_task,mcp__task-goblin__update_task,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources"
+allowed-tools: "ToolSearch,Bash(gh:*),Bash(git:*),Read,Grep,Glob,Skill(checkout-branch),mcp__task-goblin__get_task,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources"
 ---
 
 # Explain Me Why
@@ -12,7 +12,7 @@ The reader is an experienced engineer who is not an expert in the area the PR to
 
 ## Input
 
-A bare number is a Task Goblin task ID: `get_task(id)` → `prNumber`, `repository`, `headBranch`, `jiraKey`, `choreSkips`. Otherwise a PR URL (no task, so no skip flag), or nothing (current branch via `gh pr view`).
+A bare number is a Task Goblin task ID: `get_task(id)` → `prNumber`, `repository`, `headBranch`, `jiraKey`. Otherwise a PR URL, or nothing (current branch via `gh pr view`).
 
 ## 1. Gather
 
@@ -37,10 +37,6 @@ Keep what the code or ticket shows separate from what you infer, and mark infere
 
 If the explanation runs into something that doesn't hold up (the code contradicts the ticket, a change has no reason you can find, a likely bug), add a short **Doesn't add up** section at the end. Understanding the PR includes knowing where it is weak.
 
-## 3. Skip flag
-
-With a task ID, right after printing: `update_task(id, choreSkips)` with `"explain-me-why": true` merged into the existing keys (the field replaces the whole map). Do it before the Q&A, which may never formally end.
-
-## 4. Q&A
+## 3. Q&A
 
 Close with one line inviting follow-up questions, then answer them from the code with `file:line` references. Go as deep as asked: trace another path, explain a library, compare with how another module does it. Stay read-only; if the discussion surfaces a change worth making, name the chore that would make it.

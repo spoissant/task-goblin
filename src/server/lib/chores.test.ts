@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
 import { tasks, statusCategories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
-import { getChores } from "./chores";
+import { getChoreDefinitions, getChores } from "./chores";
 import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 
 const NOW = "2026-08-21T00:00:00.000Z";
@@ -94,35 +94,21 @@ const reviewStatus = (decision: ReviewDecision, approvedCount: number, missingCo
     baseBranch: "main",
   } satisfies ReviewStatus);
 
-describe("getChores — chore 9 explain-me-why", () => {
-  it("suggests explain-me-why as chore 9 for an open PR ready for review", async () => {
+describe("getChores — chore 11 explain-me-why (manual only)", () => {
+  it("never suggests explain-me-why, even for an open PR ready for review", async () => {
     const task = await seedTask();
-
-    const entries = await getChores({ taskId: task.id });
-
-    expect(entries.find((e) => e.key === "explain-me-why")?.number).toBe(9);
-  });
-
-  it("does not suggest explain-me-why while the PR is a draft", async () => {
-    const task = await seedTask();
-    await db.update(tasks).set({ isDraft: 1 }).where(eq(tasks.id, task.id));
 
     const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
 
     expect(keys).not.toContain("explain-me-why");
   });
 
-  it("stops suggesting explain-me-why once its chore skip is set", async () => {
-    const task = await seedTask();
-    await db.update(tasks).set({ choreSkips: JSON.stringify({ "explain-me-why": true }) }).where(eq(tasks.id, task.id));
-
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
-
-    expect(keys).not.toContain("explain-me-why");
+  it("still lists explain-me-why in the chore definitions for the AI menu", () => {
+    expect(getChoreDefinitions().find((d) => d.key === "explain-me-why")?.number).toBe(11);
   });
 });
 
-describe("getChores — chore 11 request-reviews", () => {
+describe("getChores — chore 10 request-reviews", () => {
   it("suggests request-reviews for an open, ready PR short of approvals", async () => {
     const task = await seedTask();
 

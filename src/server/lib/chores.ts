@@ -151,15 +151,6 @@ const CHORES: ChoreDefinition[] = [
   },
   {
     number: 9,
-    key: "explain-me-why",
-    name: "Explain Me Why",
-    condition: "prState = open AND isDraft = false",
-    prompt: "/chore-explain-me-why {{taskId}}",
-    categories: null,
-    match: (t) => t.prState === "open" && t.isDraft === 0,
-  },
-  {
-    number: 10,
     key: "deploy-test-env",
     name: "Deploy to Test Env",
     condition: "repo has deployment branches AND prState = open AND checksStatus = passing AND unresolvedCommentCount = 0 AND isDraft = false AND hasConflicts = false AND not on any deployment branch AND status category != Ready to Merge",
@@ -179,7 +170,7 @@ const CHORES: ChoreDefinition[] = [
       !isOnAnyDeploymentBranch(t, repo),
   },
   {
-    number: 11,
+    number: 10,
     key: "request-reviews",
     name: "Request Code Reviews",
     condition: "isDraft = false AND prState = open AND reviews not ready (GitHub review decision)",
@@ -191,6 +182,15 @@ const CHORES: ChoreDefinition[] = [
       t.isDraft === 0 &&
       t.prState === "open" &&
       !isReviewReady(parseReviewStatus(t.reviewStatus)),
+  },
+  {
+    number: 11,
+    key: "explain-me-why",
+    name: "Explain Me Why",
+    condition: "manual only (never suggested)",
+    prompt: "/chore-explain-me-why {{taskId}}",
+    categories: null,
+    match: () => false,
   },
 ];
 
