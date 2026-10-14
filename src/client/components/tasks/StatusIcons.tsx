@@ -27,7 +27,7 @@ function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]):
     case "approvals":
       return {
         Icon: CircleDashed,
-        color: "text-yellow-500",
+        color: "text-red-500",
         text: `+${plural(gap.count, "approval")}`,
         tooltip: `${status.approvedCount} of ${plural(status.requiredApprovals, "required approval")}`,
       };
@@ -35,7 +35,7 @@ function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]):
       const mine = highlight.includes(gap.name);
       return {
         Icon: ShieldAlert,
-        color: mine ? "text-red-500" : "text-yellow-500",
+        color: "text-red-500",
         text: gap.name,
         tooltip: `Code owner approval missing: ${gap.name}${mine ? " (yours)" : ""}`,
         mine,
@@ -44,7 +44,7 @@ function describeGap(gap: ReviewGap, status: ReviewStatus, highlight: string[]):
     case "review":
       return {
         Icon: CircleDashed,
-        color: "text-yellow-500",
+        color: "text-red-500",
         text: "Review required",
         tooltip: "GitHub still requires a review: open the PR to see which",
       };
