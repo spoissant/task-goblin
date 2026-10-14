@@ -48,6 +48,14 @@ export function setCapacityCheck(fn: CapacityCheck): void {
   capacityCheck = fn;
 }
 
+export type SessionFinishedHook = (taskId: number) => void;
+let onSessionFinished: SessionFinishedHook = () => {};
+
+/** Called when a task's session reaches a terminal state; the runtime syncs the task here. */
+export function setOnSessionFinished(fn: SessionFinishedHook): void {
+  onSessionFinished = fn;
+}
+
 export function toApi(row: SessionRow): ClaudeSession {
   return { ...row, state: row.state as ClaudeSessionState, link: sessionLink(row.bridgeSessionId) };
 }
@@ -462,6 +470,7 @@ export async function pollActiveSessions(): Promise<void> {
     }
 
     if (Object.keys(updates).length > 0) await updateRow(row.id, updates);
+    if (nextState && nextState !== row.state && TERMINAL_STATES.includes(nextState) && row.taskId) onSessionFinished(row.taskId);
   }
 }
 

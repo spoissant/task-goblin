@@ -6,7 +6,13 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { pollActiveSessions, reapIdleProcesses, setCapacityCheck, syncProcessLiveness } from "./claude-sessions";
+import {
+  pollActiveSessions,
+  reapIdleProcesses,
+  setCapacityCheck,
+  setOnSessionFinished,
+  syncProcessLiveness,
+} from "./claude-sessions";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
@@ -39,8 +45,12 @@ describe("claude sessions", () => {
     process.env.CLAUDE_JOBS_DIR = JOBS_DIR;
   });
 
+  const finishedTaskIds: number[] = [];
+
   beforeEach(() => {
     commands.length = 0;
+    finishedTaskIds.length = 0;
+    setOnSessionFinished((taskId) => finishedTaskIds.push(taskId));
     rmSync(JOBS_DIR, { recursive: true, force: true });
     for (const t of ["claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
@@ -157,6 +167,7 @@ describe("claude sessions", () => {
     await pollActiveSessions();
     list = await (await request("GET", "/api/v1/sessions")).json();
     expect(list.items[0].detail).toBe("Posting to Slack");
+    expect(finishedTaskIds).toEqual([]);
     expect(list.items[0].link).toBe("https://claude.ai/code/session_01ABC");
 
     writeState("abcd1234", {
@@ -171,6 +182,11 @@ describe("claude sessions", () => {
     list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("done");
     expect(list.items[0].result).toBe("Review requested");
+
+    // the task is synced once when its session finishes, not on every later poll
+    expect(finishedTaskIds).toEqual([1]);
+    await pollActiveSessions();
+    expect(finishedTaskIds).toEqual([1]);
 
     // finished long ago → process gets stopped once
     await reapIdleProcesses();

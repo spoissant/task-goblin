@@ -7,6 +7,7 @@ import {
   reapIdleProcesses,
   reconcileOnStartup,
   setCapacityCheck,
+  setOnSessionFinished,
   startQueued,
   syncProcessLiveness,
 } from "./claude-sessions";
@@ -15,6 +16,8 @@ import { reapCompletedWorktrees } from "./task-worktrees";
 import { reconcileDevStack } from "./dev-stack";
 import { collectSessionUsage } from "./session-usage";
 import { reconcileStandups } from "./standup";
+import { syncTask } from "./task-sync";
+import { broadcast } from "../lib/sse";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
@@ -28,6 +31,15 @@ export function startClaudeRuntime(): void {
   if (process.env.TASK_GOBLIN_SCHEDULERS === "0") return;
 
   setCapacityCheck(ensureStackCapacity);
+  // Pull the task's new Jira status, PR state and git status once its session finishes.
+  setOnSessionFinished((taskId) => {
+    syncTask(taskId)
+      .then((errors) => {
+        if (errors.length > 0) console.error(`[claude] post-session sync of task ${taskId}:`, errors.join("; "));
+        broadcast("task", { taskId });
+      })
+      .catch((err) => console.error(`[claude] post-session sync of task ${taskId} failed`, err));
+  });
   reconcileOnStartup().catch((err) => console.error("[claude] reconcile failed", err));
   reconcileDevStack().catch((err) => console.error("[dev-stack] reconcile failed", err));
   reconcileStandups().catch((err) => console.error("[standup] reconcile failed", err));
