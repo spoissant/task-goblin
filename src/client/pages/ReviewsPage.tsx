@@ -141,6 +141,18 @@ function isReviewSatisfied(request: ReviewRequest): boolean {
   );
 }
 
+/**
+ * Over 75% of the changed lines are backend. Unknown (null) or empty never
+ * counts, so the PR stays listed.
+ */
+function isMostlyBackend(request: ReviewRequest): boolean {
+  const changes = request.changesByCategory;
+  if (!changes) return false;
+  const lines = (c: { additions: number; deletions: number }) => c.additions + c.deletions;
+  const total = lines(changes.frontend) + lines(changes.backend) + lines(changes.other);
+  return total > 0 && lines(changes.backend) / total > 0.75;
+}
+
 function prKey(request: ReviewRequest): string {
   return `${request.repo.owner}/${request.repo.repo}#${request.prNumber}`;
 }
@@ -160,6 +172,7 @@ export function ReviewsPage() {
 
   const [hideReadyToMerge, setHideReadyToMerge] = useLocalStorage("reviewsPage.hideReadyToMerge", true);
   const [showIgnored, setShowIgnored] = useLocalStorage("reviewsPage.showIgnored", false);
+  const [hideBackend, setHideBackend] = useLocalStorage("reviewsPage.hideBackend", false);
 
   const { data, isLoading, error, isFetching } = useReviewRequestsQuery(scope);
   const { data: reposData } = useRepositoriesQuery();
@@ -207,15 +220,17 @@ export function ReviewsPage() {
     if (!data?.items) return null;
     // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
     // Others' PRs your review can't move don't need it, so they can be hidden
-    // too. Ignored authors (bots) only show when asked for.
+    // too, as can mostly-backend PRs. Ignored authors (bots) only show when
+    // asked for.
     if (scope === "mine") return data.items;
     return data.items.filter(
       (item) =>
         !item.isDraft &&
         (showIgnored || !ignored.has(item.author.toLowerCase())) &&
-        !(hideReadyToMerge && isReviewSatisfied(item)),
+        !(hideReadyToMerge && isReviewSatisfied(item)) &&
+        !(hideBackend && isMostlyBackend(item)),
     );
-  }, [data, scope, hideReadyToMerge, showIgnored, ignored]);
+  }, [data, scope, hideReadyToMerge, showIgnored, hideBackend, ignored]);
 
   const groups = useMemo(() => {
     if (!visibleItems) return null;
@@ -289,6 +304,19 @@ export function ReviewsPage() {
               />
               <Label htmlFor="show-ignored" className="text-sm cursor-pointer whitespace-nowrap">
                 Show ignored
+              </Label>
+              <Checkbox
+                id="hide-backend"
+                checked={hideBackend}
+                onCheckedChange={(checked) => setHideBackend(checked === true)}
+                className="ml-2"
+              />
+              <Label
+                htmlFor="hide-backend"
+                className="text-sm cursor-pointer whitespace-nowrap"
+                title="Hide PRs with over 75% of changed lines in backend files"
+              >
+                Hide backend
               </Label>
             </div>
           )}
