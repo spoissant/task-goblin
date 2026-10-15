@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
 import { tasks, statusCategories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
-import { getChoreDefinitions, getChores } from "./chores";
+import { getChoreDefinition, getChoreDefinitions, getChores } from "./chores";
+import { invalidateStatusConfigCache } from "./task-status";
 import type { RepoPair } from "@/shared/chore-pairs";
 import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 
@@ -16,6 +17,7 @@ beforeAll(() => {
 beforeEach(() => {
   sqlite.exec("DELETE FROM tasks");
   sqlite.exec("DELETE FROM status_categories");
+  invalidateStatusConfigCache();
 });
 
 async function seedTask() {
@@ -106,6 +108,28 @@ describe("getChores — chore 11 explain-me-why (manual only)", () => {
 
   it("still lists explain-me-why in the chore definitions for the AI menu", () => {
     expect(getChoreDefinitions().find((d) => d.key === "explain-me-why")?.number).toBe(11);
+  });
+});
+
+describe("getChores — chore 14 validate-issue (manual only, main checkout)", () => {
+  it("never suggests validate-issue, even for a Backlog task", async () => {
+    await db.insert(statusCategories).values([
+      { name: "Backlog", color: "gray", done: 0, displayOrder: 0, jiraMappings: "[]" },
+    ]);
+    const [task] = await db
+      .insert(tasks)
+      .values({ title: "Poll vote count is wrong", status: "Backlog", createdAt: NOW, updatedAt: NOW })
+      .returning();
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("start-task");
+    expect(keys).not.toContain("validate-issue");
+  });
+
+  it("lists validate-issue for the AI menu and runs it without a worktree", () => {
+    expect(getChoreDefinitions().find((d) => d.key === "validate-issue")?.number).toBe(14);
+    expect(getChoreDefinition("validate-issue")?.cwd).toBe("main");
   });
 });
 

@@ -220,6 +220,16 @@ const CHORES: ChoreDefinition[] = [
     repoPairs: UPSTREAM_PAIRS,
     match: () => false,
   },
+  {
+    number: 14,
+    key: "validate-issue",
+    name: "Validate Issue",
+    condition: "manual only (never suggested)",
+    prompt: "/chore-validate-issue {{taskId}}",
+    categories: null,
+    cwd: "main", // runs before work starts: no worktree or branch yet
+    match: () => false,
+  },
 ];
 
 export function getChoreDefinitions() {
