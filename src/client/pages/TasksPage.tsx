@@ -8,6 +8,7 @@ import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
 import { SavedSearchBar, effectiveQuery, type SavedSearch } from "@/client/components/tasks/SavedSearchBar";
 import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
 import { type ChoreDefinition, useTasksQuery } from "@/client/lib/queries";
+import { orderForRepoPair } from "@/shared/chore-pairs";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -49,13 +50,15 @@ export function TasksPage() {
     selectedTasks.length <= 1 ||
     selectedTasks.every((t) => t.repositoryId !== null && t.repositoryId === selectedTasks[0].repositoryId);
 
+  const selection = selectedTasks.map((t) => ({ id: t.id, repo: t.repository?.repo ?? null }));
+
   const handleRunChoreForSelection = (chore: ChoreDefinition) => {
     // Runs inside a single session attached to the first selected task; no need for a "shared" session.
-    const firstTaskId = Array.from(selectedIds)[0];
-    if (firstTaskId === undefined) return;
-    const ids = Array.from(selectedIds).join(" ");
-    const prompt = chore.prompt.replace("{{taskId}}", ids).replace("{{jiraKey}}", "");
-    setBulkPromptTarget({ taskId: firstTaskId, chore: { number: chore.number, key: chore.key, name: chore.name, prompt } });
+    // A two-repo chore runs on its target task (e.g. alumni_connect) whatever the click order.
+    const ids = chore.repoPairs ? orderForRepoPair(chore.repoPairs, selection) : Array.from(selectedIds);
+    if (!ids || ids.length === 0) return;
+    const prompt = chore.prompt.replace("{{taskId}}", ids.join(" ")).replace("{{jiraKey}}", "");
+    setBulkPromptTarget({ taskId: ids[0], chore: { number: chore.number, key: chore.key, name: chore.name, prompt } });
   };
 
   const handleCustomPromptForSelection = () => {
@@ -160,6 +163,7 @@ export function TasksPage() {
           <div className="flex-1">
             <BulkActionsBar
               selectedIds={Array.from(selectedIds)}
+              selection={selection}
               sameRepo={sameRepo}
               repositoryId={sameRepo ? (selectedTasks[0]?.repositoryId ?? null) : null}
               onClearSelection={() => setSelectedIds(new Set())}

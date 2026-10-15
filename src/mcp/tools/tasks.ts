@@ -12,6 +12,23 @@ import {
   type Task,
   type SyncResult,
 } from "../client.js";
+import type { TaskWorktree } from "@/shared/types";
+
+const WORKTREE_POLL_MS = 3_000;
+const WORKTREE_MAX_WAIT_SECONDS = 300;
+
+type WorktreeStatus = (TaskWorktree & { changedFiles: number | null }) | null;
+
+/** Poll until the task's worktree leaves preparing, or the wait runs out. */
+async function waitForWorktree(taskId: number, waitSeconds: number): Promise<WorktreeStatus> {
+  const deadline = Date.now() + Math.min(waitSeconds, WORKTREE_MAX_WAIT_SECONDS) * 1000;
+  let status = await get<WorktreeStatus>(`/api/v1/tasks/${taskId}/worktree`);
+  while (Date.now() < deadline && status?.state === "preparing") {
+    await Bun.sleep(WORKTREE_POLL_MS);
+    status = await get<WorktreeStatus>(`/api/v1/tasks/${taskId}/worktree`);
+  }
+  return status;
+}
 
 export function registerTaskTools(server: McpServer) {
   // get_task
@@ -210,6 +227,32 @@ export function registerTaskTools(server: McpServer) {
 
         const refreshed = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify({ task: refreshed, errors }) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+
+  // prepare_task_worktree
+  server.registerTool(
+    "prepare_task_worktree",
+    {
+      description:
+        "Prepare a task's git worktree (its branch checked out next to the repository's main checkout, then the repository's " +
+        "setup command run, e.g. pnpm install) and return it: { path, branch, state (preparing | ready | failed | dirty | removing), " +
+        "error, setupLog, changedFiles }. A ready worktree is returned as is. Lets a session work in another task's checkout. " +
+        `Waits up to waitSeconds (default 120, max ${WORKTREE_MAX_WAIT_SECONDS}) for preparing to settle; call again if still preparing.`,
+      inputSchema: {
+        taskId: z.number().int().describe("Task ID"),
+        waitSeconds: z.number().int().min(0).optional().describe("Wait up to N seconds for preparing to settle"),
+      },
+    },
+    async ({ taskId, waitSeconds }) => {
+      try {
+        await post(`/api/v1/tasks/${taskId}/worktree`);
+        const status = await waitForWorktree(taskId, waitSeconds ?? 120);
+        return { content: [{ type: "text", text: JSON.stringify(status) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/client/components/ui/dropdown-menu";
 import { useChoreDefinitionsQuery, type ChoreDefinition } from "@/client/lib/queries";
+import { orderForRepoPair } from "@/shared/chore-pairs";
 import { useBootDevStack, useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { X, Sparkles, ChevronDown, CirclePlay, PenLine } from "lucide-react";
@@ -14,6 +15,8 @@ import { toast } from "sonner";
 
 interface BulkActionsBarProps {
   selectedIds: number[];
+  /** Each selected task's repository name, for two-repo chores. */
+  selection: { id: number; repo: string | null }[];
   /** Whether every selected task shares the same repository. Irrelevant when only one task is selected. */
   sameRepo: boolean;
   /** The selection's shared repository, or null when tasks span several (or none). */
@@ -25,6 +28,7 @@ interface BulkActionsBarProps {
 
 export function BulkActionsBar({
   selectedIds,
+  selection,
   sameRepo,
   repositoryId,
   onClearSelection,
@@ -33,8 +37,10 @@ export function BulkActionsBar({
 }: BulkActionsBarProps) {
   const { data } = useChoreDefinitionsQuery();
   const isMulti = selectedIds.length > 1;
-  const availableChores = (data?.items ?? []).filter(
-    (c) => (!isMulti || c.supportsBulk) && (!c.requiresSameRepo || sameRepo),
+  const availableChores = (data?.items ?? []).filter((c) =>
+    c.repoPairs
+      ? orderForRepoPair(c.repoPairs, selection) !== null
+      : (!isMulti || c.supportsBulk) && (!c.requiresSameRepo || sameRepo),
   );
 
   return (

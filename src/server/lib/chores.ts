@@ -5,6 +5,7 @@ import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
 import { isReviewReady, parseReviewStatus } from "@/shared/review-status";
+import type { RepoPair } from "@/shared/chore-pairs";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
@@ -21,6 +22,7 @@ interface ChoreDefinition {
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
   requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
+  repoPairs?: RepoPair[]; // two-repo chore: run on exactly one task per repo of a pair; the session runs on the target task
 }
 
 export interface ChoreEntry {
@@ -73,6 +75,12 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   const taskBranches = parseDeploymentBranches(task.onDeploymentBranches);
   return repoBranches.some((b) => taskBranches.includes(b));
 }
+
+// Upstream repos whose releases alumni_connect pins, for the two-repo chores.
+const UPSTREAM_PAIRS: RepoPair[] = [
+  ["api-contracts", "alumni_connect"],
+  ["front-monorepo", "alumni_connect"],
+];
 
 const CHORES: ChoreDefinition[] = [
   {
@@ -192,10 +200,30 @@ const CHORES: ChoreDefinition[] = [
     categories: null,
     match: () => false,
   },
+  {
+    number: 12,
+    key: "ship-upstream",
+    name: "Ship Upstream PR",
+    condition: "manual only: an api-contracts or front-monorepo task selected with the alumni_connect task that depends on it",
+    prompt: "/chore-ship-upstream {{taskId}}",
+    categories: null,
+    repoPairs: UPSTREAM_PAIRS,
+    match: () => false,
+  },
+  {
+    number: 13,
+    key: "preview-upstream",
+    name: "Preview Upstream PR",
+    condition: "manual only: an api-contracts or front-monorepo task selected with the alumni_connect task that depends on it",
+    prompt: "/chore-preview-upstream {{taskId}}",
+    categories: null,
+    repoPairs: UPSTREAM_PAIRS,
+    match: () => false,
+  },
 ];
 
 export function getChoreDefinitions() {
-  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo }) => ({
+  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo, repoPairs }) => ({
     number,
     key,
     name,
@@ -203,6 +231,7 @@ export function getChoreDefinitions() {
     prompt,
     supportsBulk: supportsBulk ?? false,
     requiresSameRepo: requiresSameRepo ?? false,
+    repoPairs: repoPairs ?? null,
   }));
 }
 

@@ -4,6 +4,7 @@ import { db, sqlite } from "../../db";
 import { tasks, statusCategories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { getChoreDefinitions, getChores } from "./chores";
+import type { RepoPair } from "@/shared/chore-pairs";
 import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 
 const NOW = "2026-08-21T00:00:00.000Z";
@@ -105,6 +106,28 @@ describe("getChores — chore 11 explain-me-why (manual only)", () => {
 
   it("still lists explain-me-why in the chore definitions for the AI menu", () => {
     expect(getChoreDefinitions().find((d) => d.key === "explain-me-why")?.number).toBe(11);
+  });
+});
+
+describe("getChores — chores 12 ship-upstream and 13 preview-upstream (two-repo, manual only)", () => {
+  it("never suggests them", async () => {
+    const task = await seedTask();
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).not.toContain("ship-upstream");
+    expect(keys).not.toContain("preview-upstream");
+  });
+
+  it("exposes their repo pairs, and none on single-repo chores", () => {
+    const defs = getChoreDefinitions();
+    const pairs: RepoPair[] = [
+      ["api-contracts", "alumni_connect"],
+      ["front-monorepo", "alumni_connect"],
+    ];
+    expect(defs.find((d) => d.key === "ship-upstream")?.repoPairs).toEqual(pairs);
+    expect(defs.find((d) => d.key === "preview-upstream")?.repoPairs).toEqual(pairs);
+    expect(defs.find((d) => d.key === "ai-qa")?.repoPairs).toBeNull();
   });
 });
 

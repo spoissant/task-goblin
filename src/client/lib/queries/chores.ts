@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import type { RepoPair } from "@/shared/chore-pairs";
 
 export interface ChoreDefinition {
   number: number;
@@ -9,6 +10,8 @@ export interface ChoreDefinition {
   prompt: string;
   supportsBulk: boolean;
   requiresSameRepo: boolean;
+  /** Two-repo chore: offered only for one task per repo of a pair. */
+  repoPairs: RepoPair[] | null;
 }
 
 export interface ChoreTask {

@@ -75,7 +75,8 @@ interface AiCellProps {
  */
 export function AiCell({ task, session, nextChore }: AiCellProps) {
   const { data: defsData } = useChoreDefinitionsQuery();
-  const definitions = defsData?.items ?? [];
+  // Two-repo chores need a second task, so they start from the selection bar only.
+  const definitions = (defsData?.items ?? []).filter((d) => !d.repoPairs);
   const stopSession = useStopSession();
   const respawnSession = useRespawnSession();
   // Both hold a PromptTarget, so `undefined` means "closed" and `null` means
