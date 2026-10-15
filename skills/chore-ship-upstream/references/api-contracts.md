@@ -6,6 +6,10 @@ Merging to `main` makes CI regenerate the SDKs. A few minutes later, each SDK re
 
 No extra condition.
 
+## Before the merge (step 4)
+
+`main` requires the branch to be up to date, so a PR behind it is refused. Per PR, before merging: `gh pr view <n> --repo Hivebrite/api-contracts --json mergeStateStatus`; when `BEHIND`, run `gh pr update-branch <n> --repo Hivebrite/api-contracts` (a merge of `main`, never a rebase). That moves the head: wait for the checks, rerun the step 2 gate (the approval may drop) and take the new `headRefOid` for `--match-head-commit`. The go-ahead covers this update.
+
 ## Which SDKs
 
 The SDK gems the alumni_connect PR re-pins: `git diff origin/<base>...HEAD -- Gemfile`, usually a branch or SHA pin on an SDK repo. When it re-pins none, it is the `Gemfile` SDK repos that get a commit carrying the upstream PR's title after the merge; find them while waiting.

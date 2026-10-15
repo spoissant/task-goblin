@@ -31,6 +31,8 @@ Merging cannot be undone, so ask before it. AskUserQuestion with both PRs' links
 
 ## 4. Merge and wait for the release
 
+Do the reference's pre-merge step first, if it has one (api-contracts: update the branch), and use the head it leaves.
+
 `gh pr merge <n> --repo <owner/repo> --squash --match-head-commit <headRefOid from step 2>`, never `--admin`. A refused merge (the head moved, a check went red): stop and report. Then `sync_task(upstream)`, and wait for the release as the reference describes.
 
 ## 5. Bump the alumni_connect PR
