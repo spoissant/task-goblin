@@ -16,7 +16,7 @@ Right before each subagent starts, mint its sign-in with `dev_stack_login_link(t
 - The group's plan items, numbered as in the plan, each with the expected outcome and the screens or flows involved.
 - Rules: load the Chrome tools in one `ToolSearch` call, work in a new tab, open the sign-in URL first, never type a password, never trigger browser-native dialogs (alerts, confirms), and after 2–3 failed attempts at the same step give up on it and continue. Posting, uploading, saving and in-page consent prompts are fine: the local data is disposable. Read page text and console errors for every item. Close the tab when done.
 - Chrome facts: console and network capture start at the first `read_console_messages` / `read_network_requests` call on a tab, so call both once the first page has loaded and reload before judging an item. `resize_window` does not change the viewport, so phone-width items load the page in a same-origin iframe of that width.
-- Report format: for every item, a result (✅, ❌ or ⚠️) plus the evidence: what was on the screen, the console errors seen, the exact steps taken. A ❌ states observed versus expected. A ⚠️ states why (missing role or data, email, third-party service, uncertain visual judgment, a browser tool that kept failing).
+- Report format: for every item, a result (✅, ❌ or ⚠️) plus the evidence: what was on the screen, the console errors and failed requests (method, URL, status) seen, the exact steps taken. A ❌ states observed versus expected. A ⚠️ states why (missing role or data, email, third-party service, uncertain visual judgment, a browser tool that kept failing).
 
 Wait for each report before launching the next group. A subagent that reports no browser connected ends the run.
 

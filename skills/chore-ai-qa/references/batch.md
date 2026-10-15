@@ -16,8 +16,14 @@ For each task in turn, run a subagent (Agent tool, general-purpose) with the pro
 
 Print each task's banner and plan, then one summary line per task. A ❌ on a merged stack may come from the PRs interacting rather than from the task itself; say so when the failure touches code another task in the batch changed.
 
-If any task has ⚠️ items, ask the human once, through AskUserQuestion, with one question per task listing its ⚠️ items and steps, the stack still up at `stack.url`. A task counts as passed when it has no ❌ and its ⚠️ were answered "All good".
+If any task has ⚠️ items, ask the human once, through AskUserQuestion, with one question per task listing its ⚠️ items and steps, the stack still up at `stack.url`. A task counts as passed when it has no ❌ and its ⚠️ were answered "All good". A "Found issues" answer is diagnosed as a ❌ (SKILL.md step 6).
 
-## 4. Wrap up
+## 4. Fix failures
+
+If any task has a proposed fix, ask the same way: one question per task listing its proposals, "Apply the fixes" or "Leave as is", amendments through Other. AskUserQuestion takes four questions per call, so more tasks take more calls.
+
+For each task with approved fixes: `prepare_task_worktree(id)` → `path`. Make the changes under `path`, run the specs covering them there, then commit (files staged by name, message in the repository's `type(scope): summary [<jiraKey>]` convention) and push with `git -C <path>`, and `sync_task(id)`. Once every fix is pushed, `refresh_dev_stack(first)` (it re-merges every task's latest commit; a new migration or package needs `stop_dev_stack` then `start_dev_stack(first, withTaskIds: rest)` instead) and wait for the recompile as in SKILL.md step 6. The run does not end at the push: rerun step 2 for the fixed tasks only, each subagent told which items to re-check (the fixed ones and the regression checks on their screens), and go back to step 3 with the updated results. Each new round of fixes needs its own approval.
+
+## 5. Wrap up
 
 Wrap up every passed task (`references/wrap-up.md`), even when others failed. Then `stop_dev_stack(first)` if every task passed; otherwise leave the stack up and list the failures with reproduction steps per task.

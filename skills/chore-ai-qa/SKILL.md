@@ -1,14 +1,14 @@
 ---
 name: chore-ai-qa
-description: QA a task's PR in Chrome against the local dev stack — boots or reuses the stack, derives a test plan from the Jira ticket and PR, runs it with the Claude in Chrome extension, then stops the stack and moves the Jira ticket to Code Review when everything passed (the PR stays a draft until /chore-code-review-my-pr), or leaves the stack up and asks a human to validate what it could not. Several task IDs QA their PRs merged on one stack, one task after another. Use for /chore-ai-qa <taskId> [<taskId>…] or "AI QA this task / these tasks".
-allowed-tools: "ToolSearch,AskUserQuestion,Agent,Bash(gh:*),Bash(git:*),Read,Grep,Glob,mcp__task-goblin__get_task,mcp__task-goblin__sync_task,mcp__task-goblin__dev_stack_status,mcp__task-goblin__start_dev_stack,mcp__task-goblin__refresh_dev_stack,mcp__task-goblin__stop_dev_stack,mcp__task-goblin__dev_stack_login_link,mcp__claude-in-chrome__*,mcp__playground__*,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__claude_ai_Atlassian__getTransitionsForJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__transitionJiraIssue,Skill(hivebrite-engineering:jira-postmortem-bug)"
+description: QA a task's PR in Chrome against the local dev stack — boots or reuses the stack, derives a test plan from the Jira ticket and PR, runs it with the Claude in Chrome extension, then stops the stack and moves the Jira ticket to Code Review when everything passed (the PR stays a draft until /chore-code-review-my-pr), diagnoses each failure and proposes fixes that it applies, pushes and re-tests once the user approves them, or leaves the stack up and asks a human to validate what it could not. Several task IDs QA their PRs merged on one stack, one task after another. Use for /chore-ai-qa <taskId> [<taskId>…] or "AI QA this task / these tasks".
+allowed-tools: "ToolSearch,AskUserQuestion,Agent,Bash(gh:*),Bash(git:*),Bash(yarn test*),Bash(bin/dev*),Read,Grep,Glob,Edit,Write,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__prepare_task_worktree,mcp__task-goblin__sync_task,mcp__task-goblin__dev_stack_status,mcp__task-goblin__start_dev_stack,mcp__task-goblin__refresh_dev_stack,mcp__task-goblin__stop_dev_stack,mcp__task-goblin__dev_stack_login_link,mcp__claude-in-chrome__*,mcp__playground__*,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__claude_ai_Atlassian__getTransitionsForJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__transitionJiraIssue,Skill(hivebrite-engineering:jira-postmortem-bug)"
 ---
 
 # AI QA
 
-One or more numeric task IDs (ask if missing). Several IDs: follow `references/batch.md` instead of the steps below. Read-only on code: QA reports problems, it never fixes them. The local stack is disposable, so local state is not code: seed data, post, upload and save through the UI, toggle flags in the main checkout's gitignored `launchdarkly.dev.yml` (restore them afterwards), and repair the local environment (step 2).
+One or more numeric task IDs (ask if missing). Several IDs: follow `references/batch.md` instead of the steps below. Code changes only once the user approves them (step 6). The local stack is disposable, so local state is not code: seed data, post, upload and save through the UI, toggle flags in the main checkout's gitignored `launchdarkly.dev.yml` (restore them afterwards), and repair the local environment (step 2).
 
-`--stack-ready` (set by the batch run): the stack is already up with this task in it. Step 2 only checks that `dev_stack_status(id)` is `up` and that `stack.taskId` or `stack.mergedTaskIds` includes this task (otherwise stop and say so), with no start or refresh. Run steps 1, 3 and 4 and return the banner and plan with results, plus the exact steps a human should follow for each ⚠️. Skip step 5 entirely: no stack stop, no questions, no Jira.
+`--stack-ready` (set by the batch run): the stack is already up with this task in it. Step 2 only checks that `dev_stack_status(id)` is `up` and that `stack.taskId` or `stack.mergedTaskIds` includes this task (otherwise stop and say so), with no start or refresh. Run steps 1, 3 and 4, then step 6's diagnosis only. Return the banner and plan with results, the exact steps a human should follow for each ⚠️, and each ❌'s bucket, cause and proposed fix. Skip step 5 and the rest of step 6: no stack stop, no questions, no edits, no Jira.
 
 ## 1. Context
 
@@ -42,5 +42,22 @@ Signing in (alumni_connect): never type passwords. `dev_stack_login_link(taskId,
 Print a banner (`🧪 AI QA · <jiraKey> · ✅ N · ❌ N · ⚠️ N`) and the plan with each item's result.
 
 - **All ✅**: `stop_dev_stack(id)`, then wrap up the task (`references/wrap-up.md`).
-- **Any ❌**: leave the stack up and the PR as is. List the failures with reproduction steps.
-- **⚠️ but no ❌**: leave the stack up at `stack.url` and ask the human, through AskUserQuestion, to validate the ⚠️ items, each with exact steps you have checked can be followed (the control, page and role exist). On "All good", wrap up as for all ✅. On "Found issues", leave everything as is.
+- **Any ❌**: leave the stack up and go to step 6.
+- **⚠️ but no ❌**: leave the stack up at `stack.url` and ask the human, through AskUserQuestion, to validate the ⚠️ items, each with exact steps you have checked can be followed (the control, page and role exist). On "All good", wrap up as for all ✅. On "Found issues", take what they saw (their note, or ask) as ❌ items and go to step 6.
+
+## 6. Fix failures
+
+Diagnose every ❌ before proposing anything, from the subagent's evidence (console errors, failed requests), `gh pr diff` and the code it touches, and for a 5xx the Rails log of the service that served it (alumni_connect: `bin/dev dc logs --tail 300 webapi`, or `webapp`, `worker`). Each ❌ lands in one bucket:
+
+- **PR bug**: the diff causes it. Propose the cause at `file:line`, the change, and the spec that covers it (new or updated).
+- **Not from this PR**: the flow fails the same way without the diff. No fix here: it becomes ⚠️ with where it comes from, so the human decides whether it blocks.
+- **Wrong expectation**: the plan misread the ticket or the design. Re-judge the item and say why.
+- **Local environment** (stale data, crashed container, missing seed): repair it as in step 2 and re-run the item.
+
+A cause you could not pin down, or a fix that needs a product decision: mark it ❓ and say what you need.
+
+Print the proposals numbered, then ask once, through AskUserQuestion: "Apply the fixes" or "Leave as is" (stack stays up, nothing changes, the failures are listed with reproduction steps). An amendment through Other ("2: skip", "3: do X instead") is applied, then executed. No PR bug to fix: skip the question and go back to step 5 with the re-judged results.
+
+Once approved: `Skill(checkout-branch)` with `headBranch`, make the changes, run the specs covering the touched files, commit with `Skill(hivebrite-engineering:github-commit)`, `git push`, `sync_task(id)`.
+
+The run does not end at the push: the fixes are validated in Chrome before anything is reported. `refresh_dev_stack(id)` and check that `to` is the fix commit (a new migration or package needs `stop_dev_stack` then `start_dev_stack` instead). The stack stays `up` while the bundler recompiles, so call `dev_stack_status(id)` until its `logTail` shows a compile after the `refresh` line. Then re-run the fixed items and the regression checks on their screens (`references/browser-run.md`, fresh sign-in links), and go back to step 5 with the updated results: all ✅ wraps up, a ❌ comes back here, and each new round of fixes needs its own approval.
