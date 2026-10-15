@@ -1,10 +1,9 @@
 import { useMemo } from "react";
-import { useTasksQuery, useRepositoriesQuery, useSyncTask } from "@/client/lib/queries";
+import { useTasksQuery, useRepositoriesQuery } from "@/client/lib/queries";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { cn, normalizeStatus } from "@/client/lib/utils";
 import type { StatusCategory } from "@/client/lib/types";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
 import {
@@ -15,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { RefreshCw } from "lucide-react";
 import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
 import type { TaskListItem, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
@@ -169,7 +167,6 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
               </TableHead>
             )}
             <TableHead className="w-[50px]">ID</TableHead>
-            <TableHead className="w-[40px]"></TableHead>
             {visibleColumns.map((colKey) => {
               const col = getColumn(colKey);
               return (
@@ -226,17 +223,8 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, session, isParent, onSearch, isSelected, onSelectionChange }: TaskRowProps) {
-  const syncTask = useSyncTask();
-
   // Build GitHub PR URL if we have repo info
   const prUrl = getPrUrl(repo, task.prNumber);
-
-  // Only show sync if task has Jira or PR
-  const canSync = task.jiraKey || task.prNumber;
-
-  const handleSync = () => {
-    syncTask.mutate({ task, repo });
-  };
 
   // Context for column renderers
   const columnContext = {
@@ -275,23 +263,6 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, s
           {task.id}
         </CopyChip>
       </TableCell>
-      {/* Sync / Unread Logs */}
-      <TableCell>
-        <div className="flex items-center gap-1">
-          {canSync && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleSync}
-              disabled={syncTask.isPending}
-            >
-              <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
-            </Button>
-          )}
-        </div>
-      </TableCell>
-
       {/* Shared columns */}
       {columns.map((colKey) => {
         const col = getColumn(colKey);

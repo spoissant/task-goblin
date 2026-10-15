@@ -3,6 +3,7 @@ import { Flame, ListTree, MessageSquare, Snowflake } from "lucide-react";
 import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
 import { AiCell } from "./AiCell";
+import { SyncCell } from "./SyncCell";
 import {
   TypeCell,
   SprintCell,
@@ -209,6 +210,12 @@ export const COLUMNS = {
     width: "120px",
     render: (task, ctx) => <AiCell task={task} session={ctx.session} nextChore={ctx.nextChore} />,
   },
+  sync: {
+    key: "sync",
+    header: "",
+    width: "40px",
+    render: (task, ctx) => <SyncCell task={task} repo={ctx.repo} />,
+  },
 } as const satisfies Record<string, ColumnDef>;
 
 // Type helper to access columns with full ColumnDef interface
@@ -228,6 +235,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
   "status",
   "title",
   "ai",
+  "sync",
   "repo",
   "branch",
   "pr",
