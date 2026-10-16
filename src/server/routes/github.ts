@@ -343,6 +343,7 @@ export const githubRoutes: Routes = {
             url: item.html_url,
             repo: { owner, repo },
             author: item.user?.login ?? "unknown",
+            assignees: (item.assignees ?? []).map((a) => a.login),
             state: isDraft ? "draft" : "open",
             isDraft,
             // null, not a guess, when the PR's reviews are unavailable —

@@ -394,6 +394,8 @@ export interface ReviewRequest {
   url: string;
   repo: { owner: string; repo: string };
   author: string;
+  /** GitHub logins. On a bot's PR, the assignee is its owner. */
+  assignees: string[];
   state: "open" | "draft";
   isDraft: boolean;
   /** null when GitHub wouldn't return the PR's reviews — unknown, not ready. */

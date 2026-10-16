@@ -38,7 +38,7 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">Team Members</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            GitHub usernames of your teammates. Review requests authored by them are highlighted on the Reviews page.
+            GitHub usernames of your teammates. Review requests authored by or assigned to them are highlighted on the Reviews page.
           </p>
           <UsernameListForm settingKey="team_members" label="team members" />
         </section>
@@ -48,7 +48,7 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">VIPs</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            GitHub usernames you always want to unblock first. Review requests authored by them are highlighted on the Reviews page.
+            GitHub usernames you always want to unblock first. Review requests authored by or assigned to them are highlighted on the Reviews page.
           </p>
           <UsernameListForm settingKey="vip_members" label="VIPs" />
         </section>
@@ -58,7 +58,7 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">Ignored Authors</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            GitHub usernames (e.g. bots) whose PRs you never want to review. Their review requests are hidden from the Reviews page.
+            GitHub usernames (e.g. bots) whose PRs you never want to review. Their review requests are hidden from the Reviews page until someone is assigned.
           </p>
           <UsernameListForm settingKey="ignored_members" label="ignored authors" />
         </section>

@@ -8,6 +8,7 @@ import { ReviewCell } from "@/client/components/reviews/ReviewCell";
 import { isSessionActive } from "@/client/components/tasks/columns/AiCell";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
+import { isIgnoredRequest, memberTag, parseUsernames, requestTag, type MemberTag } from "@/client/lib/review-ownership";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
@@ -101,17 +102,6 @@ function SizeBadge({ size }: { size: SizeCategory }) {
       <span>{SIZE_LABELS[size]}</span>
     </span>
   );
-}
-
-function parseUsernames(value: string | null | undefined): Set<string> {
-  if (!value) return new Set();
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((v): v is string => typeof v === "string").map((v) => v.toLowerCase()));
-  } catch {
-    return new Set();
-  }
 }
 
 const HIGH_PRIORITY_KEY = "high_priority_prs";
@@ -220,13 +210,13 @@ export function ReviewsPage() {
     if (!data?.items) return null;
     // Own drafts are WIP worth seeing; others' drafts aren't reviewable yet.
     // Others' PRs your review can't move don't need it, so they can be hidden
-    // too, as can mostly-backend PRs. Ignored authors (bots) only show when
-    // asked for.
+    // too, as can mostly-backend PRs. Ignored authors' (bots') unassigned PRs
+    // only show when asked for.
     if (scope === "mine") return data.items;
     return data.items.filter(
       (item) =>
         !item.isDraft &&
-        (showIgnored || !ignored.has(item.author.toLowerCase())) &&
+        (showIgnored || !isIgnoredRequest(item, ignored)) &&
         !(hideReadyToMerge && isReviewSatisfied(item)) &&
         !(hideBackend && isMostlyBackend(item)),
     );
@@ -283,61 +273,73 @@ export function ReviewsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Review Requests</h1>
-        <div className="flex items-center gap-2">
-          {scope === "others" && (
-            <div className="flex items-center gap-2 shrink-0 mr-2">
-              <Checkbox
-                id="hide-ready-to-merge"
-                checked={hideReadyToMerge}
-                onCheckedChange={(checked) => setHideReadyToMerge(checked === true)}
-              />
-              <Label htmlFor="hide-ready-to-merge" className="text-sm cursor-pointer whitespace-nowrap">
-                Hide ready to merge
-              </Label>
-              <Checkbox
-                id="show-ignored"
-                checked={showIgnored}
-                onCheckedChange={(checked) => setShowIgnored(checked === true)}
-                className="ml-2"
-              />
-              <Label htmlFor="show-ignored" className="text-sm cursor-pointer whitespace-nowrap">
-                Show ignored
-              </Label>
-              <Checkbox
-                id="hide-backend"
-                checked={hideBackend}
-                onCheckedChange={(checked) => setHideBackend(checked === true)}
-                className="ml-2"
-              />
-              <Label
-                htmlFor="hide-backend"
-                className="text-sm cursor-pointer whitespace-nowrap"
-                title="Hide PRs with over 75% of changed lines in backend files"
-              >
-                Hide backend
-              </Label>
-            </div>
-          )}
-          {visibleItems && (
-            <span className="text-sm text-muted-foreground">
-              {visibleItems.length} PR{visibleItems.length !== 1 ? "s" : ""} {scope === "mine" ? "open" : "awaiting review"}
-            </span>
-          )}
-          <Button variant="outline" onClick={handleRefresh} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+      {/* Sticky: -mt-6/pt-6 pull <main>'s top padding inside so rows don't show above it once stuck. */}
+      <div className="sticky top-0 z-10 -mt-6 pt-6 pb-4 bg-background">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Review Requests</h1>
+          <div className="flex items-center gap-2">
+            {scope === "others" && (
+              <div className="flex items-center gap-2 shrink-0 mr-2">
+                <Checkbox
+                  id="hide-ready-to-merge"
+                  checked={hideReadyToMerge}
+                  onCheckedChange={(checked) => setHideReadyToMerge(checked === true)}
+                />
+                <Label htmlFor="hide-ready-to-merge" className="text-sm cursor-pointer whitespace-nowrap">
+                  Hide ready to merge
+                </Label>
+                <Checkbox
+                  id="show-ignored"
+                  checked={showIgnored}
+                  onCheckedChange={(checked) => setShowIgnored(checked === true)}
+                  className="ml-2"
+                />
+                <Label htmlFor="show-ignored" className="text-sm cursor-pointer whitespace-nowrap">
+                  Show ignored
+                </Label>
+                <Checkbox
+                  id="hide-backend"
+                  checked={hideBackend}
+                  onCheckedChange={(checked) => setHideBackend(checked === true)}
+                  className="ml-2"
+                />
+                <Label
+                  htmlFor="hide-backend"
+                  className="text-sm cursor-pointer whitespace-nowrap"
+                  title="Hide PRs with over 75% of changed lines in backend files"
+                >
+                  Hide backend
+                </Label>
+              </div>
+            )}
+            {visibleItems && (
+              <span className="text-sm text-muted-foreground">
+                {visibleItems.length} PR{visibleItems.length !== 1 ? "s" : ""} {scope === "mine" ? "open" : "awaiting review"}
+              </span>
+            )}
+            <Button variant="outline" onClick={handleRefresh} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <Tabs value={scope} onValueChange={(v) => setScope(v as ReviewScope)} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="others">Others' PRs</TabsTrigger>
-          <TabsTrigger value="mine">My PRs</TabsTrigger>
-        </TabsList>
-      </Tabs>
+        <Tabs value={scope} onValueChange={(v) => setScope(v as ReviewScope)}>
+          <TabsList>
+            <TabsTrigger value="others">Others' PRs</TabsTrigger>
+            <TabsTrigger value="mine">My PRs</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {visibleItems && visibleItems.length > 0 && (
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mt-4">
+            <TabsList>
+              <TabsTrigger value="grouped">Grouped by Size</TabsTrigger>
+              <TabsTrigger value="flat">Oldest First</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -360,13 +362,6 @@ export function ReviewsPage() {
 
       {visibleItems && visibleItems.length > 0 && (
         <TooltipProvider>
-          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mb-4">
-            <TabsList>
-              <TabsTrigger value="grouped">Grouped by Size</TabsTrigger>
-              <TabsTrigger value="flat">Oldest First</TabsTrigger>
-            </TabsList>
-          </Tabs>
-
           {view === "grouped" && groups && (
             <div className="space-y-8">
               {(["small", "medium", "large"] as SizeCategory[]).map((size) => {
@@ -428,6 +423,7 @@ function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost,
           <TableHead className="w-[110px]">Review</TableHead>
           <TableHead className="w-[150px]">Repo</TableHead>
           <TableHead className="w-[120px]">Author</TableHead>
+          <TableHead className="w-[120px]">Assignee</TableHead>
           <TableHead className="w-[120px]">Created</TableHead>
           {showSize && <TableHead className="w-[110px]">Size</TableHead>}
           <TableHead className="w-[100px]">Changes</TableHead>
@@ -444,8 +440,8 @@ function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost,
             showSize={showSize}
             scope={scope}
             jiraHost={jiraHost}
-            isTeammate={teamMembers.has(request.author.toLowerCase())}
-            isVip={vips.has(request.author.toLowerCase())}
+            teamMembers={teamMembers}
+            vips={vips}
             isHighPriority={highPriorityPrs.has(prKey(request))}
             onToggleHighPriority={onToggleHighPriority}
           />
@@ -462,8 +458,8 @@ interface ReviewRequestRowProps {
   showSize: boolean;
   scope: ReviewScope;
   jiraHost?: string | null;
-  isTeammate: boolean;
-  isVip: boolean;
+  teamMembers: Set<string>;
+  vips: Set<string>;
   isHighPriority: boolean;
   onToggleHighPriority: (key: string) => void;
 }
@@ -475,14 +471,37 @@ const VIP_ROW = `bg-rose-50/60 hover:bg-rose-100/70 dark:bg-rose-950/30 dark:hov
 
 const TEAM_ROW = `bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500`;
 
-function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraHost, isTeammate, isVip, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
+function MemberName({ login, tag }: { login: string; tag: MemberTag | null }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="inline-flex w-10 shrink-0">
+        {tag === "vip" ? (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 border-rose-400 bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100 dark:border-rose-500"
+          >
+            VIP
+          </Badge>
+        ) : tag === "team" ? (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 border-amber-400 bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100 dark:border-amber-500"
+          >
+            Team
+          </Badge>
+        ) : null}
+      </span>
+      <span>{login}</span>
+    </div>
+  );
+}
+
+function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraHost, teamMembers, vips, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
   const isMine = scope === "mine";
   const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
+  const tag = requestTag(request, teamMembers, vips);
   return (
-    <TableRow
-      // A VIP author outranks a teammate one, so only one highlight ever applies.
-      className={isVip ? VIP_ROW : isTeammate ? TEAM_ROW : undefined}
-    >
+    <TableRow className={tag === "vip" ? VIP_ROW : tag === "team" ? TEAM_ROW : undefined}>
       {/* High Priority */}
       {!isMine && (
         <TableCell>
@@ -603,26 +622,20 @@ function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraH
 
       {/* Author */}
       <TableCell className="text-sm">
-        <div className="flex items-center gap-1.5">
-          <span className="inline-flex w-10 shrink-0">
-            {isVip ? (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-rose-400 bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100 dark:border-rose-500"
-              >
-                VIP
-              </Badge>
-            ) : isTeammate ? (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-amber-400 bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100 dark:border-amber-500"
-              >
-                Team
-              </Badge>
-            ) : null}
-          </span>
-          <span>{request.author}</span>
-        </div>
+        <MemberName login={request.author} tag={memberTag(request.author, teamMembers, vips)} />
+      </TableCell>
+
+      {/* Assignee */}
+      <TableCell className="text-sm">
+        {request.assignees.length === 0 ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {request.assignees.map((login) => (
+              <MemberName key={login} login={login} tag={memberTag(login, teamMembers, vips)} />
+            ))}
+          </div>
+        )}
       </TableCell>
 
       {/* Created */}
