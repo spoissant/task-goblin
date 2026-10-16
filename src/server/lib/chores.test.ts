@@ -6,7 +6,6 @@ import { createTestTables } from "../../test/createSchema";
 import { getChoreDefinition, getChoreDefinitions, getChores } from "./chores";
 import { invalidateStatusConfigCache } from "./task-status";
 import type { RepoPair } from "@/shared/chore-pairs";
-import type { ReviewDecision, ReviewStatus } from "@/shared/review-status";
 
 const NOW = "2026-08-21T00:00:00.000Z";
 
@@ -86,17 +85,6 @@ describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
   });
 });
 
-const reviewStatus = (decision: ReviewDecision, approvedCount: number, missingCodeOwners: string[] = []) =>
-  JSON.stringify({
-    decision,
-    approvedCount,
-    requiredApprovals: 1,
-    missingCodeOwners,
-    optionalCodeOwners: [],
-    changesRequestedBy: [],
-    baseBranch: "main",
-  } satisfies ReviewStatus);
-
 describe("getChores — chore 11 explain-me-why (manual only)", () => {
   it("never suggests explain-me-why, even for an open PR ready for review", async () => {
     const task = await seedTask();
@@ -155,43 +143,20 @@ describe("getChores — chores 12 ship-upstream and 13 preview-upstream (two-rep
   });
 });
 
-describe("getChores — chore 10 request-reviews", () => {
-  it("suggests request-reviews for an open, ready PR short of approvals", async () => {
+describe("getChores — chore 10 request-reviews (manual only)", () => {
+  it("never suggests request-reviews, even for an open PR short of approvals", async () => {
     const task = await seedTask();
 
     const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
 
-    expect(keys).toContain("request-reviews");
-  });
-
-  it("stops suggesting request-reviews once GitHub says the reviews are done", async () => {
-    const task = await seedTask();
-    await db.update(tasks).set({ reviewStatus: reviewStatus("APPROVED", 1) }).where(eq(tasks.id, task.id));
-
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
-
-    expect(keys).not.toContain("request-reviews");
-  });
-
-  it("keeps suggesting request-reviews while a code owner is missing despite enough approvals", async () => {
-    const task = await seedTask();
-    await db
-      .update(tasks)
-      .set({ reviewStatus: reviewStatus("REVIEW_REQUIRED", 1, ["squad-fe"]) })
-      .where(eq(tasks.id, task.id));
-
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
-
-    expect(keys).toContain("request-reviews");
-  });
-
-  it("stops suggesting request-reviews once its chore skip is set", async () => {
-    const task = await seedTask();
-    await db.update(tasks).set({ choreSkips: JSON.stringify({ "request-reviews": true }) }).where(eq(tasks.id, task.id));
-
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
-
-    expect(keys).not.toContain("request-reviews");
     expect(keys).toContain("continue-work");
+    expect(keys).not.toContain("request-reviews");
+  });
+
+  it("lists request-reviews for the AI menu, bulk, in the main checkout", () => {
+    const def = getChoreDefinitions().find((d) => d.key === "request-reviews");
+    expect(def?.number).toBe(10);
+    expect(def?.supportsBulk).toBe(true);
+    expect(getChoreDefinition("request-reviews")?.cwd).toBe("main");
   });
 });

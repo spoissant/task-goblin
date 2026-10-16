@@ -1,7 +1,7 @@
 ---
 name: chore-request-reviews
-description: Request code reviews for one or more PRs via Slack. Resolves target channels from the repo default plus requested reviewer teams, composes the message with the PR's size and FE/BE split, sends it after approval, and sets the choreSkips flag. Use for /chore-request-reviews <taskId> [<taskId>…] or "request reviews for task".
-allowed-tools: "ToolSearch,AskUserQuestion,Bash(gh:*),Skill(hivebrite-engineering:request-pr-review),mcp__task-goblin__get_task,mcp__task-goblin__update_task,mcp__task-goblin__list_team_channels,mcp__task-goblin__get_pr_changes_by_category"
+description: Request code reviews for one or more PRs via Slack. Resolves target channels from the repo default plus requested reviewer teams, composes the message with the PR's size and FE/BE split, sends it after approval. Use for /chore-request-reviews <taskId> [<taskId>…] or "request reviews for task".
+allowed-tools: "ToolSearch,AskUserQuestion,Bash(gh:*),Skill(hivebrite-engineering:request-pr-review),mcp__task-goblin__get_task,mcp__task-goblin__list_team_channels,mcp__task-goblin__get_pr_changes_by_category"
 ---
 
 # Request Reviews
@@ -12,7 +12,7 @@ Accepts one or more numeric task IDs (ask if none). Tasks are independent and to
 
 1. `get_task(id)` → `prNumber`, `repository` (owner/repo and its `slackChannel`), `jiraKey`. No PR: skip.
 
-2. Target channels: the repository's `slackChannel`, plus the channel mapped to each team in `gh api repos/<o>/<r>/pulls/<pr>/requested_reviewers --jq '[.teams[].slug]'`. The slug → channel map comes from `list_team_channels` (fetch once per batch). Deduplicate. No channels: warn, set the skip flag, move on. Fetch the PR title with `gh pr view <pr> -R <o>/<r> --json title`; the link uses it, not the task title.
+2. Target channels: the repository's `slackChannel`, plus the channel mapped to each team in `gh api repos/<o>/<r>/pulls/<pr>/requested_reviewers --jq '[.teams[].slug]'`. The slug → channel map comes from `list_team_channels` (fetch once per batch). Deduplicate. No channels: warn, move on. Fetch the PR title with `gh pr view <pr> -R <o>/<r> --json title`; the link uses it, not the task title.
 
 3. Size and split from `get_pr_changes_by_category(owner, repo, prNumber)`. It returns totals, a `size` of small/medium/large, and per-bucket `frontend`/`backend`/`other` counts with `percent`.
 
@@ -23,5 +23,3 @@ Accepts one or more numeric task IDs (ask if none). Tasks are independent and to
 4. After all tasks are resolved, group PR lines by channel: one message per channel, using the sub-skill's multi-PR template ("PRs ready for review:") when it has more than one line, lines ordered small → large. For each channel, `Skill(hivebrite-engineering:request-pr-review)` with the channel, the PR links, and, when step 3 succeeded, the instruction to use these exact emoji and PR lines instead of its score formula.
 
    Show every composed message together and get explicit approval through one AskUserQuestion before anything is sent. Never send without that approval: Slack messages cannot be unsent.
-
-5. `update_task(id, choreSkips: {"request-reviews": true})`, merged with existing keys, even if sending partly failed.

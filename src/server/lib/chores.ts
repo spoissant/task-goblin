@@ -4,7 +4,6 @@ import { tasks, repositories } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
-import { isReviewReady, parseReviewStatus } from "@/shared/review-status";
 import type { RepoPair } from "@/shared/chore-pairs";
 
 type TaskRow = typeof tasks.$inferSelect;
@@ -181,15 +180,12 @@ const CHORES: ChoreDefinition[] = [
     number: 10,
     key: "request-reviews",
     name: "Request Code Reviews",
-    condition: "isDraft = false AND prState = open AND reviews not ready (GitHub review decision)",
+    condition: "manual only (never suggested)",
     prompt: "/chore-request-reviews {{taskId}}",
     categories: null,
     supportsBulk: true,
     cwd: "main",
-    match: (t) =>
-      t.isDraft === 0 &&
-      t.prState === "open" &&
-      !isReviewReady(parseReviewStatus(t.reviewStatus)),
+    match: () => false,
   },
   {
     number: 11,
