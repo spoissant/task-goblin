@@ -20,7 +20,7 @@ Gather what the change is supposed to do: Jira description and acceptance criter
 
 `dev_stack_status(id)`:
 
-- `supported: false`: stop, this repository has no dev stack.
+- `supported: false`: this repository has no dev stack, so nothing can be QA'd in Chrome. Skip steps 3–6, print the banner with no items (`🧪 AI QA · <jiraKey> · no dev stack`), and wrap up the task as for all ✅ (`references/wrap-up.md`).
 - Stack owned by another task or PR (neither `stack.taskId` nor `stack.mergedTaskIds` is this task, or `prUrl` set): stop and tell the user. Never stop someone else's stack.
 - Owned by this task and `up`: `refresh_dev_stack(id)` so it runs the PR's latest commit.
 - Owned by this task and `failed`, or no stack: `start_dev_stack(id)`.
