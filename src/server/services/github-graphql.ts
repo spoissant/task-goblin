@@ -2,6 +2,8 @@ import { getGitHubClient } from "../lib/github-client";
 import type { ChecksResult } from "./github-mappers";
 import { REVIEW_STATUS_FIELDS, toReviewStatus } from "./github-review-status";
 import type { ReviewStatus } from "@/shared/review-status";
+import type { ChangesByCategory } from "@/shared/types";
+import { bucketFilesByCategory } from "@/shared/file-categories";
 
 type GitHubClient = ReturnType<typeof getGitHubClient>;
 
@@ -38,6 +40,8 @@ export interface GqlPrCore {
   additions: number | null;
   deletions: number | null;
   changedFiles: number | null;
+  /** null when GitHub returned no file list. */
+  changesByCategory: ChangesByCategory | null;
   author: { login?: string } | null;
   headRefName: string | null;
   headRefOid: string | null;
@@ -159,6 +163,7 @@ const CORE_FIELDS = `
   labels(first: 100) { nodes { name } }
   reviews(first: 100) { nodes { state author { login } } }
   reviewThreads(first: 100) { nodes { isResolved } }
+  files(first: 100) { nodes { path additions deletions } }
   ${REVIEW_STATUS_FIELDS}`;
 
 // REST clamps listFiles to 100 per page anyway, so `files(first: 100)` covers
@@ -185,6 +190,16 @@ const checkFields = (number: number) => `
     } } }
     status { contexts { context state targetUrl isRequired(pullRequestNumber: ${number}) } }
   } } }`;
+
+function mapFiles(files: any): Array<{ filename: string; additions: number; deletions: number }> {
+  return (files?.nodes ?? [])
+    .filter((f: any) => f?.path)
+    .map((f: any) => ({
+      filename: f.path as string,
+      additions: f.additions ?? 0,
+      deletions: f.deletions ?? 0,
+    }));
+}
 
 function buildPrQuery(
   groups: Array<{ owner: string; repo: string; numbers: number[] }>,
@@ -239,6 +254,7 @@ export async function fetchPullRequestCore(
           additions: pr.additions ?? null,
           deletions: pr.deletions ?? null,
           changedFiles: pr.changedFiles ?? null,
+          changesByCategory: pr.files ? bucketFilesByCategory(mapFiles(pr.files)) : null,
           author: pr.author ?? null,
           headRefName: pr.headRefName ?? null,
           headRefOid: pr.headRefOid ?? null,
@@ -315,13 +331,7 @@ export async function fetchPullRequestReviewInfo(
           reviews: (pr.reviews?.nodes ?? [])
             .filter((r: any) => r?.author?.login && r.state)
             .map((r: any) => ({ authorLogin: r.author.login as string, state: r.state as string })),
-          files: (pr.files?.nodes ?? [])
-            .filter((f: any) => f?.path)
-            .map((f: any) => ({
-              filename: f.path as string,
-              additions: f.additions ?? 0,
-              deletions: f.deletions ?? 0,
-            })),
+          files: mapFiles(pr.files),
           reviewStatus: toReviewStatus(pr),
         });
       });

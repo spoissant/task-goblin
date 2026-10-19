@@ -1,5 +1,6 @@
 import { now } from "../lib/timestamp";
 import type { ReviewStatus } from "@/shared/review-status";
+import type { ChangesByCategory } from "@/shared/types";
 
 export interface ChecksResult {
   checksStatus: string | null;
@@ -24,6 +25,7 @@ export interface PrTaskData {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
+  changesByCategory: string | null; // JSON ChangesByCategory
   prSyncedAt: string;
   updatedAt: string;
   onDeploymentBranches: string | null;
@@ -42,6 +44,7 @@ export interface GqlPrLike {
   additions: number | null;
   deletions: number | null;
   changedFiles: number | null;
+  changesByCategory: ChangesByCategory | null;
   author: { login?: string } | null;
   headRefName: string | null;
   baseRefName: string | null;
@@ -81,6 +84,7 @@ export function mapGqlPrToTaskData(
     changedFiles: pr.changedFiles ?? null,
     additions: pr.additions ?? null,
     deletions: pr.deletions ?? null,
+    changesByCategory: pr.changesByCategory ? JSON.stringify(pr.changesByCategory) : null,
     prSyncedAt: timestamp,
     updatedAt: timestamp,
     onDeploymentBranches: onDeploymentBranches.length > 0 ? JSON.stringify(onDeploymentBranches) : null,

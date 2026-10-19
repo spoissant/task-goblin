@@ -56,6 +56,7 @@ export interface Task {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
+  changesByCategory: string | null; // JSON ChangesByCategory, see shared/file-categories
   uncommittedFiles: number | null; // task worktree, refreshed on GitHub sync; null without a worktree
   unpushedCommits: number | null; // task worktree commits not on any remote
   choreSkips: string | null; // JSON: {"fix-pr-checks": true, ...}
@@ -381,6 +382,12 @@ export interface FileChanges {
   deletions: number;
 }
 
+export interface ChangesByCategory {
+  frontend: FileChanges;
+  backend: FileChanges;
+  other: FileChanges;
+}
+
 /** A GitHub team the token user belongs to. */
 export interface GitHubTeam {
   org: string;
@@ -407,7 +414,7 @@ export interface ReviewRequest {
   changedFiles: number | null;
   additions: number | null;
   deletions: number | null;
-  changesByCategory: { frontend: FileChanges; backend: FileChanges; other: FileChanges } | null;
+  changesByCategory: ChangesByCategory | null;
   taskId: number | null;
   taskJiraKey: string | null;
 }

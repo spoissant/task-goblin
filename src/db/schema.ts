@@ -45,6 +45,7 @@ export const tasks = sqliteTable("tasks", {
   changedFiles: integer("changed_files"),
   additions: integer("additions"),
   deletions: integer("deletions"),
+  changesByCategory: text("changes_by_category"), // JSON ChangesByCategory: FE / BE / other split of the PR's files
   uncommittedFiles: integer("uncommitted_files"), // task worktree, refreshed on GitHub sync; null without a worktree
   unpushedCommits: integer("unpushed_commits"), // task worktree commits not on any remote
 

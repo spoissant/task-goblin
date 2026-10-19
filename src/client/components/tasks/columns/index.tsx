@@ -164,7 +164,7 @@ export const COLUMNS = {
   changes: {
     key: "changes",
     header: "Changes",
-    width: "85px",
+    width: "100px",
     render: (task) => <ChangesCell task={task} />,
   },
   status: {

@@ -62,6 +62,7 @@ export async function linkPrToTask(id: number, owner: string, repo: string, prNu
       changedFiles: data.changedFiles,
       additions: data.additions,
       deletions: data.deletions,
+      changesByCategory: data.changesByCategory,
       prSyncedAt: data.prSyncedAt,
       updatedAt: now(),
     })

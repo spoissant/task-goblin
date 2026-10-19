@@ -59,6 +59,7 @@ async function updateTaskByJiraKey(
       changedFiles: data.changedFiles,
       additions: data.additions,
       deletions: data.deletions,
+      changesByCategory: data.changesByCategory,
       prSyncedAt: data.prSyncedAt,
       updatedAt: data.updatedAt,
     })
@@ -106,6 +107,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
         changedFiles: data.changedFiles,
         additions: data.additions,
         deletions: data.deletions,
+        changesByCategory: data.changesByCategory,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
       })
@@ -149,6 +151,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
         changedFiles: data.changedFiles,
         additions: data.additions,
         deletions: data.deletions,
+        changesByCategory: data.changesByCategory,
         prSyncedAt: data.prSyncedAt,
         updatedAt: data.updatedAt,
       })
@@ -199,6 +202,7 @@ async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated"
       changedFiles: data.changedFiles,
       additions: data.additions,
       deletions: data.deletions,
+      changesByCategory: data.changesByCategory,
       prSyncedAt: data.prSyncedAt,
       createdAt: timestamp,
       updatedAt: timestamp,

@@ -13,6 +13,7 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { DevStackToggle } from "@/client/components/tasks/DevStackToggle";
+import { ChangesSummary } from "@/client/components/tasks/ChangesSummary";
 import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
 import { Checkbox } from "@/client/components/ui/checkbox";
@@ -652,35 +653,12 @@ function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraH
 
       {/* Changes */}
       <TableCell>
-        {request.changesByCategory == null ? (
-          request.changedFiles == null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs font-mono">
-              <Badge variant="outline" className="text-xs px-1.5">{request.changedFiles}</Badge>
-              <div className="flex flex-col leading-tight text-right">
-                <span className="text-green-600">+{request.additions ?? 0}</span>
-                <span className="text-red-600">-{request.deletions ?? 0}</span>
-              </div>
-            </div>
-          )
-        ) : (
-          <div className="flex flex-col gap-0.5 text-xs font-mono">
-            {(["frontend", "backend", "other"] as const).map((cat) => {
-              const c = request.changesByCategory![cat];
-              if (c.files === 0) return null;
-              const label = cat === "frontend" ? "FE" : cat === "backend" ? "BE" : "OT";
-              return (
-                <div key={cat} className="flex items-center gap-1">
-                  <span className="text-muted-foreground w-5">{label}</span>
-                  <Badge variant="outline" className="text-xs px-1 py-0">{c.files}</Badge>
-                  <span className="text-green-600">+{c.additions}</span>
-                  <span className="text-red-600">-{c.deletions}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <ChangesSummary
+          changedFiles={request.changedFiles}
+          additions={request.additions}
+          deletions={request.deletions}
+          changesByCategory={request.changesByCategory}
+        />
       </TableCell>
 
       {/* Reviews */}

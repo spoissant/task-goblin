@@ -7,10 +7,12 @@ import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIc
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
 import { DeploymentBadges } from "../DeploymentBadges";
+import { ChangesSummary } from "../ChangesSummary";
 import { AlertTriangle, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { parseReviewStatus } from "@/shared/review-status";
+import { parseChangesByCategory } from "@/shared/file-categories";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
 import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
 import {
@@ -324,17 +326,13 @@ export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null
 }
 
 export function ChangesCell({ task }: { task: Task }) {
-  if (task.changedFiles == null) {
-    return <span className="text-muted-foreground">—</span>;
-  }
   return (
-    <div className="flex items-center justify-between text-xs font-mono">
-      <Badge variant="outline" className="text-xs px-1.5">{task.changedFiles}</Badge>
-      <div className="flex flex-col leading-tight text-right">
-        <span className="text-green-600">+{task.additions ?? 0}</span>
-        <span className="text-red-600">-{task.deletions ?? 0}</span>
-      </div>
-    </div>
+    <ChangesSummary
+      changedFiles={task.changedFiles}
+      additions={task.additions}
+      deletions={task.deletions}
+      changesByCategory={parseChangesByCategory(task.changesByCategory)}
+    />
   );
 }
 

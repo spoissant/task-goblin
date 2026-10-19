@@ -21,42 +21,10 @@ import { fetchMyTeams, selectCodeownerTeams } from "../services/github-teams";
 import { autoMatchAndMerge } from "../services/task-merge";
 import type { Routes } from "../router";
 import type { Endpoints } from "@octokit/types";
-import type { ReviewRequest, FileChanges, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
+import type { ReviewRequest, FileChanges, ChangesByCategory, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
 import { categorizePrSize } from "@/shared/pr-size";
+import { bucketFilesByCategory } from "@/shared/file-categories";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
-
-function categorizeFile(filename: string): "frontend" | "backend" | "other" {
-  const lower = filename.toLowerCase();
-
-  if (/\.(js|jsx|ts|tsx|vue|haml)$/.test(lower)) return "frontend";
-  if (/\.(css|scss|sass|less)$/.test(lower)) return "frontend";
-  if (/\.(rb|rake|gemspec|rabl)$/.test(lower)) return "backend";
-  if (lower === "gemfile" || lower === "gemfile.lock") return "backend";
-
-  const frontendPaths = ["frontend/", "front/", "app/javascript/", "client/", "packages/"];
-  const backendPaths = ["app/models/", "app/controllers/", "app/services/", "app/workers/", "app/mailers/", "app/helpers/", "lib/", "db/", "config/", "spec/", "test/"];
-
-  if (frontendPaths.some((p) => lower.startsWith(p))) return "frontend";
-  if (backendPaths.some((p) => lower.startsWith(p))) return "backend";
-
-  return "other";
-}
-
-type FileBuckets = { frontend: FileChanges; backend: FileChanges; other: FileChanges };
-
-function bucketFilesByCategory(
-  files: Array<{ filename: string; additions: number; deletions: number }>
-): FileBuckets {
-  const empty = (): FileChanges => ({ files: 0, additions: 0, deletions: 0 });
-  const buckets: FileBuckets = { frontend: empty(), backend: empty(), other: empty() };
-  for (const file of files) {
-    const cat = categorizeFile(file.filename);
-    buckets[cat].files += 1;
-    buckets[cat].additions += file.additions;
-    buckets[cat].deletions += file.deletions;
-  }
-  return buckets;
-}
 
 /**
  * Resolve to null instead of rejecting, so a failed batched fetch degrades the
@@ -72,7 +40,7 @@ async function orNull<T>(label: string, promise: Promise<T>): Promise<T | null> 
 }
 
 // Largest-remainder rounding so percentages sum to 100 (when totalFiles > 0).
-function computePercents(buckets: { frontend: FileChanges; backend: FileChanges; other: FileChanges }, totalFiles: number): { frontend: number; backend: number; other: number } {
+function computePercents(buckets: ChangesByCategory, totalFiles: number): { frontend: number; backend: number; other: number } {
   if (totalFiles === 0) return { frontend: 0, backend: 0, other: 0 };
 
   const raw = {
