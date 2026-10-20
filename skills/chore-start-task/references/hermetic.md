@@ -4,7 +4,9 @@ Hermetic specs live in hivetests (`*.hermetic.spec.ts`) and run against alumni_c
 
 ## Deciding
 
-Read the rules from the source: `git -C ~/Code/hivebrite/hivetests fetch origin main`, then `git show origin/main:docs/pr-review.md` §0, and this worktree's `docs/testing/HERMETIC_PLAYWRIGHT.md` ("What a hermetic spec cannot do", "Adding a scenario"). Fold into the investigation's `Explore` agents a map of current coverage for the feature: the specs on hivetests `origin/main` (`git grep` / `git show`), the seeds in `lib/hermetic_e2e/seeds/`, and what each asserts.
+Most changes need none: a backend-only change, a refactor, a fix that rspec or jest already pins, a copy or style tweak. Then the section is one line saying why, with no coverage search. A spec has to earn its place: browser specs are slow, and the owning squad maintains them.
+
+When the change does alter behaviour visible through the UI, read the rules from the source: `git -C ~/Code/hivebrite/hivetests fetch origin main`, then `git show origin/main:docs/pr-review.md` §0, and this worktree's `docs/testing/HERMETIC_PLAYWRIGHT.md` ("What a hermetic spec cannot do", "Adding a scenario"). Fold into the investigation's `Explore` agents a map of current coverage for the feature: the specs on hivetests `origin/main` (`git grep` / `git show`), the seeds in `lib/hermetic_e2e/seeds/`, and what each asserts.
 
 Sort each behaviour the change adds or alters into one bucket:
 
