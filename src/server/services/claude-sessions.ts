@@ -24,7 +24,7 @@ import {
   type JobState,
 } from "./claude-cli";
 import {
-  branchNameFor,
+  branchForTask,
   ensureTaskWorktree,
   getTaskWorktreeRow,
   reconcileWorktrees,
@@ -261,7 +261,7 @@ async function createSession(
   let cwd = mainPath;
   if (chore.cwd === "task") {
     const worktree = await getTaskWorktreeRow(taskId);
-    cwd = worktree?.path ?? worktreePathFor(mainPath, branchNameFor(task));
+    cwd = worktree?.path ?? worktreePathFor(mainPath, await branchForTask(task, repository));
   }
 
   const timestamp = now();

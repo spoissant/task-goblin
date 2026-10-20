@@ -161,68 +161,67 @@ describe("getChores — chore 10 request-reviews (manual only)", () => {
   });
 });
 
-describe("getChores — chore 15 hermetic-tests (between AI QA and self review)", () => {
-  async function seedCodeReviewDraft(repo: string, choreSkips: string | null = null) {
+describe("getChores — chore 7 AI QA on a hivetests sub-task", () => {
+  async function seedHivetestsSubtask(parentPrNumber: number | null) {
     await db.insert(statusCategories).values([
-      { name: "Code Review", color: "violet", done: 0, displayOrder: 1, jiraMappings: "[]" },
+      { name: "In Progress", color: "blue", done: 0, displayOrder: 1, jiraMappings: "[]" },
+      { name: "Done", color: "green", done: 1, displayOrder: 2, jiraMappings: "[]" },
     ]);
-    const [repository] = await db
+    const [ac, ht] = await db
       .insert(repositories)
-      .values({ owner: "Hivebrite", repo, enabled: 1 })
+      .values([
+        { owner: "Hivebrite", repo: "alumni_connect", enabled: 1 },
+        { owner: "Hivebrite", repo: "hivetests", enabled: 1 },
+      ])
       .returning();
-    const [task] = await db
+    const base = { status: "In Progress", createdAt: NOW, updatedAt: NOW };
+    await db.insert(tasks).values({
+      ...base,
+      title: "Poll deletion",
+      jiraKey: "EV-1",
+      repositoryId: ac.id,
+      prNumber: parentPrNumber,
+      prState: parentPrNumber ? "open" : null,
+      isDraft: parentPrNumber ? 1 : null,
+    });
+    const [subtask] = await db
       .insert(tasks)
       .values({
-        title: "Poll deletion",
-        status: "Code Review",
-        createdAt: NOW,
-        updatedAt: NOW,
-        prNumber: 42,
-        repositoryId: repository.id,
+        ...base,
+        title: "[hivetests] Hermetic specs for poll deletion",
+        jiraKey: "EV-2",
+        parentKey: "EV-1",
+        repositoryId: ht.id,
+        prNumber: 7,
         prState: "open",
         isDraft: 1,
-        choreSkips,
       })
       .returning();
-    return task;
+    return subtask;
   }
 
   beforeEach(() => {
     sqlite.exec("DELETE FROM repositories");
   });
 
-  // Leave no Code Review-only category set behind for later test files.
   afterAll(() => {
     sqlite.exec("DELETE FROM tasks");
     sqlite.exec("DELETE FROM repositories");
-    sqlite.exec("DELETE FROM status_categories");
-    invalidateStatusConfigCache();
   });
 
-  it("suggests hermetic-tests, not the self review, for an alumni_connect draft in Code Review", async () => {
-    const task = await seedCodeReviewDraft("alumni_connect");
+  it("waits while the alumni_connect parent has no PR", async () => {
+    const subtask = await seedHivetestsSubtask(null);
 
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+    const keys = (await getChores({ taskId: subtask.id })).map((e) => e.key);
 
-    expect(keys).toContain("hermetic-tests");
-    expect(keys).not.toContain("code-review-pr");
+    expect(keys).not.toContain("ai-qa");
   });
 
-  it("suggests the self review once hermetic-tests is done", async () => {
-    const task = await seedCodeReviewDraft("alumni_connect", '{"hermetic-tests": true}');
+  it("suggests AI QA once the parent has a PR", async () => {
+    const subtask = await seedHivetestsSubtask(42);
 
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+    const keys = (await getChores({ taskId: subtask.id })).map((e) => e.key);
 
-    expect(keys).toContain("code-review-pr");
-    expect(keys).not.toContain("hermetic-tests");
-  });
-
-  it("never suggests hermetic-tests outside alumni_connect, nor holds back its self review", async () => {
-    const task = await seedCodeReviewDraft("front-monorepo");
-
-    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
-
-    expect(keys).toContain("code-review-pr");
-    expect(keys).not.toContain("hermetic-tests");
+    expect(keys).toContain("ai-qa");
   });
 });

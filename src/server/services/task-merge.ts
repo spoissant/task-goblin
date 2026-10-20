@@ -59,6 +59,9 @@ export async function findAutoMatches(): Promise<AutoMatchPair[]> {
 
     for (const jiraTask of jiraOrphans) {
       if (!jiraTask.jiraKey) continue;
+      // A Jira task already set to another repository is not this PR's: a
+      // hivetests PR's branch carries its alumni_connect parent's key too.
+      if (jiraTask.repositoryId && prTask.repositoryId && jiraTask.repositoryId !== prTask.repositoryId) continue;
 
       // Check if jira key appears in the PR's branch or title
       if (searchText.includes(jiraTask.jiraKey.toUpperCase())) {

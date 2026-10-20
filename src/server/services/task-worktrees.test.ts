@@ -157,6 +157,20 @@ describe("task worktree routes", () => {
     ]);
   });
 
+  it("names a hivetests sub-task's branch like its alumni_connect parent's", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    const { wtCalls } = setupRepo({ branchExists: false });
+    sqlite.exec(`UPDATE repositories SET repo = 'hivetests' WHERE id = 1`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, type, repository_id)
+      VALUES (6, 'Poll deletion', 'In Progress', ${ts}, ${ts}, 'EV-6', 'Story', 2)`);
+    sqlite.exec(`UPDATE tasks SET parent_key = 'EV-6', type = 'Sub-task', pr_number = NULL WHERE id = 1`);
+
+    await ensureTaskWorktree(1);
+
+    expect((await getTaskWorktreeRow(1))?.branch).toBe("feat/EV-6");
+    expect(wtCalls()[0].slice(0, 2)).toEqual(["switch", "feat/EV-6"]);
+  });
+
   it("checks out an existing task branch and reuses the ready worktree afterwards", async () => {
     const { main, wtCalls } = setupRepo({ branchExists: true, wtPath: (m) => `${m}.by-hand` });
     mkdirSync(`${main}.by-hand`);

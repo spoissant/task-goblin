@@ -55,6 +55,19 @@ export function branchNameFor(task: Pick<TaskRow, "id" | "jiraKey" | "type" | "h
   return `${prefix}/${task.jiraKey ?? `task-${task.id}`}`;
 }
 
+/**
+ * Branch for a task's worktree. A hivetests sub-task takes its parent's branch
+ * name: alumni_connect's build runs the hivetests branch named like its own,
+ * and the two PRs then merge together.
+ */
+export async function branchForTask(task: TaskRow, repository: RepoRow): Promise<string> {
+  if (!task.headBranch && repository.repo === "hivetests" && task.parentKey) {
+    const [parent] = await db.select().from(tasks).where(eq(tasks.jiraKey, task.parentKey)).limit(1);
+    if (parent) return branchNameFor(parent);
+  }
+  return branchNameFor(task);
+}
+
 /** Resolve the repository's main checkout path or throw the usual guard errors. */
 export async function resolveMainPath(repository: RepoRow): Promise<string> {
   const mainPath = await getWorktreePath(repository.id);
@@ -135,7 +148,7 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
   if (existing) {
     if (existing.repositoryId !== repository.id) {
       // Task moved to another repository: point the row at the new checkout.
-      const branch = branchNameFor(task);
+      const branch = await branchForTask(task, repository);
       return updateRow(existing.id, {
         repositoryId: repository.id,
         path: worktreePathFor(mainPath, branch),
@@ -150,7 +163,7 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
     return updateRow(existing.id, { state: "preparing", error: null });
   }
   const timestamp = now();
-  const branch = branchNameFor(task);
+  const branch = await branchForTask(task, repository);
   const rows = await db
     .insert(taskWorktrees)
     .values({

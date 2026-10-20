@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
@@ -17,7 +17,7 @@ interface ChoreDefinition {
   prompt: string; // template: {{taskId}}, {{jiraKey}}
   categories: string[] | null; // null = all active tasks; array = category names from DB
   excludeCategories?: string[]; // category names whose tasks must never match this chore
-  match: (task: TaskRow, repo: RepoRow | null) => boolean;
+  match: (task: TaskRow, repo: RepoRow | null, parent: TaskRow | null) => boolean; // parent: the task whose jiraKey is task.parentKey
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
   requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
@@ -75,10 +75,10 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   return repoBranches.some((b) => taskBranches.includes(b));
 }
 
-// Hermetic specs (hivetests) test alumni_connect, so only its tasks get chore 15,
-// and its self review (chore 8) waits until chore 15 ran or was skipped.
-function awaitsHermeticTests(task: TaskRow, repo: RepoRow | null): boolean {
-  return repo?.repo === "alumni_connect" && !parseChoreSkips(task.choreSkips)["hermetic-tests"];
+// A hivetests sub-task's hermetic specs run against its alumni_connect parent's
+// code, so its AI QA waits until the parent has a PR.
+function awaitsParentPr(task: TaskRow, repo: RepoRow | null, parent: TaskRow | null): boolean {
+  return repo?.repo === "hivetests" && parent !== null && parent.prNumber === null;
 }
 
 // Upstream repos whose releases alumni_connect pins, for the two-repo chores.
@@ -146,21 +146,21 @@ const CHORES: ChoreDefinition[] = [
     number: 7,
     key: "ai-qa",
     name: "AI QA",
-    condition: "status category = In Progress AND prState = open AND isDraft = true",
+    condition: "status category = In Progress AND prState = open AND isDraft = true AND (not a hivetests sub-task OR its parent has a PR)",
     prompt: "/chore-ai-qa {{taskId}}",
     categories: ["In Progress"],
     supportsBulk: true,
     requiresSameRepo: true,
-    match: (t) => t.prState === "open" && t.isDraft === 1,
+    match: (t, repo, parent) => t.prState === "open" && t.isDraft === 1 && !awaitsParentPr(t, repo, parent),
   },
   {
     number: 8,
     key: "code-review-pr",
     name: "Code review my PR",
-    condition: "status category = Code Review AND isDraft = true AND (repo != alumni_connect OR hermetic-tests done or skipped)",
+    condition: "status category = Code Review AND isDraft = true",
     prompt: "/chore-code-review-my-pr {{taskId}}",
     categories: ["Code Review"],
-    match: (t, repo) => t.isDraft === 1 && !awaitsHermeticTests(t, repo),
+    match: (t) => t.isDraft === 1,
   },
   {
     number: 9,
@@ -232,15 +232,6 @@ const CHORES: ChoreDefinition[] = [
     cwd: "main", // runs before work starts: no worktree or branch yet
     match: () => false,
   },
-  {
-    number: 15,
-    key: "hermetic-tests",
-    name: "Hermetic Tests",
-    condition: "repo = alumni_connect AND status category = Code Review AND isDraft = true (after AI QA, before chore 8); the skill sets its skip flag when done",
-    prompt: "/chore-hermetic-tests {{taskId}}",
-    categories: ["Code Review"],
-    match: (t, repo) => t.isDraft === 1 && repo?.repo === "alumni_connect",
-  },
 ];
 
 export function getChoreDefinitions() {
@@ -285,6 +276,14 @@ export function getChoreDefinition(key: string) {
 }
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };
+
+/** Parent tasks (by jiraKey) of the rows that have one. */
+async function buildParentMap(rows: TaskRow[]): Promise<Map<string, TaskRow>> {
+  const keys = [...new Set(rows.map((r) => r.parentKey).filter((k): k is string => !!k))];
+  if (keys.length === 0) return new Map();
+  const parents = await db.select().from(tasks).where(inArray(tasks.jiraKey, keys));
+  return new Map(parents.map((p) => [p.jiraKey as string, p]));
+}
 
 export interface GetChoresOptions {
   minChore?: number;
@@ -382,6 +381,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   // Build a single repoMap across all fetched tasks
   const allRows = [...batchRows.values()].flat();
   const repoMap = await buildRepoMap(allRows);
+  const parentMap = await buildParentMap(allRows);
 
   // Attach repos and sort each batch: displayOrder ASC (closer to done first) → highPriority DESC → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
@@ -419,7 +419,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       const skips = parseChoreSkips(task.choreSkips);
       if (skips[chore.key]) continue;
       if (excludedStatuses.has(task.status.toLowerCase())) continue;
-      if (!chore.match(task, repo)) continue;
+      if (!chore.match(task, repo, task.parentKey ? (parentMap.get(task.parentKey) ?? null) : null)) continue;
 
       entries.push({
         number: chore.number,
