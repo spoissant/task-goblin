@@ -75,6 +75,12 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   return repoBranches.some((b) => taskBranches.includes(b));
 }
 
+// Hermetic specs (hivetests) test alumni_connect, so only its tasks get chore 15,
+// and its self review (chore 8) waits until chore 15 ran or was skipped.
+function awaitsHermeticTests(task: TaskRow, repo: RepoRow | null): boolean {
+  return repo?.repo === "alumni_connect" && !parseChoreSkips(task.choreSkips)["hermetic-tests"];
+}
+
 // Upstream repos whose releases alumni_connect pins, for the two-repo chores.
 const UPSTREAM_PAIRS: RepoPair[] = [
   ["api-contracts", "alumni_connect"],
@@ -151,10 +157,10 @@ const CHORES: ChoreDefinition[] = [
     number: 8,
     key: "code-review-pr",
     name: "Code review my PR",
-    condition: "status category = Code Review AND isDraft = true",
+    condition: "status category = Code Review AND isDraft = true AND (repo != alumni_connect OR hermetic-tests done or skipped)",
     prompt: "/chore-code-review-my-pr {{taskId}}",
     categories: ["Code Review"],
-    match: (t) => t.isDraft === 1,
+    match: (t, repo) => t.isDraft === 1 && !awaitsHermeticTests(t, repo),
   },
   {
     number: 9,
@@ -225,6 +231,15 @@ const CHORES: ChoreDefinition[] = [
     categories: null,
     cwd: "main", // runs before work starts: no worktree or branch yet
     match: () => false,
+  },
+  {
+    number: 15,
+    key: "hermetic-tests",
+    name: "Hermetic Tests",
+    condition: "repo = alumni_connect AND status category = Code Review AND isDraft = true (after AI QA, before chore 8); the skill sets its skip flag when done",
+    prompt: "/chore-hermetic-tests {{taskId}}",
+    categories: ["Code Review"],
+    match: (t, repo) => t.isDraft === 1 && repo?.repo === "alumni_connect",
   },
 ];
 

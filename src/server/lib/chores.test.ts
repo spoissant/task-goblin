@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, beforeEach } from "bun:test";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
-import { tasks, statusCategories } from "../../db/schema";
+import { tasks, statusCategories, repositories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { getChoreDefinition, getChoreDefinitions, getChores } from "./chores";
 import { invalidateStatusConfigCache } from "./task-status";
@@ -158,5 +158,71 @@ describe("getChores — chore 10 request-reviews (manual only)", () => {
     expect(def?.number).toBe(10);
     expect(def?.supportsBulk).toBe(true);
     expect(getChoreDefinition("request-reviews")?.cwd).toBe("main");
+  });
+});
+
+describe("getChores — chore 15 hermetic-tests (between AI QA and self review)", () => {
+  async function seedCodeReviewDraft(repo: string, choreSkips: string | null = null) {
+    await db.insert(statusCategories).values([
+      { name: "Code Review", color: "violet", done: 0, displayOrder: 1, jiraMappings: "[]" },
+    ]);
+    const [repository] = await db
+      .insert(repositories)
+      .values({ owner: "Hivebrite", repo, enabled: 1 })
+      .returning();
+    const [task] = await db
+      .insert(tasks)
+      .values({
+        title: "Poll deletion",
+        status: "Code Review",
+        createdAt: NOW,
+        updatedAt: NOW,
+        prNumber: 42,
+        repositoryId: repository.id,
+        prState: "open",
+        isDraft: 1,
+        choreSkips,
+      })
+      .returning();
+    return task;
+  }
+
+  beforeEach(() => {
+    sqlite.exec("DELETE FROM repositories");
+  });
+
+  // Leave no Code Review-only category set behind for later test files.
+  afterAll(() => {
+    sqlite.exec("DELETE FROM tasks");
+    sqlite.exec("DELETE FROM repositories");
+    sqlite.exec("DELETE FROM status_categories");
+    invalidateStatusConfigCache();
+  });
+
+  it("suggests hermetic-tests, not the self review, for an alumni_connect draft in Code Review", async () => {
+    const task = await seedCodeReviewDraft("alumni_connect");
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("hermetic-tests");
+    expect(keys).not.toContain("code-review-pr");
+  });
+
+  it("suggests the self review once hermetic-tests is done", async () => {
+    const task = await seedCodeReviewDraft("alumni_connect", '{"hermetic-tests": true}');
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("code-review-pr");
+    expect(keys).not.toContain("hermetic-tests");
+  });
+
+  it("never suggests hermetic-tests outside alumni_connect, nor holds back its self review", async () => {
+    const task = await seedCodeReviewDraft("front-monorepo");
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).toContain("code-review-pr");
+    expect(keys).not.toContain("hermetic-tests");
   });
 });

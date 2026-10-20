@@ -1,6 +1,6 @@
 # Wrap up a task that passed QA
 
-In order: bug metadata, Jira, then `sync_task(id)`. Leave the PR as a draft: `/chore-code-review-my-pr` is next and marks it ready.
+In order: bug metadata, Jira, then `sync_task(id)`. Leave the PR as a draft: `/chore-code-review-my-pr` marks it ready, after `/chore-hermetic-tests` for an alumni_connect task.
 
 Bug metadata: if the ticket is a Bug and Tech root cause (`customfield_11150`), Process root cause (`customfield_12217`) or Preventive measures (`customfield_12218`) is empty, run `Skill(hivebrite-engineering:jira-postmortem-bug)` on it (interactive, so it asks only for what it cannot deduce) before transitioning.
 
