@@ -63,7 +63,7 @@ export function InboxPage() {
       <div className="space-y-8">
         <InboxSection title="Needs your input" count={blocked.length}>
           {blocked.map((item) => (
-            <InboxRow key={item.session.id} actions={<SessionLinks session={item.session} />}>
+            <InboxRow key={item.session.id} at={item.at} actions={<SessionLinks session={item.session} />}>
               {item.task ? <TaskLabel task={item.task} /> : <span className="font-medium">{item.session.name}</span>}
               <p className="text-xs text-muted-foreground">{item.session.choreName}</p>
               <p className="whitespace-pre-wrap break-words text-sm">{item.session.needs ?? item.session.detail}</p>
@@ -73,7 +73,7 @@ export function InboxPage() {
 
         <InboxSection title="Review drafts to submit" count={drafts.length}>
           {drafts.map((r) => (
-            <InboxRow key={r.url} actions={<ExternalA href={`${r.url}/files`}>Submit on GitHub</ExternalA>}>
+            <InboxRow key={r.url} at={r.createdAt} actions={<ExternalA href={`${r.url}/files`}>Submit on GitHub</ExternalA>}>
               <a href={`${r.url}/files`} target="_blank" rel="noopener noreferrer" className="block truncate font-medium hover:underline">
                 {r.title}
               </a>
@@ -86,7 +86,7 @@ export function InboxPage() {
 
         <InboxSection title="Merge holds" count={holds.length}>
           {holds.map((item) => (
-            <InboxRow key={item.task.id} actions={<ExternalA href={item.prUrl}>Open PR</ExternalA>}>
+            <InboxRow key={item.task.id} at={item.at} actions={<ExternalA href={item.prUrl}>Open PR</ExternalA>}>
               <TaskLabel task={item.task} />
               <p className="text-sm">{item.reasons.map((r) => HOLD_LABELS[r]).join(", ")}</p>
             </InboxRow>
@@ -97,6 +97,7 @@ export function InboxPage() {
           {sprintRed.map((item) => (
             <InboxRow
               key={item.task.id}
+              at={item.at}
               actions={
                 <>
                   {item.buildUrl && <ExternalA href={item.buildUrl}>Build</ExternalA>}
@@ -123,6 +124,7 @@ export function InboxPage() {
           {ready.map((item) => (
             <InboxRow
               key={item.task.id}
+              at={item.at}
               actions={
                 <Button size="sm" onClick={() => startTask(item.task)}>
                   Start

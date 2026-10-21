@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { ExternalLink } from "lucide-react";
 import { CopyChip } from "@/client/components/ui/copy-chip";
+import { formatRelativeTime } from "@/client/lib/time";
 import type { InboxSession, InboxTask } from "@/shared/inbox";
 
 /** One Inbox section: a heading with a count over a card list. Renders nothing when empty. */
@@ -17,11 +18,19 @@ export function InboxSection({ title, count, children }: { title: string; count:
   );
 }
 
-export function InboxRow({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+/** `at` is when the item entered the inbox (a session blocked, a hold was recorded, a build went red). */
+export function InboxRow({ children, actions, at }: { children: ReactNode; actions?: ReactNode; at?: string }) {
   return (
     <div className="flex items-start justify-between gap-4 p-3">
       <div className="min-w-0 flex-1 space-y-1">{children}</div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 text-xs">{actions}</div>}
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        {at && (
+          <time dateTime={at} title={new Date(at).toLocaleString()} className="text-xs text-muted-foreground">
+            {formatRelativeTime(at)}
+          </time>
+        )}
+        {actions && <div className="flex flex-wrap items-center justify-end gap-3 text-xs">{actions}</div>}
+      </div>
     </div>
   );
 }

@@ -67,7 +67,7 @@ export function FailedSessionRow({ item, onRetry }: FailedSessionRowProps) {
   );
 
   return (
-    <InboxRow actions={actions}>
+    <InboxRow at={item.at} actions={actions}>
       {task ? <TaskLabel task={task} /> : <span className="font-medium">{session.name}</span>}
       <p className="text-xs text-muted-foreground">{session.choreName}</p>
       {(session.error ?? session.detail) && (
