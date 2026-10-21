@@ -59,7 +59,16 @@ export interface Task {
   changesByCategory: string | null; // JSON ChangesByCategory, see shared/file-categories
   uncommittedFiles: number | null; // task worktree, refreshed on GitHub sync; null without a worktree
   unpushedCommits: number | null; // task worktree commits not on any remote
-  choreSkips: string | null; // JSON: {"fix-pr-checks": true, ...}
+  choreSkips: string | null; // JSON: {"fix-pr-checks": true, "auto": true, ...}
+
+  // Merge gate and post-merge watch
+  headSha: string | null;
+  mergeCommitSha: string | null;
+  autoMergeEnabledAt: string | null;
+  mergeHold: string | null; // JSON MergeHold, see shared/merge
+  baseBuildState: string | null; // pending | passed | failed | missing
+  baseBuildUrl: string | null;
+  mergeVerifiedAt: string | null;
 }
 
 // Task detail with relations
@@ -184,6 +193,8 @@ export interface ClaudeSession {
   name: string;
   model: string | null;
   effort: string | null;
+  trigger: string | null; // auto (chore scheduler) | manual; null on older rows
+  triggerFingerprint: string | null;
   shortId: string | null;
   sessionId: string | null;
   bridgeSessionId: string | null;

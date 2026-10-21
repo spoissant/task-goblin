@@ -17,6 +17,8 @@ import { reconcileDevStack } from "./dev-stack";
 import { collectSessionUsage } from "./session-usage";
 import { reconcileStandups } from "./standup";
 import { syncTask } from "./task-sync";
+import { startSyncScheduler, stopSyncScheduler } from "./sync-scheduler";
+import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -31,15 +33,18 @@ export function startClaudeRuntime(): void {
   if (process.env.TASK_GOBLIN_SCHEDULERS === "0") return;
 
   setCapacityCheck(ensureStackCapacity);
-  // Pull the task's new Jira status, PR state and git status once its session finishes.
+  // Pull the task's new Jira status, PR state and git status once its session
+  // finishes, then let the next chore start without waiting for the periodic sync.
   setOnSessionFinished((taskId) => {
     syncTask(taskId)
       .then((errors) => {
         if (errors.length > 0) console.error(`[claude] post-session sync of task ${taskId}:`, errors.join("; "));
         broadcast("task", { taskId });
+        return runChoreScheduler({ taskId });
       })
       .catch((err) => console.error(`[claude] post-session sync of task ${taskId} failed`, err));
   });
+  startSyncScheduler();
   reconcileOnStartup().catch((err) => console.error("[claude] reconcile failed", err));
   reconcileDevStack().catch((err) => console.error("[dev-stack] reconcile failed", err));
   reconcileStandups().catch((err) => console.error("[standup] reconcile failed", err));
@@ -81,4 +86,5 @@ export function startClaudeRuntime(): void {
 export function stopClaudeRuntime(): void {
   for (const t of timers ?? []) clearInterval(t);
   timers = null;
+  stopSyncScheduler();
 }

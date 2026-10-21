@@ -45,6 +45,8 @@ export interface GqlPrCore {
   author: { login?: string } | null;
   headRefName: string | null;
   headRefOid: string | null;
+  /** The squash/merge commit on the base branch; null until merged. */
+  mergeCommitOid: string | null;
   baseRefName: string | null;
   labels: string[];
   approvedReviewCount: number;
@@ -160,6 +162,7 @@ const CORE_FIELDS = `
   additions deletions changedFiles
   author { login }
   headRefName headRefOid baseRefName
+  mergeCommit { oid }
   labels(first: 100) { nodes { name } }
   reviews(first: 100) { nodes { state author { login } } }
   reviewThreads(first: 100) { nodes { isResolved } }
@@ -258,6 +261,7 @@ export async function fetchPullRequestCore(
           author: pr.author ?? null,
           headRefName: pr.headRefName ?? null,
           headRefOid: pr.headRefOid ?? null,
+          mergeCommitOid: pr.mergeCommit?.oid ?? null,
           baseRefName: pr.baseRefName ?? null,
           labels: (pr.labels?.nodes ?? []).map((l: any) => l?.name).filter(Boolean),
           approvedReviewCount: [...latestReviewByUser.values()].filter((s) => s === "APPROVED").length,

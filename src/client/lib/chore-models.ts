@@ -1,7 +1,13 @@
-import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "./types";
+import type { SessionEffort, SessionModel } from "./types";
 import { useSettingsQuery } from "./queries/settings";
+import {
+  CHORE_MODELS_KEY,
+  parseChoreModelDefaults,
+  resolveChoreModel,
+  type ModelEffort,
+} from "@/shared/chore-models";
 
-export const CHORE_MODELS_KEY = "chore_models";
+export { CHORE_MODELS_KEY, FALLBACK_MODEL_EFFORT, type ChoreModelDefaults, type ModelEffort } from "@/shared/chore-models";
 
 export const MODEL_LABELS: Record<SessionModel, string> = {
   opus: "Opus",
@@ -18,36 +24,12 @@ export const EFFORT_LABELS: Record<SessionEffort, string> = {
   max: "Max",
 };
 
-export interface ModelEffort {
-  model: SessionModel;
-  effort: SessionEffort;
-}
-
-export const FALLBACK_MODEL_EFFORT: ModelEffort = { model: "sonnet", effort: "high" };
-
-export type ChoreModelDefaults = Record<string, Partial<ModelEffort>>;
-
-function parseDefaults(value: string | null | undefined): ChoreModelDefaults {
-  if (!value) return {};
-  try {
-    return JSON.parse(value) as ChoreModelDefaults;
-  } catch {
-    return {};
-  }
-}
-
 /** Default model and effort per chore key, stored as JSON in the `chore_models` setting. */
 export function useChoreModelDefaults() {
   const { data, isLoading } = useSettingsQuery();
-  const stored = parseDefaults(data?.[CHORE_MODELS_KEY]);
+  const stored = parseChoreModelDefaults(data?.[CHORE_MODELS_KEY]);
 
-  const getDefault = (choreKey: string | undefined): ModelEffort => {
-    const entry = choreKey ? stored[choreKey] : undefined;
-    return {
-      model: entry?.model && SESSION_MODELS.includes(entry.model) ? entry.model : FALLBACK_MODEL_EFFORT.model,
-      effort: entry?.effort && SESSION_EFFORTS.includes(entry.effort) ? entry.effort : FALLBACK_MODEL_EFFORT.effort,
-    };
-  };
+  const getDefault = (choreKey: string | undefined): ModelEffort => resolveChoreModel(stored, choreKey);
 
   return { stored, getDefault, isLoading };
 }

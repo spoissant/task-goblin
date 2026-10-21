@@ -22,6 +22,13 @@ interface ChoreDefinition {
   requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
   repoPairs?: RepoPair[]; // two-repo chore: run on exactly one task per repo of a pair; the session runs on the target task
+  /**
+   * Set when the chore scheduler may start this chore on its own. `fields` are
+   * the task columns whose values define one trigger state: the scheduler
+   * starts the chore once per distinct state (see fingerprintFor). `prompt`
+   * replaces the chore prompt for auto-starts (e.g. to pass a default env).
+   */
+  auto?: { fields: (keyof TaskRow)[]; prompt?: string };
 }
 
 export interface ChoreEntry {
@@ -105,6 +112,7 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-assign-jira-ticket {{taskId}}",
     categories: null,
     match: (t) => t.prNumber !== null && !t.jiraKey,
+    auto: { fields: ["prNumber"] },
   },
   {
     number: 3,
@@ -114,24 +122,27 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-fix-merge-conflicts {{taskId}}",
     categories: null,
     match: (t) => t.hasConflicts === 1,
+    auto: { fields: ["headSha", "baseBranch"] },
   },
   {
     number: 4,
     key: "address-pr-comments",
     name: "Address PR Comments",
-    condition: "unresolvedCommentCount > 0",
+    condition: "prState = open AND unresolvedCommentCount > 0",
     prompt: "/chore-address-pr-comments {{taskId}}",
     categories: null,
-    match: (t) => (t.unresolvedCommentCount ?? 0) > 0,
+    match: (t) => t.prState === "open" && (t.unresolvedCommentCount ?? 0) > 0,
+    auto: { fields: ["unresolvedCommentCount"] },
   },
   {
     number: 5,
     key: "fix-pr-checks",
     name: "Fix PR checks",
-    condition: "checksStatus = failing",
+    condition: "prState = open AND checksStatus = failing",
     prompt: "/chore-fix-pr-checks {{taskId}}",
     categories: null,
-    match: (t) => t.checksStatus === "failing",
+    match: (t) => t.prState === "open" && t.checksStatus === "failing",
+    auto: { fields: ["headSha"] },
   },
   {
     number: 6,
@@ -141,6 +152,7 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-continue-work {{taskId}}",
     categories: ["In Progress"],
     match: (t) => t.prState === "open" && t.isDraft === 0,
+    auto: { fields: ["status", "isDraft", "headSha", "unresolvedCommentCount"] },
   },
   {
     number: 7,
@@ -152,6 +164,7 @@ const CHORES: ChoreDefinition[] = [
     supportsBulk: true,
     requiresSameRepo: true,
     match: (t, repo, parent) => t.prState === "open" && t.isDraft === 1 && !awaitsParentPr(t, repo, parent),
+    auto: { fields: ["status", "headSha"] },
   },
   {
     number: 8,
@@ -161,6 +174,7 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-code-review-my-pr {{taskId}}",
     categories: ["Code Review"],
     match: (t) => t.isDraft === 1,
+    auto: { fields: ["status", "headSha"] },
   },
   {
     number: 9,
@@ -181,6 +195,8 @@ const CHORES: ChoreDefinition[] = [
       t.isDraft === 0 &&
       (t.hasConflicts ?? 0) === 0 &&
       !isOnAnyDeploymentBranch(t, repo),
+    // Auto-starts only deploy to staging (the scheduler checks the repo has it).
+    auto: { fields: ["headSha", "onDeploymentBranches"], prompt: "/chore-deploy-to-test-env {{taskId}} staging" },
   },
   {
     number: 10,
@@ -232,7 +248,40 @@ const CHORES: ChoreDefinition[] = [
     cwd: "main", // runs before work starts: no worktree or branch yet
     match: () => false,
   },
+  {
+    number: 15,
+    key: "sprint-red",
+    name: "Sprint Build Red",
+    condition: "started by the merge watch when the base-branch build of the merge commit fails (never suggested)",
+    prompt: "/chore-sprint-red {{taskId}}",
+    categories: null,
+    cwd: "main", // the task's worktree is reaped after the merge
+    match: () => false,
+  },
 ];
+
+/** Whether the chore scheduler may start this chore on its own. */
+export function isAutoChore(key: string): boolean {
+  return CHORES.some((c) => c.key === key && c.auto !== undefined);
+}
+
+/**
+ * One string per distinct trigger state of a chore on a task: the values of
+ * the chore's `auto.fields`, in declaration order. Null for chores that never
+ * auto-start.
+ */
+export function fingerprintFor(key: string, task: TaskRow): string | null {
+  const chore = CHORES.find((c) => c.key === key);
+  if (!chore?.auto) return null;
+  return JSON.stringify(chore.auto.fields.map((f) => task[f] ?? null));
+}
+
+/** The prompt an auto-start uses: the chore's `auto.prompt` when set, else its usual one. */
+export function autoPromptFor(key: string, task: Pick<TaskRow, "id" | "jiraKey">): string | null {
+  const chore = CHORES.find((c) => c.key === key);
+  if (!chore?.auto) return null;
+  return resolvePrompt(chore.auto.prompt ?? chore.prompt, task);
+}
 
 export function getChoreDefinitions() {
   return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo, repoPairs }) => ({

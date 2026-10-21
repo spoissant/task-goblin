@@ -15,6 +15,8 @@ export interface PrTaskData {
   prAuthor: string | null;
   headBranch: string;
   baseBranch: string | null;
+  headSha: string | null;
+  mergeCommitSha: string | null;
   isDraft: number;
   checksStatus: string | null;
   checksDetails: string | null;
@@ -47,6 +49,8 @@ export interface GqlPrLike {
   changesByCategory: ChangesByCategory | null;
   author: { login?: string } | null;
   headRefName: string | null;
+  headRefOid?: string | null;
+  mergeCommitOid?: string | null;
   baseRefName: string | null;
   approvedReviewCount: number;
   unresolvedCommentCount: number;
@@ -72,6 +76,8 @@ export function mapGqlPrToTaskData(
     prAuthor: pr.author?.login || null,
     headBranch: pr.headRefName || "",
     baseBranch: pr.baseRefName || null,
+    headSha: pr.headRefOid ?? null,
+    mergeCommitSha: pr.mergeCommitOid ?? null,
     isDraft: pr.isDraft ? 1 : 0,
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,

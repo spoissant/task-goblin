@@ -49,6 +49,8 @@ export async function linkPrToTask(id: number, owner: string, repo: string, prNu
       prAuthor: data.prAuthor,
       headBranch: data.headBranch,
       baseBranch: data.baseBranch,
+      headSha: data.headSha,
+      mergeCommitSha: data.mergeCommitSha,
       isDraft: data.isDraft,
       checksStatus: data.checksStatus,
       checksDetails: data.checksDetails,

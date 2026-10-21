@@ -50,8 +50,17 @@ export const tasks = sqliteTable("tasks", {
   unpushedCommits: integer("unpushed_commits"), // task worktree commits not on any remote
 
   // Automation flags (not synced from Jira/GitHub)
-  choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, ...}
+  choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, "auto": true, ...}
   workingOn: text("working_on"), // JSON: {"choreKey": "request-reviews", "at": "2026-04-20T14:00:00Z"} or null
+
+  // Merge gate and post-merge watch (see merge-gate.ts, merge-watch.ts)
+  headSha: text("head_sha"), // PR head commit at last sync
+  mergeCommitSha: text("merge_commit_sha"), // squash commit on the base branch once merged
+  autoMergeEnabledAt: text("auto_merge_enabled_at"), // when the gate enabled GitHub auto-merge
+  mergeHold: text("merge_hold"), // JSON MergeHold {reasons, at}: why the gate did not enable auto-merge
+  baseBuildState: text("base_build_state"), // pending | passed | failed | missing: the base-branch build of mergeCommitSha
+  baseBuildUrl: text("base_build_url"),
+  mergeVerifiedAt: text("merge_verified_at"), // when the watch finished (passed, failed + sprint-red started, or timed out)
 }, (table) => [
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);
@@ -109,6 +118,8 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   name: text("name").notNull(), // "<JIRA-KEY> · <chore name>"
   model: text("model"), // claude --model alias; null = CLI default
   effort: text("effort"), // claude --effort level; null = CLI default
+  trigger: text("trigger"), // auto (chore scheduler) | manual (UI, MCP); null on rows older than the scheduler
+  triggerFingerprint: text("trigger_fingerprint"), // JSON of the chore's trigger fields at start; the scheduler skips an identical state
   shortId: text("short_id").unique(), // claude --bg job id; null until spawned
   sessionId: text("session_id"),
   bridgeSessionId: text("bridge_session_id"), // cse_XXX → https://claude.ai/code/session_XXX

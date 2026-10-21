@@ -57,10 +57,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Reads only — retrying a write could double-apply it. GraphQL goes out as a
- * POST, but every query this app sends is read-only.
+ * POST; queries are retried, mutations (auto-merge, reviews) are not.
  */
-function isRetryableRead(options: { method?: string; url?: string }): boolean {
-  return options.method === "GET" || /\/graphql$/.test(options.url ?? "");
+export function isRetryableRead(options: { method?: string; url?: string; query?: unknown }): boolean {
+  if (options.method === "GET") return true;
+  if (!/\/graphql$/.test(options.url ?? "")) return false;
+  return !/^\s*mutation\b/.test(String(options.query ?? ""));
 }
 
 export function getGitHubClient(): Octokit {

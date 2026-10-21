@@ -10,7 +10,7 @@ import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
 import { parsePrUrl } from "../lib/validation";
-import { CUSTOM_CHORE, REVIEW_CHORE, getChoreDefinition, resolvePrompt } from "../lib/chores";
+import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
@@ -138,11 +138,17 @@ async function findActiveSession(taskId: number): Promise<SessionRow | null> {
   return rows[0] ?? null;
 }
 
+export type SessionTrigger = "auto" | "manual";
+
 export interface ChoreSessionInput {
   /** Replaces the chore's own prompt, e.g. the command plus hand-typed context. */
   prompt?: string | null;
   model?: string | null;
   effort?: string | null;
+  /** Who started it: the chore scheduler or a person (default). */
+  trigger?: SessionTrigger;
+  /** The task state the chore was started on; the scheduler won't restart it on the same state. */
+  triggerFingerprint?: string | null;
 }
 
 /**
@@ -164,6 +170,8 @@ export async function startChoreSession(
     prompt: (task) => override || resolvePrompt(chore.prompt, task),
     model: input.model ?? null,
     effort: input.effort ?? null,
+    trigger: input.trigger ?? "manual",
+    triggerFingerprint: input.triggerFingerprint ?? null,
   });
 }
 
@@ -243,6 +251,8 @@ async function createSession(
     prompt: (task: TaskForPrompt) => string;
     model?: string | null;
     effort?: string | null;
+    trigger?: SessionTrigger;
+    triggerFingerprint?: string | null;
   },
 ): Promise<SessionRow> {
   const result = await getTaskWithRepository(taskId);
@@ -277,6 +287,9 @@ async function createSession(
       name: `${task.jiraKey ?? `#${task.id}`} · ${chore.name}`,
       model: opts.model ?? null,
       effort: opts.effort ?? null,
+      trigger: opts.trigger ?? "manual",
+      // A manual run records the state too, so the scheduler won't redo it.
+      triggerFingerprint: opts.triggerFingerprint ?? fingerprintFor(chore.key, task),
       state: "preparing",
       createdAt: timestamp,
       updatedAt: timestamp,
