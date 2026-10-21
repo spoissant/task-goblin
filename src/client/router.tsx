@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/layout/RootLayout";
+import { InboxPage } from "./pages/InboxPage";
 import { TasksPage } from "./pages/TasksPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { CompletedPage } from "./pages/CompletedPage";
@@ -17,6 +18,10 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <InboxPage />,
+      },
+      {
+        path: "tasks",
         element: <TasksPage />,
       },
       {

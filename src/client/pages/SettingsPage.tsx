@@ -6,6 +6,7 @@ import { TeamChannelList } from "@/client/components/settings/TeamChannelList";
 import { UsernameListForm } from "@/client/components/settings/UsernameListForm";
 import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsForm";
 import { ChoreModelsForm } from "@/client/components/settings/ChoreModelsForm";
+import { AutoChoresForm } from "@/client/components/settings/AutoChoresForm";
 import { Separator } from "@/client/components/ui/separator";
 
 export function SettingsPage() {
@@ -92,6 +93,16 @@ export function SettingsPage() {
             Configure status colors and which statuses are considered "done". Tasks are sorted by category order.
           </p>
           <StatusCategoriesForm />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Auto Chores</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Task Goblin starts the next chore on each task by itself; the Inbox lists what still needs you.
+          </p>
+          <AutoChoresForm />
         </section>
 
         <Separator />

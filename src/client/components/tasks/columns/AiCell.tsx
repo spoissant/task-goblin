@@ -7,7 +7,9 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Pause,
   PenLine,
+  Play,
   RotateCcw,
   Sparkles,
   Square,
@@ -19,6 +21,8 @@ import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState, Task } from "@/client/lib/types";
 import { resolveChorePrompt, useChoreDefinitionsQuery, type ChoreEntry } from "@/client/lib/queries/chores";
 import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";
+import { useUpdateTask } from "@/client/lib/queries/tasks";
+import { AUTO_CHORE_KEYS, isAutoPaused, toggleAutoPause } from "@/shared/auto-chores";
 import { markSessionSeen, useSessionSeen } from "@/client/lib/seenSessions";
 import {
   DropdownMenu,
@@ -62,6 +66,12 @@ const SETTLED_STATES: ClaudeSessionState[] = ["done", "stopped"];
 /** What the prompt dialog should open with: a chore's command, or a blank prompt. */
 type PromptTarget = PromptChore | null;
 
+/** How the next chore will run: by the scheduler, or not until the task's pause is lifted. */
+function autoNote(choreKey: string, paused: boolean): string {
+  if (paused) return " · paused on this task";
+  return AUTO_CHORE_KEYS.has(choreKey) ? " · starts automatically" : "";
+}
+
 interface AiCellProps {
   task: Task;
   session?: ClaudeSession;
@@ -79,6 +89,8 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   const definitions = (defsData?.items ?? []).filter((d) => !d.repoPairs);
   const stopSession = useStopSession();
   const respawnSession = useRespawnSession();
+  const updateTask = useUpdateTask();
+  const autoPaused = isAutoPaused(task.choreSkips);
   // Both hold a PromptTarget, so `undefined` means "closed" and `null` means
   // "open with a blank prompt".
   const [promptTarget, setPromptTarget] = useState<PromptTarget | undefined>(undefined);
@@ -124,6 +136,15 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
     });
   };
 
+  const toggleAuto = () =>
+    updateTask.mutate(
+      { id: task.id, choreSkips: toggleAutoPause(task.choreSkips) },
+      {
+        onSuccess: () => toast.success(autoPaused ? "Auto-chores resumed" : "Auto-chores paused on this task"),
+        onError: () => toast.error("Failed to update the task"),
+      },
+    );
+
   const copyAttach = () => {
     if (!session?.shortId) return;
     const cmd = `claude attach ${session.shortId}`;
@@ -136,7 +157,7 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   const tooltip = shown
     ? [`${shown.choreName} · ${ui?.label}`, shown.needs ?? shown.detail ?? shown.error].filter(Boolean).join("\n")
     : idleNext
-      ? `Next: #${idleNext.number} ${idleNext.name}\nClick to start`
+      ? `Next: #${idleNext.number} ${idleNext.name}${autoNote(idleNext.key, autoPaused)}\nClick to start`
       : "No AI session yet";
 
   const stateContent = (
@@ -256,6 +277,10 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
             <DropdownMenuItem disabled={active} onClick={() => openPrompt(null)}>
               <PenLine className="h-3.5 w-3.5 mr-2" />
               Custom prompt...
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={toggleAuto} disabled={updateTask.isPending}>
+              {autoPaused ? <Play className="h-3.5 w-3.5 mr-2" /> : <Pause className="h-3.5 w-3.5 mr-2" />}
+              {autoPaused ? "Resume auto-chores" : "Pause auto-chores on this task"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs text-muted-foreground">

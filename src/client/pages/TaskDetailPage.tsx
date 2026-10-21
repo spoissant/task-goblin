@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router";
+import { Link, useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
@@ -58,9 +58,11 @@ export function TaskDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">Task not found</p>
-        <Button variant="ghost" onClick={() => navigate("/")} className="mt-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Tasks
+        <Button variant="ghost" asChild className="mt-4">
+          <Link to="/tasks">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Tasks
+          </Link>
         </Button>
       </div>
     );
@@ -81,7 +83,7 @@ export function TaskDetailPage() {
       deleteTask.mutate(taskId, {
         onSuccess: () => {
           toast.success("Task deleted");
-          navigate("/");
+          navigate("/tasks");
         },
         onError: () => toast.error("Failed to delete task"),
       });
@@ -144,9 +146,11 @@ export function TaskDetailPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
+        <Button variant="ghost" asChild>
+          <Link to="/tasks">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Link>
         </Button>
         <div className="flex gap-2">
           {canDeploy && (
