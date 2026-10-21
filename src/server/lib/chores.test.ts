@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
 import { tasks, statusCategories, repositories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
-import { getChoreDefinition, getChoreDefinitions, getChores } from "./chores";
+import { autoPromptFor, fingerprintFor, getChoreDefinition, getChoreDefinitions, getChores, isAutoChore } from "./chores";
 import { invalidateStatusConfigCache } from "./task-status";
 import type { RepoPair } from "@/shared/chore-pairs";
 
@@ -223,5 +223,51 @@ describe("getChores — chore 7 AI QA on a hivetests sub-task", () => {
     const keys = (await getChores({ taskId: subtask.id })).map((e) => e.key);
 
     expect(keys).toContain("ai-qa");
+  });
+});
+
+describe("getChores — chores 4 and 5 on a merged PR", () => {
+  it("no longer suggests fixing checks or comments once the PR is merged", async () => {
+    const task = await seedTask();
+    await db
+      .update(tasks)
+      .set({ prState: "merged", checksStatus: "failing", unresolvedCommentCount: 3 })
+      .where(eq(tasks.id, task.id));
+
+    const keys = (await getChores({ taskId: task.id })).map((e) => e.key);
+
+    expect(keys).not.toContain("fix-pr-checks");
+    expect(keys).not.toContain("address-pr-comments");
+  });
+});
+
+describe("auto chores", () => {
+  it("marks the chores the scheduler may start, never start-task or manual ones", () => {
+    expect(isAutoChore("fix-pr-checks")).toBe(true);
+    expect(isAutoChore("deploy-test-env")).toBe(true);
+    expect(isAutoChore("start-task")).toBe(false);
+    expect(isAutoChore("request-reviews")).toBe(false);
+    expect(isAutoChore("nope")).toBe(false);
+  });
+
+  it("fingerprints a chore by its trigger fields, stable until they change", async () => {
+    const task = await seedTask();
+    await db.update(tasks).set({ headSha: "abc123" }).where(eq(tasks.id, task.id));
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+
+    expect(fingerprintFor("fix-pr-checks", row)).toBe(JSON.stringify(["abc123"]));
+    expect(fingerprintFor("fix-pr-checks", row)).toBe(fingerprintFor("fix-pr-checks", { ...row, title: "renamed" }));
+    expect(fingerprintFor("fix-pr-checks", { ...row, headSha: "def456" })).not.toBe(fingerprintFor("fix-pr-checks", row));
+    expect(fingerprintFor("continue-work", row)).toBe(JSON.stringify(["In Progress", 0, "abc123", 0]));
+    expect(fingerprintFor("start-task", row)).toBeNull();
+    expect(fingerprintFor("request-reviews", row)).toBeNull();
+  });
+
+  it("deploys to staging by default and keeps the usual prompt elsewhere", async () => {
+    const task = await seedTask();
+
+    expect(autoPromptFor("deploy-test-env", task)).toBe(`/chore-deploy-to-test-env ${task.id} staging`);
+    expect(autoPromptFor("fix-pr-checks", task)).toBe(`/chore-fix-pr-checks ${task.id}`);
+    expect(autoPromptFor("start-task", task)).toBeNull();
   });
 });

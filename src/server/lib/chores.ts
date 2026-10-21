@@ -52,7 +52,7 @@ export interface ChoreTask {
   repository: { owner: string; repo: string } | null;
 }
 
-function parseChoreSkips(value: string | null): Record<string, boolean> {
+export function parseChoreSkips(value: string | null): Record<string, boolean> {
   if (!value) return {};
   try {
     return JSON.parse(value);
