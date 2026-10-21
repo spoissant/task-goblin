@@ -61,6 +61,12 @@ const PERIODS = [
   { days: null, label: "All" },
 ] as const;
 
+const SCOPES = [
+  { id: "mine", label: "My tasks" },
+  { id: "reviews", label: "Code reviews" },
+  { id: "all", label: "All" },
+] as const;
+
 type Metric = TrendMetric | "sessions" | "parallelism";
 
 const METRICS: { id: Metric; label: string; format: (v: number | null) => string }[] = [
@@ -167,25 +173,32 @@ export function AnalyticsPage() {
   const { data, isLoading, error } = useSessionAnalyticsQuery();
   const concurrency = useConcurrencyQuery();
   const [days, setDays] = useState<number | null>(30);
+  const [scope, setScope] = useState<(typeof SCOPES)[number]["id"]>("mine");
   const [grouping, setGrouping] = useState<GroupingState>(["task"]);
   const [sorting, setSorting] = useState<SortingState>([{ id: "cost", desc: true }]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [metric, setMetric] = useState<Metric>("cost");
   const [unit, setUnit] = useState<TrendUnit>("session");
 
+  // Reviews of other people's PRs are cheap and would drag per-task costs down, so they are split out.
+  const scoped = useMemo(
+    () => (data?.items ?? []).filter((s) => scope === "all" || s.review === (scope === "reviews")),
+    [data, scope],
+  );
+
   const rows = useMemo(() => {
-    const items = data?.items ?? [];
+    const items = scoped;
     if (days === null) return items;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     return items.filter((s) => s.createdAt >= since);
-  }, [data, days]);
+  }, [scoped, days]);
 
   // Lines split on the first grouped dimension (never task: one line per task is noise).
   // The rolling window reads every session, so the first days of a period are full medians.
   // Sessions counts starts per day, split like per-session lines.
   // Parallelism is global: always the same two lines, sessions and agents.
   const trend = useMemo(() => {
-    const items = data?.items ?? [];
+    const items = scoped;
     if (items.length === 0) return null;
     const first = dayOf(items.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b)).createdAt);
     const from = days === null ? first : [first, daysAgo(days - 1)].sort().at(-1)!;
@@ -202,7 +215,7 @@ export function AnalyticsPage() {
     const { series, samples } = pickSeries(trendSamples(items, metric, unit, dimension));
     const points = unit === "day" ? rollingDailyAverage(samples, series, from, to, first) : rollingMedian(samples, series, from, to);
     return { dimension, series, points };
-  }, [data, concurrency.data, grouping, metric, unit, days]);
+  }, [scoped, concurrency.data, grouping, metric, unit, days]);
   const metricDef = METRICS.find((m) => m.id === metric)!;
 
   const table = useTable({
@@ -241,6 +254,14 @@ export function AnalyticsPage() {
               </Button>
             );
           })}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sessions</span>
+          {SCOPES.map((s) => (
+            <Button key={s.id} size="sm" variant={scope === s.id ? "default" : "outline"} onClick={() => setScope(s.id)}>
+              {s.label}
+            </Button>
+          ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Period</span>

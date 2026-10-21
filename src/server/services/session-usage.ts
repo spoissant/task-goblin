@@ -12,6 +12,7 @@ import { homedir } from "os";
 import { eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessionRequests, claudeSessions, repositories, tasks } from "../../db/schema";
+import { REVIEW_CHORE } from "../lib/chores";
 import { now } from "../lib/timestamp";
 import type { ConcurrencyDay, SessionAnalyticsRow } from "../../shared/types";
 
@@ -274,6 +275,7 @@ export async function listSessionAnalytics(): Promise<SessionAnalyticsRow[]> {
     task: jiraKey ?? s.name.split(" · ")[0], // the name keeps the key if the task is gone
     taskTitle,
     chore: s.choreName,
+    review: s.choreKey === REVIEW_CHORE.key,
     repo: repoAlias ?? repo,
     model: mostFrequent(models.get(s.id))?.replace(/^claude-/, "").replace(/-\d{8}$/, "") ?? null,
     effort: mostFrequent(efforts.get(s.id)),

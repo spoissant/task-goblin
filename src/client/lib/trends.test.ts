@@ -18,6 +18,7 @@ function row(over: Partial<SessionAnalyticsRow>): SessionAnalyticsRow {
     task: "PS-1",
     taskTitle: null,
     chore: "Start task",
+    review: false,
     repo: "ac",
     model: "opus-5-5",
     effort: null,

@@ -226,6 +226,7 @@ export interface SessionAnalyticsRow {
   task: string; // Jira key, or the session name's prefix (e.g. "ac#123" for a PR review)
   taskTitle: string | null;
   chore: string;
+  review: boolean; // a review of someone else's PR, not work on one of my tasks
   repo: string | null;
   model: string | null; // e.g. "opus-5-5"
   effort: string | null;
