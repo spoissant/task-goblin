@@ -23,3 +23,7 @@ Wait for each report before launching the next group. A subagent that reports no
 ## Keeping the verdict
 
 The subagent reports evidence, the planning model decides. Downgrade a ✅ to ⚠️ when the evidence does not actually show the expected outcome (the item was skipped, the page described does not match the flow, or the report asserts success without saying what was seen). Keep a ❌ only when the evidence shows the mismatch; otherwise it becomes ⚠️ with the steps for a human. One re-run of a single item in a fresh subagent is fine when the first attempt looks like a tooling hiccup; more than that is looping. A few px of visual offset is not a failure: leave it out unless it hides content or breaks interaction.
+
+## Touch
+
+Touch items are never given to a subagent. The browser tools only send mouse input, `resize_window` and an iframe change width but not touch events, `(pointer: coarse)` or the on-screen keyboard, and synthetic `TouchEvent`s from JS prove nothing. Each touch item is ⚠️ with these steps for the human, so the stack stays up and step 5 asks them: open the stack in Chrome, toggle the device toolbar (Cmd+Shift+M), pick a phone (iPhone 16), sign in as the item's role with a fresh `dev_stack_login_link`, then tap through the flow and check that the on-screen keyboard does not hide the field or the submit button, the right keyboard type appears, pickers open and close, and nothing needs hover.
