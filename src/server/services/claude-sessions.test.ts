@@ -6,13 +6,9 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import {
-  pollActiveSessions,
-  reapIdleProcesses,
-  setCapacityCheck,
-  setOnSessionFinished,
-  syncProcessLiveness,
-} from "./claude-sessions";
+import { setSetting } from "../lib/settings";
+import { CHORE_MODELS_KEY } from "@/shared/chore-models";
+import { pollActiveSessions, reapIdleProcesses, setOnSessionFinished, syncProcessLiveness } from "./session-poller";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const JOBS_DIR = `${import.meta.dir}/../../../.test-jobs`;
@@ -52,11 +48,10 @@ describe("claude sessions", () => {
     finishedTaskIds.length = 0;
     setOnSessionFinished((taskId) => finishedTaskIds.push(taskId));
     rmSync(JOBS_DIR, { recursive: true, force: true });
-    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
+    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "repositories", "settings"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
-    sqlite.exec(`INSERT INTO worktrees (id, repository_id, path, created_at, updated_at) VALUES (1, 1, '${MAIN_PATH}', 'x', 'x')`);
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (1, 'hb', 'alumni_connect', 1, '${MAIN_PATH}')`);
     const ts = "'2026-01-01T00:00:00.000Z'";
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
       VALUES (1, 'A task', 'Code review', ${ts}, ${ts}, 'EV-1', 1, 10, 'fix/EV-1', 'open', 0)`);
@@ -80,60 +75,56 @@ describe("claude sessions", () => {
   });
 
   it("starts task-less PR reviews in the main checkout, in parallel, one per PR", async () => {
-    // a full Docker stack cap must not hold back reviews: they never boot a stack
-    setCapacityCheck(async () => "queued");
     let spawns = 0;
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
       if (cmd === "claude" && args[0] === "--bg") return ok(`backgrounded · 0000000${++spawns}`);
       return ok("[]");
     });
-    try {
-      const bad = await request("POST", "/api/v1/review-sessions", { prUrl: "https://example.com/x" });
-      expect(bad.status).toBe(400);
-      const unknown = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/other/pull/1" });
-      expect((await unknown.json()).error.code).toBe("NO_REPOSITORY");
+    const bad = await request("POST", "/api/v1/review-sessions", { prUrl: "https://example.com/x" });
+    expect(bad.status).toBe(400);
+    const unknown = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/other/pull/1" });
+    expect((await unknown.json()).error.code).toBe("NO_REPOSITORY");
 
-      const res = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
-      expect(res.status).toBe(202);
-      const created = await res.json();
-      expect(created.taskId).toBeNull();
-      expect(created.prUrl).toBe("https://github.com/HB/alumni_connect/pull/42");
-      expect(created.cwd).toBe(MAIN_PATH);
-      expect(created.prompt).toBe("/chore-code-review-pr https://github.com/HB/alumni_connect/pull/42");
+    const res = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
+    expect(res.status).toBe(202);
+    const created = await res.json();
+    expect(created.taskId).toBeNull();
+    expect(created.prUrl).toBe("https://github.com/HB/alumni_connect/pull/42");
+    expect(created.cwd).toBe(MAIN_PATH);
+    expect(created.prompt).toBe("/chore-code-review-pr https://github.com/HB/alumni_connect/pull/42");
 
-      const second = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/alumni_connect/pull/43" });
-      expect(second.status).toBe(202);
-      const dup = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
-      expect(dup.status).toBe(409);
+    const second = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/hb/alumni_connect/pull/43" });
+    expect(second.status).toBe(202);
+    const dup = await request("POST", "/api/v1/review-sessions", { prUrl: "https://github.com/HB/alumni_connect/pull/42" });
+    expect(dup.status).toBe(409);
 
-      await new Promise((r) => setTimeout(r, 50));
-      expect(commands.filter((c) => c.startsWith("claude --bg"))).toEqual([
-        `claude --bg --rc --name alumni_connect#42 · Code review --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/HB/alumni_connect/pull/42`,
-        `claude --bg --rc --name alumni_connect#43 · Code review --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/hb/alumni_connect/pull/43`,
-      ]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(commands.filter((c) => c.startsWith("claude --bg"))).toEqual([
+      `claude --bg --rc --name alumni_connect#42 · Code review --model sonnet --effort high --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/HB/alumni_connect/pull/42`,
+      `claude --bg --rc --name alumni_connect#43 · Code review --model sonnet --effort high --settings ${CHORE_SETTINGS} /chore-code-review-pr https://github.com/hb/alumni_connect/pull/43`,
+    ]);
+    // they never boot a Docker stack, so the stack cap is never consulted
+    expect(commands.some((c) => c.startsWith("docker"))).toBe(false);
 
-      const list = await (await request("GET", "/api/v1/review-sessions")).json();
-      expect(list.items.map((s: { state: string }) => s.state)).toEqual(["working", "working"]);
-      // task views ignore them
-      expect((await (await request("GET", "/api/v1/sessions")).json()).items).toHaveLength(0);
-      const recent = await (await request("GET", "/api/v1/sessions/recent")).json();
-      expect(recent.items).toHaveLength(2);
-      expect(recent.items[0].taskTitle).toBeNull();
-      const page2 = await (await request("GET", "/api/v1/sessions/recent?limit=1&offset=1")).json();
-      expect(page2.items.map((s: { id: number }) => s.id)).toEqual([recent.items[1].id]);
-      expect(page2.total).toBe(2);
+    const list = await (await request("GET", "/api/v1/review-sessions")).json();
+    expect(list.items.map((s: { state: string }) => s.state)).toEqual(["working", "working"]);
+    // task views ignore them
+    expect((await (await request("GET", "/api/v1/sessions")).json()).items).toHaveLength(0);
+    const recent = await (await request("GET", "/api/v1/sessions/recent")).json();
+    expect(recent.items).toHaveLength(2);
+    expect(recent.items[0].taskTitle).toBeNull();
+    const page2 = await (await request("GET", "/api/v1/sessions/recent?limit=1&offset=1")).json();
+    expect(page2.items.map((s: { id: number }) => s.id)).toEqual([recent.items[1].id]);
+    expect(page2.total).toBe(2);
 
-      // since: last Claude activity, falling back to creation
-      sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = NULL WHERE id = ${recent.items[1].id}`);
-      sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = '2026-01-03T00:00:00.000Z' WHERE id = ${recent.items[0].id}`);
-      const since = await (await request("GET", "/api/v1/sessions/recent?since=2026-01-02T00:00:00-05:00")).json();
-      expect(since.items.map((s: { id: number }) => s.id)).toEqual([recent.items[0].id]);
-      expect(since.total).toBe(1);
-      expect((await request("GET", "/api/v1/sessions/recent?since=yesterday")).status).toBe(400);
-    } finally {
-      setCapacityCheck(async () => "ok");
-    }
+    // since: last Claude activity, falling back to creation
+    sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = NULL WHERE id = ${recent.items[1].id}`);
+    sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = '2026-01-03T00:00:00.000Z' WHERE id = ${recent.items[0].id}`);
+    const since = await (await request("GET", "/api/v1/sessions/recent?since=2026-01-02T00:00:00-05:00")).json();
+    expect(since.items.map((s: { id: number }) => s.id)).toEqual([recent.items[0].id]);
+    expect(since.total).toBe(1);
+    expect((await request("GET", "/api/v1/sessions/recent?since=yesterday")).status).toBe(400);
   });
 
   it("runs AI QA on one task per repository and refuses it while another task holds the dev stack", async () => {
@@ -170,6 +161,10 @@ describe("claude sessions", () => {
     const single = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "fix-pr-checks", withTaskIds: [2] });
     expect(single.status).toBe(400);
     expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds: [9] })).status).toBe(404);
+    for (const withTaskIds of [[0], [-2], ["2"], "2"]) {
+      const bad = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds });
+      expect((await bad.json()).error.code).toBe("VALIDATION_ERROR");
+    }
 
     const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds: [2] });
     expect(res.status).toBe(202);
@@ -191,6 +186,36 @@ describe("claude sessions", () => {
     expect(finishedTaskIds).toEqual([1, 2]);
   });
 
+  it("runs on the chore's default model and effort unless the caller picks them", async () => {
+    await setSetting(
+      CHORE_MODELS_KEY,
+      JSON.stringify({ "request-reviews": { model: "opus", effort: "low" }, custom: { model: "haiku" }, "review-pr": { effort: "max" } }),
+    );
+    const start = async (path: string, body: Record<string, unknown>) => {
+      const res = await request("POST", path, body);
+      expect(res.status).toBe(202);
+      const { id, model, effort } = await res.json();
+      await new Promise((r) => setTimeout(r, 50)); // let the background start settle
+      sqlite.exec(`UPDATE claude_sessions SET state = 'done' WHERE id = ${id}`); // free the task for the next start
+      return { model, effort };
+    };
+
+    expect(await start("/api/v1/tasks/1/sessions", { choreKey: "request-reviews" })).toEqual({ model: "opus", effort: "low" });
+    expect(await start("/api/v1/tasks/1/sessions", { choreKey: "request-reviews", model: "sonnet" })).toEqual({ model: "sonnet", effort: "low" });
+    expect(await start("/api/v1/tasks/1/sessions", { choreKey: "explain-me-why" })).toEqual({ model: "sonnet", effort: "high" });
+    expect(await start("/api/v1/tasks/1/sessions", { prompt: "look around" })).toEqual({ model: "haiku", effort: "high" });
+    const review = { prUrl: "https://github.com/hb/alumni_connect/pull/42" };
+    expect(await start("/api/v1/review-sessions", review)).toEqual({ model: "sonnet", effort: "max" });
+    expect(await start("/api/v1/review-sessions", { ...review, effort: "low" })).toEqual({ model: "sonnet", effort: "low" });
+  });
+
+  it("refuses the pseudo-chores as chore runs", async () => {
+    for (const choreKey of ["custom", "review-pr"]) {
+      const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey });
+      expect((await res.json()).error.code).toBe("UNKNOWN_CHORE");
+    }
+  });
+
   it("starts a main-checkout chore, polls it to done, and reaps it", async () => {
     const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews" });
     expect(res.status).toBe(202);
@@ -202,7 +227,9 @@ describe("claude sessions", () => {
     // let the background start run
     await new Promise((r) => setTimeout(r, 50));
     const spawn = commands.find((c) => c.startsWith("claude --bg"));
-    expect(spawn).toBe(`claude --bg --rc --name EV-1 · Request Code Reviews --settings ${CHORE_SETTINGS} /chore-request-reviews 1`);
+    expect(spawn).toBe(
+      `claude --bg --rc --name EV-1 · Request Code Reviews --model sonnet --effort high --settings ${CHORE_SETTINGS} /chore-request-reviews 1`,
+    );
 
     let list = await (await request("GET", "/api/v1/tasks/1/sessions")).json();
     expect(list.items[0].state).toBe("working");

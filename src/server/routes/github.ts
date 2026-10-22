@@ -1,326 +1,39 @@
-import { eq, isNotNull } from "drizzle-orm";
-import { db } from "../../db";
-import { repositories, settings, tasks } from "../../db/schema";
 import { json } from "../response";
-import { AppError } from "../lib/errors";
-import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
-import { JiraConfigError } from "../lib/jira-client";
-import {
-  syncGitHubPullRequests,
-  syncGitHubPullRequestByNumber,
-  GitHubApiError,
-} from "../services/github-sync";
-import { syncJiraItems, syncJiraItemByKey, JiraApiError } from "../services/jira-sync";
-import { refreshWorktreeGitStatuses } from "../services/task-worktrees";
-import {
-  fetchPullRequestReviewInfo,
-  prKey,
-  type GqlPrReviewInfo,
-} from "../services/github-graphql";
-import { fetchMyTeams, selectCodeownerTeams } from "../services/github-teams";
-import { autoMatchAndMerge } from "../services/task-merge";
-import { getNextSyncAt, restartSyncTimer, runAfterSyncSteps } from "../services/sync-scheduler";
+import { getGitHubClient } from "../lib/github-client";
+import { fetchMyTeams } from "../services/github-teams";
+import { listReviewRequests } from "../services/github-review-requests";
+import { getNextSyncAt, syncNow } from "../services/sync-scheduler";
 import type { Routes } from "../router";
-import type { RestEndpointMethodTypes } from "@octokit/rest";
-import type { ReviewRequest } from "@/shared/types";
-import { bucketFilesByCategory } from "@/shared/file-categories";
-import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
-
-/**
- * Resolve to null instead of rejecting, so a failed batched fetch degrades the
- * affected columns rather than taking the whole review list down with it.
- */
-async function orNull<T>(label: string, promise: Promise<T>): Promise<T | null> {
-  try {
-    return await promise;
-  } catch (err) {
-    console.warn(`review-requests: ${label} unavailable — ${(err as Error).message}`);
-    return null;
-  }
-}
 
 export const githubRoutes: Routes = {
-  "/api/v1/sync/jira": {
+  // One full sync pass (Jira, GitHub, worktree git statuses, then the merge
+  // watch, Ready to Prod move, merge gate and auto chores), or the one already
+  // running; then the countdown restarts. Step failures are in `errors`.
+  "/api/v1/sync": {
     async POST() {
-      try {
-        const result = await syncJiraItems();
-        return json(result);
-      } catch (err) {
-        if (err instanceof JiraConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        if (err instanceof JiraApiError) {
-          const statusCode = err.code === "JIRA_AUTH_FAILED" ? 401 : 502;
-          throw new AppError(err.message, statusCode, err.code);
-        }
-        throw err;
-      }
+      return json(await syncNow());
     },
   },
 
-  "/api/v1/sync/github": {
-    async POST() {
-      try {
-        const result = await syncGitHubPullRequests();
-        await refreshWorktreeGitStatuses();
-        return json(result);
-      } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        if (err instanceof GitHubApiError) {
-          const statusCode =
-            err.code === "GITHUB_AUTH_FAILED" ? 401 :
-            err.code === "GITHUB_FORBIDDEN" ? 403 : 502;
-          throw new AppError(err.message, statusCode, err.code);
-        }
-        throw err;
-      }
-    },
-  },
-
-  // The Sync button's last call: match, then the same after-sync steps as the
-  // periodic pass (merge watch, Ready to Prod move, merge gate, auto chores), then restart the countdown.
-  "/api/v1/sync/match": {
-    async POST() {
-      const merged = await autoMatchAndMerge();
-      await runAfterSyncSteps();
-      restartSyncTimer();
-      return json({ merged });
-    },
-  },
-
-  // When the next auto sync pass (sync, merge gate, auto chores) starts; null while the scheduler is off.
+  // When the next auto sync pass starts; null while the scheduler is off.
   "/api/v1/sync/next": {
     GET() {
       return json({ nextSyncAt: getNextSyncAt() });
     },
   },
 
-  "/api/v1/sync/github/:owner/:repo/:number": {
-    async POST(_req, params) {
-      const { owner, repo, number } = params;
-      const prNumber = parseInt(number, 10);
-
-      try {
-        const result = await syncGitHubPullRequestByNumber(owner, repo, prNumber);
-        return json(result);
-      } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        if (err instanceof GitHubApiError) {
-          const statusCode =
-            err.code === "GITHUB_AUTH_FAILED" ? 401 :
-            err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
-            err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
-          throw new AppError(err.message, statusCode, err.code);
-        }
-        throw err;
-      }
-    },
-  },
-
-  "/api/v1/sync/jira/:key": {
-    async POST(_req, params) {
-      const { key } = params;
-
-      try {
-        const result = await syncJiraItemByKey(key);
-        return json(result);
-      } catch (err) {
-        if (err instanceof JiraConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        if (err instanceof JiraApiError) {
-          const statusCode =
-            err.code === "JIRA_AUTH_FAILED" ? 401 :
-            err.code === "JIRA_ISSUE_NOT_FOUND" ? 404 : 502;
-          throw new AppError(err.message, statusCode, err.code);
-        }
-        throw err;
-      }
-    },
-  },
-
   "/api/v1/github/teams": {
     async GET() {
-      try {
-        const items = await fetchMyTeams(getGitHubClient());
-        return json({ items, total: items.length });
-      } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        throw err;
-      }
+      const items = await fetchMyTeams(getGitHubClient());
+      return json({ items, total: items.length });
     },
   },
 
   "/api/v1/github/review-requests": {
     async GET(req) {
-      try {
-        const config = await getGitHubConfig();
-        const client = getGitHubClient();
-        const scope = new URL(req.url).searchParams.get("scope") === "mine" ? "mine" : "others";
-
-        // Drives both the team-review-requested searches below and which missing
-        // code owners are flagged as yours; empty when the token lacks read:org.
-        const myTeams = await fetchMyTeams(client);
-
-        let queries: string[];
-        if (scope === "mine") {
-          queries = [`is:pr is:open author:${config.username}`];
-        } else {
-          // Search for PRs where user is requested directly, plus PRs requested
-          // from any team the user belongs to.
-          // Exclude PRs the user authored — only happens for team requests since
-          // GitHub doesn't request a review from the PR author directly.
-          const excludeAuthor = `-author:${config.username}`;
-          queries = [
-            `is:pr is:open review-requested:${config.username}`,
-            ...myTeams.map(
-              (t) =>
-                `is:pr is:open team-review-requested:${t.org}/${t.slug} ${excludeAuthor}`
-            ),
-          ];
-        }
-
-        type SearchItem = RestEndpointMethodTypes["search"]["issuesAndPullRequests"]["response"]["data"]["items"][number];
-
-        // `search.issuesAndPullRequests` is deprecated (and logs on every
-        // call); the raw route with `advanced_search` is its replacement.
-        const searchResults = await Promise.allSettled(
-          queries.map((q) =>
-            client.request("GET /search/issues", { q, per_page: 100, advanced_search: "true" })
-          )
-        );
-
-        // One team's query failing shouldn't blank the board. Every query
-        // failing must not read as "nothing to review", so that still throws.
-        const rejected = searchResults.filter(
-          (r): r is PromiseRejectedResult => r.status === "rejected"
-        );
-        if (rejected.length === searchResults.length) {
-          throw rejected[0].reason;
-        }
-        for (const r of rejected) {
-          console.warn(`review-requests: a review search failed — ${r.reason?.message ?? r.reason}`);
-        }
-
-        const seen = new Set<string>();
-        const searchItems: SearchItem[] = [];
-        for (const result of searchResults) {
-          if (result.status !== "fulfilled") continue;
-          for (const item of result.value.data.items) {
-            if (seen.has(item.html_url)) continue;
-            seen.add(item.html_url);
-            searchItems.push(item);
-          }
-        }
-
-        const items: ReviewRequest[] = [];
-
-        // Existing task per PR, keyed by "owner/repo#number"
-        const repoRows = await db.select().from(repositories);
-        const repoSlugById = new Map<number, string>(
-          repoRows.map((r) => [r.id, `${r.owner}/${r.repo}`])
-        );
-        const taskRows = await db
-          .select({ id: tasks.id, jiraKey: tasks.jiraKey, prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
-          .from(tasks)
-          .where(isNotNull(tasks.prNumber));
-        const taskByPr = new Map<string, { id: number; jiraKey: string | null }>();
-        for (const t of taskRows) {
-          if (t.repositoryId == null) continue;
-          const slug = repoSlugById.get(t.repositoryId);
-          if (slug) taskByPr.set(`${slug}#${t.prNumber}`, { id: t.id, jiraKey: t.jiraKey });
-        }
-
-        // Teams flagged as yours when they're a missing code owner, keyed by org.
-        const codeownerSetting = await db
-          .select()
-          .from(settings)
-          .where(eq(settings.key, CODEOWNER_TEAMS_SETTING));
-        const codeownerTeamsByOrg = selectCodeownerTeams(myTeams, codeownerSetting[0]?.value ?? null);
-
-        // owner/repo/number per hit, for the batched review-info fetch below.
-        const prTargets = searchItems.map((item) => {
-          const parts = item.repository_url.split("/");
-          return {
-            owner: parts[parts.length - 2],
-            repo: parts[parts.length - 1],
-            number: item.number,
-          };
-        });
-
-        // Batched over all PRs (~25 per query, bounded concurrency) instead of
-        // firing REST calls per PR — the unbounded per-PR fan-out tripped
-        // GitHub's secondary rate limit on busy boards.
-        const reviewInfoMap = await orNull("review info", fetchPullRequestReviewInfo(client, prTargets)).then(
-          (m) => m ?? new Map<string, GqlPrReviewInfo>()
-        );
-
-        searchItems.forEach((item, idx) => {
-          const { owner, repo, number: prNumber } = prTargets[idx];
-          // Missing entry (inaccessible repo, deleted PR, failed batch) leaves
-          // the row rendered from the search hit alone, extras shown as unknown.
-          const info = reviewInfoMap.get(prKey(owner, repo, prNumber)) ?? null;
-
-          // Latest review state per user
-          const reviewerStates = new Map<string, string>();
-          for (const review of info?.reviews ?? []) {
-            reviewerStates.set(review.authorLogin, review.state);
-          }
-
-          // GitHub only returns PENDING (unsubmitted draft) reviews to their author,
-          // i.e. the authenticated token user — so this flags the current user's own draft.
-          const hasPendingReview = (info?.reviews ?? []).some(
-            (review) => review.state === "PENDING" && review.authorLogin === config.username
-          );
-
-          // Hide PRs the user already approved — only relevant for others' PRs.
-          // Without the reviews we can't tell, so the PR stays listed.
-          const userState = reviewerStates.get(config.username);
-          if (scope === "others" && userState === "APPROVED") return;
-
-          const isDraft = item.draft ?? false;
-
-          const changesByCategory = info ? bucketFilesByCategory(info.files) : null;
-
-          items.push({
-            prNumber,
-            title: item.title,
-            url: item.html_url,
-            repo: { owner, repo },
-            author: item.user?.login ?? "unknown",
-            assignees: (item.assignees ?? []).map((a) => a.login),
-            state: isDraft ? "draft" : "open",
-            isDraft,
-            // null, not a guess, when the PR's reviews are unavailable —
-            // "unknown" must not read as ready or as blocked.
-            reviewStatus: info?.reviewStatus ?? null,
-            myMissingCodeOwners: (info?.reviewStatus.missingCodeOwners ?? []).filter(
-              (name) => name === config.username || codeownerTeamsByOrg.get(owner)?.has(name)
-            ),
-            hasPendingReview,
-            createdAt: item.created_at,
-            changedFiles: info?.changedFiles ?? null,
-            additions: info?.additions ?? null,
-            deletions: info?.deletions ?? null,
-            changesByCategory,
-            taskId: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.id ?? null,
-            taskJiraKey: taskByPr.get(`${owner}/${repo}#${prNumber}`)?.jiraKey ?? null,
-          } satisfies ReviewRequest);
-        });
-
-        return json({ items, total: items.length });
-      } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        throw err;
-      }
+      const scope = new URL(req.url).searchParams.get("scope") === "mine" ? "mine" : "others";
+      const items = await listReviewRequests(scope);
+      return json({ items, total: items.length });
     },
   },
 };

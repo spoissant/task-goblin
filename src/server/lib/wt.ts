@@ -1,4 +1,4 @@
-import { runCommand, type CommandResult } from "./process";
+import { runShell, type CommandResult } from "./process";
 
 /**
  * Worktrunk (`wt`) CLI helpers. Task worktrees are created and removed with
@@ -9,10 +9,10 @@ import { runCommand, type CommandResult } from "./process";
 
 /** Run wt through a login zsh so it resolves on the same PATH as a terminal. */
 function runWt(cwd: string, args: string[], timeoutMs?: number): Promise<CommandResult> {
-  return runCommand("/bin/zsh", ["-lc", 'command wt "$@"', "wt", ...args], { cwd, timeoutMs });
+  return runShell(cwd, 'command wt "$@"', { args, timeoutMs });
 }
 
-export interface WtSwitchResult {
+interface WtSwitchResult {
   result: CommandResult;
   /** Absolute worktree path reported by wt; null when the switch failed. */
   path: string | null;

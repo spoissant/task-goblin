@@ -113,7 +113,8 @@ export const sessionRoutes: Routes = {
     },
 
     // Either { choreKey } for a chore run — with an optional `prompt` standing
-    // in for the chore's own command — or { prompt } alone for a hand-typed
+    // in for the chore's own command, and `withTaskIds` for a bulk chore (the
+    // session start checks them) — or { prompt } alone for a hand-typed
     // prompt. Both take an optional model and effort.
     async POST(req, params) {
       const id = parseId(params.id);
@@ -122,8 +123,7 @@ export const sessionRoutes: Routes = {
       const effort = optionalEnum(body.effort, SESSION_EFFORTS, "effort");
       const prompt = typeof body.prompt === "string" ? body.prompt : null;
       if (typeof body.choreKey === "string" && body.choreKey) {
-        const withTaskIds = optionalIds(body.withTaskIds, "withTaskIds");
-        const row = await startChoreSession(id, body.choreKey, { prompt, model, effort, withTaskIds });
+        const row = await startChoreSession(id, body.choreKey, { prompt, model, effort, withTaskIds: body.withTaskIds });
         return json(await toApi(row), 202);
       }
       if (prompt === null) {
@@ -141,14 +141,6 @@ const IMAGE_TYPES: Record<string, string> = {
   "image/gif": "gif",
   "image/webp": "webp",
 };
-
-function optionalIds(value: unknown, field: string): number[] {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || !value.every((v) => Number.isInteger(v) && v > 0)) {
-    throw new ValidationError(`${field} must be an array of task IDs`);
-  }
-  return value;
-}
 
 function optionalEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T | null {
   if (value === undefined || value === null || value === "") return null;

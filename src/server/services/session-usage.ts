@@ -5,22 +5,24 @@
  * Claude Code deletes old transcripts (`cleanupPeriodDays`, 30 by default), so
  * each one is copied to an archive before it is parsed. The archive mirrors
  * Claude's layout: `<sessionId>.jsonl` and `<sessionId>/subagents/agent-<id>.jsonl`.
+ * A session is settled once collected after its process stopped: nothing can
+ * change its transcript any more, so it is no longer looked at.
  * To recompute a session (e.g. after adding a price), clear its `usage_collected_at`.
  */
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
-import { eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessionRequests, claudeSessions, repositories, tasks } from "../../db/schema";
 import { REVIEW_CHORE } from "../lib/chores";
 import { now } from "../lib/timestamp";
 import type { ConcurrencyDay, SessionAnalyticsRow } from "../../shared/types";
 
-export function projectsDir(): string {
+function projectsDir(): string {
   return process.env.CLAUDE_PROJECTS_DIR ?? `${homedir()}/.claude/projects`;
 }
 
-export function archiveDir(): string {
+function archiveDir(): string {
   return process.env.TRANSCRIPTS_DIR ?? "transcripts";
 }
 
@@ -71,7 +73,7 @@ export function requestCost(r: RequestRow): number | null {
   return (dollars / 1_000_000) * (r.speed === "fast" ? FAST_MULTIPLIER : 1);
 }
 
-export interface TranscriptUsage {
+interface TranscriptUsage {
   requests: RequestRow[];
   activeMs: number;
   turnCount: number;
@@ -101,7 +103,7 @@ function subagentFiles(dir: string, sessionId: string): string[] {
 }
 
 /** Parse a session's transcript and its subagents' from `dir`. */
-export function parseTranscript(dir: string, sessionId: string): TranscriptUsage {
+function parseTranscript(dir: string, sessionId: string): TranscriptUsage {
   const files = [{ path: `${dir}/${sessionId}.jsonl`, agentId: null as string | null, agentType: null as string | null }];
   for (const path of subagentFiles(dir, sessionId)) {
     const meta = path.replace(/\.jsonl$/, ".meta.json");
@@ -174,56 +176,83 @@ function findSourceDir(projectDirs: string[], sessionId: string): string | null 
 const INSERT_CHUNK = 500;
 
 /**
- * Archive and (re)parse every session whose transcript changed since it was
- * last collected. Cheap when nothing changed: a few stat calls per session.
+ * Archive and (re)parse every unsettled session whose transcript changed since
+ * it was last collected. Cheap when nothing changed: a few stat calls per session.
  */
 export async function collectSessionUsage(): Promise<void> {
   const rows = await db
-    .select({ id: claudeSessions.id, sessionId: claudeSessions.sessionId, collectedAt: claudeSessions.usageCollectedAt })
+    .select({
+      id: claudeSessions.id,
+      sessionId: claudeSessions.sessionId,
+      collectedAt: claudeSessions.usageCollectedAt,
+      stoppedAt: claudeSessions.processStoppedAt,
+    })
     .from(claudeSessions)
-    .where(isNotNull(claudeSessions.sessionId));
+    .where(
+      and(
+        isNotNull(claudeSessions.sessionId),
+        // unsettled: its process runs, or it wasn't collected since the process stopped
+        or(
+          isNull(claudeSessions.processStoppedAt),
+          isNull(claudeSessions.usageCollectedAt),
+          lt(claudeSessions.usageCollectedAt, claudeSessions.processStoppedAt),
+        ),
+      ),
+    );
   if (rows.length === 0) return;
 
   const root = projectsDir();
   const projectDirs = existsSync(root) ? readdirSync(root).map((d) => `${root}/${d}`) : [];
-
   for (const row of rows) {
-    const sessionId = row.sessionId!;
     try {
-      const startedAt = now(); // before reading, so writes during the parse trigger a re-collect
-      const source = findSourceDir(projectDirs, sessionId);
-      if (source) {
-        if (row.collectedAt && lastModified(source, sessionId) <= Date.parse(row.collectedAt)) continue;
-        archive(source, sessionId);
-      } else if (row.collectedAt || !existsSync(`${archiveDir()}/${sessionId}.jsonl`)) {
-        continue; // transcript gone: keep what was collected
-      }
-
-      const usage = parseTranscript(archiveDir(), sessionId);
-      const costs = usage.requests.map((r) => r.costUsd);
-      const costUsd = costs.includes(null) ? null : (costs as number[]).reduce((a, b) => a + b, 0);
-
-      await db.transaction(async (tx) => {
-        await tx.delete(claudeSessionRequests).where(eq(claudeSessionRequests.sessionId, row.id));
-        for (let i = 0; i < usage.requests.length; i += INSERT_CHUNK) {
-          const chunk = usage.requests.slice(i, i + INSERT_CHUNK).map((r) => ({ ...r, sessionId: row.id }));
-          await tx.insert(claudeSessionRequests).values(chunk);
-        }
-        await tx
-          .update(claudeSessions)
-          .set({
-            costUsd,
-            activeMs: usage.activeMs,
-            turnCount: usage.turnCount,
-            subagentCount: usage.subagentCount,
-            usageCollectedAt: startedAt,
-          })
-          .where(eq(claudeSessions.id, row.id));
-      });
+      await collectSession(row, projectDirs);
     } catch (err) {
       console.error(`[usage] collecting session ${row.id} failed`, err);
     }
   }
+}
+
+type UsageRow = { id: number; sessionId: string | null; collectedAt: string | null; stoppedAt: string | null };
+
+/** Archive and re-parse one session's transcript when it changed since the last collection. */
+async function collectSession(row: UsageRow, projectDirs: string[]): Promise<void> {
+  const sessionId = row.sessionId!;
+  const startedAt = now(); // before reading, so writes during the parse trigger a re-collect
+  const source = findSourceDir(projectDirs, sessionId);
+  const changed = source
+    ? !row.collectedAt || lastModified(source, sessionId) > Date.parse(row.collectedAt)
+    : !row.collectedAt && existsSync(`${archiveDir()}/${sessionId}.jsonl`); // transcript gone: keep what was collected
+  if (!changed) {
+    // Collected and up to date. With its process gone it can't change any
+    // more: dating the collection after the stop settles it.
+    if (row.collectedAt && row.stoppedAt) {
+      await db.update(claudeSessions).set({ usageCollectedAt: startedAt }).where(eq(claudeSessions.id, row.id));
+    }
+    return;
+  }
+  if (source) archive(source, sessionId);
+
+  const usage = parseTranscript(archiveDir(), sessionId);
+  const costs = usage.requests.map((r) => r.costUsd);
+  const costUsd = costs.includes(null) ? null : (costs as number[]).reduce((a, b) => a + b, 0);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(claudeSessionRequests).where(eq(claudeSessionRequests.sessionId, row.id));
+    for (let i = 0; i < usage.requests.length; i += INSERT_CHUNK) {
+      const chunk = usage.requests.slice(i, i + INSERT_CHUNK).map((r) => ({ ...r, sessionId: row.id }));
+      await tx.insert(claudeSessionRequests).values(chunk);
+    }
+    await tx
+      .update(claudeSessions)
+      .set({
+        costUsd,
+        activeMs: usage.activeMs,
+        turnCount: usage.turnCount,
+        subagentCount: usage.subagentCount,
+        usageCollectedAt: startedAt,
+      })
+      .where(eq(claudeSessions.id, row.id));
+  });
 }
 
 /** The value with the highest count. */

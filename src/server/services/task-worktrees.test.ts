@@ -8,7 +8,7 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandOptions, type CommandResult } from "../lib/process";
-import { branchNameFor, ensureTaskWorktree, getTaskWorktreeRow, worktreePathFor } from "./task-worktrees";
+import { branchNameFor, ensureTaskWorktree, getTaskWorktreeRow, refreshTaskGitStatus } from "./task-worktrees";
 import { mergeSingleTask } from "./task-merge";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
@@ -21,13 +21,6 @@ const wtCommand = (args: string[]): string | null => {
 };
 
 describe("worktree helpers", () => {
-  it("predicts wt's sibling path for a branch", () => {
-    expect(worktreePathFor("~/Code/hivebrite/alumni_connect/alumni_connect", "fix/EV-3769")).toBe(
-      "~/Code/hivebrite/alumni_connect/alumni_connect.fix-EV-3769",
-    );
-    expect(worktreePathFor("/repo/front-monorepo/", "feat/PS-1")).toBe("/repo/front-monorepo.feat-PS-1");
-  });
-
   it("names the branch by Jira issue type", () => {
     const task = { id: 42, jiraKey: "EV-1", type: null, headBranch: null };
     expect(branchNameFor({ ...task, type: "Bug" })).toBe("fix/EV-1");
@@ -60,7 +53,7 @@ describe("task worktree routes", () => {
   });
 
   beforeEach(() => {
-    for (const t of ["claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
+    for (const t of ["claude_sessions", "task_worktrees", "tasks", "repositories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`);
@@ -128,10 +121,9 @@ describe("task worktree routes", () => {
     hooksExit?: number;
     dockerVolumes?: () => CommandResult;
   }) {
-    const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
-    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
+    sqlite.exec(`UPDATE repositories SET local_path = '${main}' WHERE id = 1`);
     const calls: { args: string[]; opts: CommandOptions }[] = [];
     setCommandRunner(async (cmd, args, runOpts) => {
       calls.push({ args, opts: runOpts });
@@ -175,6 +167,19 @@ describe("task worktree routes", () => {
 
     expect((await getTaskWorktreeRow(1))?.branch).toBe("feat/EV-6");
     expect(wtCalls()[0].slice(0, 2)).toEqual(["switch", "feat/EV-6"]);
+  });
+
+  it("answers a preparation with wt's sibling path for the branch until wt reports the real one", async () => {
+    const { main } = setupRepo({ branchExists: false });
+    sqlite.exec(`UPDATE repositories SET local_path = '${main}/' WHERE id = 1`);
+    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/PS-1' WHERE id = 1`);
+
+    const res = await request("POST", "/api/v1/tasks/1/worktree");
+
+    expect(res.status).toBe(202);
+    expect((await res.json()).path).toBe(`${main}.feat-PS-1`);
+    await ensureTaskWorktree(1); // joins the preparation running in the background
+    expect((await getTaskWorktreeRow(1))?.path).toBe(`${main}.wt`);
   });
 
   it("checks out an existing task branch and reuses the ready worktree afterwards", async () => {
@@ -267,7 +272,7 @@ describe("task worktree routes", () => {
     expect(await getTaskWorktreeRow(1)).toBeNull();
   });
 
-  it("recounts a task's uncommitted files and unpushed commits on demand", async () => {
+  it("recounts a task's uncommitted files and unpushed commits", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const path = mkdtempSync(join(tmpdir(), "tg-wt-"));
     sqlite.exec(`UPDATE tasks SET uncommitted_files = 573, unpushed_commits = 2 WHERE id = 1`);
@@ -275,18 +280,19 @@ describe("task worktree routes", () => {
       VALUES (1, 1, '${path}', 'ready', ${ts}, ${ts})`);
     setCommandRunner(async (_cmd, args) => ok(args[0] === "rev-list" ? "0" : ""));
 
-    const res = await request("POST", "/api/v1/tasks/1/worktree/git-status");
+    await refreshTaskGitStatus(1);
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ id: 1, uncommittedFiles: 0, unpushedCommits: 0 });
+    expect(sqlite.query("SELECT uncommitted_files, unpushed_commits FROM tasks WHERE id = 1").get()).toEqual({
+      uncommitted_files: 0,
+      unpushed_commits: 0,
+    });
   });
 
   it("tears down the stack of a deleted task even when its worktree folder is gone", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
-    sqlite.exec(`UPDATE repositories SET teardown_command = 'bin/dev worktree-cleanup {{composeProject}}' WHERE id = 1`);
-    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
+    sqlite.exec(`UPDATE repositories SET teardown_command = 'bin/dev worktree-cleanup {{composeProject}}', local_path = '${main}' WHERE id = 1`);
     sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
       VALUES (1, 1, '${main}.EV-1', 'ready', ${ts}, ${ts})`);
     const calls: { args: string[]; opts: CommandOptions }[] = [];

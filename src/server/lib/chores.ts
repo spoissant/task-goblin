@@ -1,19 +1,20 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
-import { getNotCompletedCondition, getStatusCategories } from "./task-status";
+import { getNotCompletedCondition, getStatusCategories, statusNamesOf } from "./task-status";
 import { buildRepoMap } from "./queries";
-import { parseDeploymentBranches } from "./validation";
 import { checksFailedAt } from "./checks";
 import type { RepoPair } from "@/shared/chore-pairs";
+import { parseChoreSkips } from "@/shared/chore-skips";
 import { resolvePrompt, type ChoreDefinition, type ChoreEntry } from "@/shared/chores";
+import { parseStringList } from "@/shared/json";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 /** A task column, or a value computed from the task row. */
 type TriggerField = keyof TaskRow | ((task: TaskRow) => unknown);
 
-interface Chore {
+export interface Chore {
   number: number;
   key: string;
   name: string;
@@ -31,26 +32,15 @@ interface Chore {
    * the task columns, or values computed from the row, that define one trigger
    * state: the scheduler starts the chore once per distinct state (see
    * fingerprintFor). `prompt` replaces the chore prompt for auto-starts (e.g.
-   * to pass a default env).
+   * to pass a default env), and `when` limits them to some tasks.
    */
-  auto?: { fields: TriggerField[]; prompt?: string };
-}
-
-export function parseChoreSkips(value: string | null): Record<string, boolean> {
-  if (!value) return {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
+  auto?: { fields: TriggerField[]; prompt?: string; when?: (task: TaskRow, repo: RepoRow | null) => boolean };
 }
 
 function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   if (!repo) return false;
-  const repoBranches = parseDeploymentBranches(repo.deploymentBranches);
-  if (repoBranches.length === 0) return false;
-  const taskBranches = parseDeploymentBranches(task.onDeploymentBranches);
-  return repoBranches.some((b) => taskBranches.includes(b));
+  const taskBranches = parseStringList(task.onDeploymentBranches);
+  return parseStringList(repo.deploymentBranches).some((b) => taskBranches.includes(b));
 }
 
 // A hivetests sub-task's hermetic specs run against its alumni_connect parent's
@@ -58,6 +48,9 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
 function awaitsParentPr(repo: RepoRow | null, parent: TaskRow | null): boolean {
   return repo?.repo === "hivetests" && parent !== null && parent.prNumber === null;
 }
+
+// The env auto-starts deploy to, on repos that have it; anything else is deployed by hand.
+const AUTO_DEPLOY_ENV = "staging";
 
 // Upstream repos whose releases alumni_connect pins, for the two-repo chores.
 const UPSTREAM_PAIRS: RepoPair[] = [
@@ -150,15 +143,18 @@ const CHORES: Chore[] = [
     requiresSameRepo: true,
     cwd: "main",
     match: (t, repo) =>
-      parseDeploymentBranches(repo?.deploymentBranches ?? null).length > 0 &&
+      parseStringList(repo?.deploymentBranches).length > 0 &&
       t.prState === "open" &&
       t.checksStatus === "passing" &&
       (t.unresolvedCommentCount ?? 0) === 0 &&
       t.isDraft === 0 &&
       (t.hasConflicts ?? 0) === 0 &&
       !isOnAnyDeploymentBranch(t, repo),
-    // Auto-starts only deploy to staging (the scheduler checks the repo has it).
-    auto: { fields: ["headSha", "onDeploymentBranches"], prompt: "/chore-deploy-to-test-env {{taskId}} staging" },
+    auto: {
+      fields: ["headSha", "onDeploymentBranches"],
+      prompt: `/chore-deploy-to-test-env {{taskId}} ${AUTO_DEPLOY_ENV}`,
+      when: (_t, repo) => parseStringList(repo?.deploymentBranches).includes(AUTO_DEPLOY_ENV),
+    },
   },
   {
     number: 10,
@@ -212,35 +208,15 @@ const CHORES: Chore[] = [
   },
 ];
 
-/** Whether the chore scheduler may start this chore on its own. */
-export function isAutoChore(key: string): boolean {
-  return CHORES.some((c) => c.key === key && c.auto !== undefined);
-}
-
 /**
  * One string per distinct trigger state of a chore on a task: the values of
  * the chore's `auto.fields`, in declaration order. Null for chores that never
  * auto-start.
  */
 export function fingerprintFor(key: string, task: TaskRow): string | null {
-  const chore = CHORES.find((c) => c.key === key);
-  if (!chore?.auto) return null;
-  return JSON.stringify(chore.auto.fields.map((f) => (typeof f === "function" ? f(task) : task[f]) ?? null));
-}
-
-/** Whether the chore runs on several tasks in one session. */
-export function isBulkChore(key: string): boolean {
-  return CHORES.some((c) => c.key === key && c.supportsBulk);
-}
-
-/**
- * The prompt an auto-start uses: the chore's `auto.prompt` when set, else its
- * usual one. `taskIds` lists every task of a bulk run, the first being `task`.
- */
-export function autoPromptFor(key: string, task: Pick<TaskRow, "id" | "jiraKey">, taskIds?: number[]): string | null {
-  const chore = CHORES.find((c) => c.key === key);
-  if (!chore?.auto) return null;
-  return resolvePrompt(chore.auto.prompt ?? chore.prompt, task, taskIds);
+  const auto = CHORES.find((c) => c.key === key)?.auto;
+  if (!auto) return null;
+  return JSON.stringify(auto.fields.map((f) => (typeof f === "function" ? f(task) : task[f]) ?? null));
 }
 
 export function getChoreDefinitions(): ChoreDefinition[] {
@@ -257,12 +233,11 @@ export function getChoreDefinitions(): ChoreDefinition[] {
   }));
 }
 
-/** Look up a chore by key, with the cwd it should run in. */
 /**
  * Pseudo-chore for ad-hoc prompts typed in the AI column. Not in CHORES, so it
  * never shows up in the chore list.
  */
-export const CUSTOM_CHORE = { key: "custom", name: "Custom prompt", prompt: "", cwd: "task" } as const;
+export const CUSTOM_CHORE = { key: "custom", name: "Custom prompt", cwd: "task" } as const;
 
 /**
  * Pseudo-chore for reviewing a colleague's PR from the Reviews page. Runs in
@@ -271,21 +246,11 @@ export const CUSTOM_CHORE = { key: "custom", name: "Custom prompt", prompt: "", 
  */
 export const REVIEW_CHORE = { key: "review-pr", name: "Code review", prompt: "/chore-code-review-pr", cwd: "main" } as const;
 
+/** Look up a chore by key (not the pseudo-chores), with the cwd it should run in. */
 export function getChoreDefinition(key: string) {
-  if (key === CUSTOM_CHORE.key) return CUSTOM_CHORE;
-  if (key === REVIEW_CHORE.key) return REVIEW_CHORE;
   const chore = CHORES.find((c) => c.key === key);
-  if (!chore) return null;
-  return {
-    key: chore.key,
-    name: chore.name,
-    prompt: chore.prompt,
-    cwd: chore.cwd ?? "task",
-    requiresSameRepo: chore.requiresSameRepo ?? false,
-  } as const;
+  return chore ? { ...chore, cwd: chore.cwd ?? "task" } : null;
 }
-
-type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };
 
 /** Parent tasks (by jiraKey) of the rows that have one. */
 async function buildParentMap(rows: TaskRow[]): Promise<Map<string, TaskRow>> {
@@ -295,139 +260,72 @@ async function buildParentMap(rows: TaskRow[]): Promise<Map<string, TaskRow>> {
   return new Map(parents.map((p) => [p.jiraKey as string, p]));
 }
 
-export async function getChores(opts: { taskId?: number } = {}): Promise<ChoreEntry[]> {
-  const { taskId } = opts;
+/** A chore a task is due for, with the rows it was matched on. */
+interface ChoreMatch {
+  chore: Chore;
+  task: TaskRow;
+  repo: RepoRow | null;
+}
 
-  // Load status categories once — used for resolving category names → status strings and for sorting
-  const allCategories = await getStatusCategories();
+/**
+ * Every chore each active task is due for, in the order to run them: tasks
+ * closest to done first (tall strategy: finish one task before starting
+ * another), then high priority first, then by chore number.
+ */
+export async function matchChores(opts: { taskId?: number } = {}): Promise<ChoreMatch[]> {
+  const categories = (await getStatusCategories()).map((c) => ({ ...c, statuses: statusNamesOf(c) }));
+  const inCategories = (names: string[], status: string) =>
+    categories.some((c) => names.includes(c.name) && c.statuses.includes(status));
+  const order = new Map(categories.flatMap((c) => c.statuses.map((s) => [s, c.displayOrder] as const)));
 
-  const categoryToStatuses = new Map<string, string[]>();
-  const statusToDisplayOrder = new Map<string, number>();
-  for (const cat of allCategories) {
-    const statuses = [cat.name, ...cat.jiraMappings];
-    categoryToStatuses.set(cat.name, statuses);
-    for (const s of statuses) {
-      statusToDisplayOrder.set(s.toLowerCase(), cat.displayOrder);
-    }
-  }
+  const conditions = [await getNotCompletedCondition(), sql`COALESCE(${tasks.onIce}, 0) = 0`];
+  if (opts.taskId !== undefined) conditions.push(eq(tasks.id, opts.taskId));
+  const rows = await db.select().from(tasks).where(and(...conditions));
+  const repoMap = await buildRepoMap(rows);
+  const parentMap = await buildParentMap(rows);
 
-  const notCompleted = await getNotCompletedCondition();
-  const notOnIce = sql`COALESCE(${tasks.onIce}, 0) = 0`;
-
-  async function fetchAllActive(): Promise<TaskRow[]> {
-    const conditions = [notCompleted, notOnIce];
-    if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
-    return db.select().from(tasks).where(and(...conditions));
-  }
-
-  async function fetchByStatuses(statuses: string[]): Promise<TaskRow[]> {
-    if (statuses.length === 0) return [];
-    const lowered = statuses.map((s) => s.toLowerCase());
-    const conditions = [
-      notCompleted,
-      notOnIce,
-      sql`LOWER(${tasks.status}) IN (${sql.join(lowered.map((s) => sql`${s}`), sql`, `)})`,
-    ];
-    if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
-    return db.select().from(tasks).where(and(...conditions));
-  }
-
-  // Collect unique category keys needed by the chores
-  const neededKeys = new Set<string | null>();
-  for (const chore of CHORES) {
-    neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
-  }
-
-  // Fetch hardcoded chore candidates in parallel
-  const batchRows = new Map<string | null, TaskRow[]>();
-
-  await Promise.all(
-    [...neededKeys].map(async (key) => {
-      let rows: TaskRow[];
-      if (key === null) {
-        rows = await fetchAllActive();
-      } else {
-        const categoryNames: string[] = JSON.parse(key);
-        const statuses = categoryNames.flatMap((name) => categoryToStatuses.get(name) ?? []);
-        rows = await fetchByStatuses(statuses);
-      }
-      batchRows.set(key, rows);
-    })
-  );
-
-  // Build a single repoMap across all fetched tasks
-  const allRows = [...batchRows.values()].flat();
-  const repoMap = await buildRepoMap(allRows);
-  const parentMap = await buildParentMap(allRows);
-
-  // Attach repos and sort each batch: displayOrder ASC (closer to done first) → highPriority DESC → id ASC
-  const candidateCache = new Map<string | null, TaskWithRepo[]>();
-  for (const [key, rows] of batchRows) {
-    const withRepo: TaskWithRepo[] = rows.map((task) => ({
-      task,
-      repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
-    }));
-    withRepo.sort((a, b) => {
-      const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
-      const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
-      if (hpDiff !== 0) return hpDiff;
-      return a.task.id - b.task.id;
-    });
-    candidateCache.set(key, withRepo);
-  }
-
-  const entries: ChoreEntry[] = [];
-
-  for (const chore of CHORES) {
-    const cacheKey = chore.categories ? JSON.stringify(chore.categories) : null;
-    const candidates = candidateCache.get(cacheKey) ?? [];
-
-    const excludedStatuses = new Set<string>(
-      (chore.excludeCategories ?? []).flatMap(
-        (name) => categoryToStatuses.get(name)?.map((s) => s.toLowerCase()) ?? []
-      )
-    );
-
-    for (const { task, repo } of candidates) {
-      const skips = parseChoreSkips(task.choreSkips);
+  const matches: ChoreMatch[] = [];
+  for (const task of rows) {
+    const status = task.status.toLowerCase();
+    const skips = parseChoreSkips(task.choreSkips);
+    const repo = task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null;
+    const parent = task.parentKey ? (parentMap.get(task.parentKey) ?? null) : null;
+    for (const chore of CHORES) {
       if (skips[chore.key]) continue;
-      if (excludedStatuses.has(task.status.toLowerCase())) continue;
-      if (!chore.match(task, repo, task.parentKey ? (parentMap.get(task.parentKey) ?? null) : null)) continue;
-
-      entries.push({
-        number: chore.number,
-        key: chore.key,
-        name: chore.name,
-        prompt: resolvePrompt(chore.prompt, task),
-        task: {
-          id: task.id,
-          title: task.title,
-          jiraKey: task.jiraKey ?? null,
-          sprint: task.sprint ?? null,
-          prNumber: task.prNumber ?? null,
-          headBranch: task.headBranch ?? null,
-          baseBranch: task.baseBranch ?? null,
-          status: task.status,
-          highPriority: task.highPriority ?? null,
-          repository: repo ? { owner: repo.owner, repo: repo.repo } : null,
-        },
-      });
+      if (chore.categories && !inCategories(chore.categories, status)) continue;
+      if (chore.excludeCategories && inCategories(chore.excludeCategories, status)) continue;
+      if (chore.match(task, repo, parent)) matches.push({ chore, task, repo });
     }
   }
 
-  // Sort: task priority first (tall strategy — finish one task before starting another),
-  // then chore number ASC within the same task.
-  entries.sort((a, b) => {
-    const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
-    const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    const hpDiff = (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0);
-    if (hpDiff !== 0) return hpDiff;
-    if (a.task.id !== b.task.id) return a.task.id - b.task.id;
-    return a.number - b.number;
-  });
+  const rank = (task: TaskRow) => order.get(task.status.toLowerCase()) ?? 999;
+  return matches.sort(
+    (a, b) =>
+      rank(a.task) - rank(b.task) ||
+      (b.task.highPriority ?? 0) - (a.task.highPriority ?? 0) ||
+      a.task.id - b.task.id ||
+      a.chore.number - b.chore.number,
+  );
+}
 
-  return entries;
+/** The chore list the API serves: every match, its prompt filled for its task. */
+export async function getChores(opts: { taskId?: number } = {}): Promise<ChoreEntry[]> {
+  return (await matchChores(opts)).map(({ chore, task, repo }) => ({
+    number: chore.number,
+    key: chore.key,
+    name: chore.name,
+    prompt: resolvePrompt(chore.prompt, task),
+    task: {
+      id: task.id,
+      title: task.title,
+      jiraKey: task.jiraKey,
+      sprint: task.sprint,
+      prNumber: task.prNumber,
+      headBranch: task.headBranch,
+      baseBranch: task.baseBranch,
+      status: task.status,
+      highPriority: task.highPriority,
+      repository: repo ? { owner: repo.owner, repo: repo.repo } : null,
+    },
+  }));
 }

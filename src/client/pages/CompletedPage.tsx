@@ -1,33 +1,18 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
-import { useCompletedTasksQuery, useSyncTask, useSyncVisibleTasks } from "@/client/lib/queries";
-import type { SyncVisibleProgress, SyncTaskParams } from "@/client/lib/queries/sync";
+import { useCompletedTasksQuery } from "@/client/lib/queries/tasks";
+import { useSyncVisibleTasks, type SyncVisibleProgress } from "@/client/lib/queries/sync";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
+import { getPrUrl } from "@/client/lib/links";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { Badge } from "@/client/components/ui/badge";
 import { Button } from "@/client/components/ui/button";
-import { Checkbox } from "@/client/components/ui/checkbox";
-import { TooltipProvider } from "@/client/components/ui/tooltip";
-import { InteractiveStatusBadge } from "@/client/components/tasks/InteractiveStatusBadge";
-import { ChecksStatusCell } from "@/client/components/tasks/ChecksStatusCell";
-import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
-import { RepoBadge } from "@/client/components/tasks/RepoBadge";
+import { FilterToggle } from "@/client/components/ui/filter-toggle";
 import { Pagination } from "@/client/components/ui/pagination";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/client/components/ui/table";
+import { Table, TableBody, TableHeader, TableRow } from "@/client/components/ui/table";
 import { Input } from "@/client/components/ui/input";
 import { RefreshCw, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import { getJiraUrl, getPrUrl, ParentCell } from "@/client/components/tasks/columns/cells";
-import type { TaskDetail } from "@/client/lib/types";
-import { parseReviewStatus } from "@/shared/review-status";
+import { COMPLETED_COLUMNS, ColumnCells, ColumnHeads } from "@/client/components/tasks/columns";
 
 const PAGE_SIZE = 25;
 
@@ -58,6 +43,26 @@ export function CompletedPage() {
   const jiraHost = settingsData?.jira_host || null;
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
+  const handleSyncVisible = () => {
+    const syncable = (data?.items ?? []).filter((t) => t.jiraKey || t.prNumber);
+    if (!syncable.length) {
+      toast.info("No syncable tasks on this page");
+      return;
+    }
+    setSyncProgress({ current: 0, total: syncable.length });
+    syncVisible.mutate(
+      { tasks: syncable, onProgress: setSyncProgress },
+      {
+        onSuccess: ({ errors }) => {
+          toast.success(`Synced ${syncable.length} task${syncable.length !== 1 ? "s" : ""}`);
+          errors.forEach((e) => toast.error(e));
+        },
+        onError: () => toast.error("Sync failed"),
+        onSettled: () => setSyncProgress(null),
+      }
+    );
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -68,16 +73,15 @@ export function CompletedPage() {
               {data.total} completed task{data.total !== 1 ? "s" : ""}
             </span>
           )}
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <Checkbox
-              checked={showDone}
-              onCheckedChange={(checked) => {
-                setShowDone(checked === true);
-                setPage(0);
-              }}
-            />
-            Show done
-          </label>
+          <FilterToggle
+            id="show-done"
+            label="Show done"
+            checked={showDone}
+            onCheckedChange={(checked) => {
+              setShowDone(checked);
+              setPage(0);
+            }}
+          />
         </div>
       </div>
 
@@ -103,29 +107,7 @@ export function CompletedPage() {
             size="sm"
             className="flex-shrink-0"
             disabled={syncVisible.isPending}
-            onClick={() => {
-              const syncable: SyncTaskParams[] = data.items
-                .filter((t) => t.jiraKey || t.prNumber)
-                .map((t) => ({ task: t, repo: t.repository ?? undefined }));
-              if (!syncable.length) {
-                toast.info("No syncable tasks on this page");
-                return;
-              }
-              setSyncProgress({ current: 0, total: syncable.length });
-              syncVisible.mutate(
-                { items: syncable, onProgress: setSyncProgress },
-                {
-                  onSuccess: () => {
-                    toast.success(`Synced ${syncable.length} task${syncable.length !== 1 ? "s" : ""}`);
-                    setSyncProgress(null);
-                  },
-                  onError: () => {
-                    toast.error("Sync failed");
-                    setSyncProgress(null);
-                  },
-                }
-              );
-            }}
+            onClick={handleSyncVisible}
           >
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncVisible.isPending ? "animate-spin" : ""}`} />
             {syncVisible.isPending && syncProgress
@@ -149,30 +131,30 @@ export function CompletedPage() {
 
       {data && data.items.length > 0 && (
         <>
-          <TooltipProvider>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px]"></TableHead>
-                  <TableHead className="w-[80px]">Type</TableHead>
-                  <TableHead className="w-[100px]">Parent</TableHead>
-                  <TableHead className="w-[100px]">Key</TableHead>
-                  <TableHead className="w-[100px]">Status</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-[120px]">Repo</TableHead>
-                  <TableHead className="w-[150px]">Branch</TableHead>
-                  <TableHead className="w-[60px]">PR</TableHead>
-                  <TableHead className="w-[50px]">Checks</TableHead>
-                  <TableHead className="w-[60px]">Reviews</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <ColumnHeads columns={COMPLETED_COLUMNS} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.items.map((task) => (
+                <TableRow key={task.id}>
+                  <ColumnCells
+                    task={task}
+                    columns={COMPLETED_COLUMNS}
+                    context={{
+                      repo: task.repository,
+                      jiraHost,
+                      prUrl: getPrUrl(task.repository, task.prNumber),
+                      linkToTask: true,
+                      completed: true,
+                    }}
+                  />
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items.map((task) => (
-                  <CompletedTaskRow key={task.id} task={task} jiraHost={jiraHost} />
-                ))}
-              </TableBody>
-            </Table>
-          </TooltipProvider>
+              ))}
+            </TableBody>
+          </Table>
 
           <Pagination
             page={page}
@@ -183,168 +165,5 @@ export function CompletedPage() {
         </>
       )}
     </div>
-  );
-}
-
-interface CompletedTaskRowProps {
-  task: TaskDetail;
-  jiraHost: string | null;
-}
-
-function CompletedTaskRow({ task, jiraHost }: CompletedTaskRowProps) {
-  const repo = task.repository;
-  const syncTask = useSyncTask();
-
-  const prUrl = getPrUrl(repo, task.prNumber);
-
-  // Only show sync if task has Jira or PR
-  const canSync = task.jiraKey || task.prNumber;
-
-  const handleSync = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    syncTask.mutate({ task, repo: repo ?? undefined });
-  };
-
-  return (
-    <TableRow>
-      {/* Sync */}
-      <TableCell>
-        {canSync && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleSync}
-            disabled={syncTask.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${syncTask.isPending ? "animate-spin" : ""}`} />
-          </Button>
-        )}
-      </TableCell>
-
-      {/* Type */}
-      <TableCell>
-        {task.type ? (
-          <Badge variant="outline" className="text-xs">
-            {task.type}
-          </Badge>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Parent */}
-      <TableCell>
-        <ParentCell task={task} jiraHost={jiraHost} />
-      </TableCell>
-
-      {/* Jira Key */}
-      <TableCell>
-        {task.jiraKey ? (() => {
-          const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
-          return jiraUrl ? (
-            <a
-              href={jiraUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline font-mono text-xs"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {task.jiraKey}
-            </a>
-          ) : (
-            <span className="font-mono text-xs">{task.jiraKey}</span>
-          );
-        })() : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Status */}
-      <TableCell>
-        <InteractiveStatusBadge
-          taskId={task.id}
-          status={task.status}
-          jiraKey={task.jiraKey}
-        />
-      </TableCell>
-
-      {/* Title */}
-      <TableCell className="max-w-[300px]">
-        <Link
-          to={`/tasks/${task.id}`}
-          className="hover:underline truncate block"
-          title={task.title}
-        >
-          {task.title}
-        </Link>
-      </TableCell>
-
-      {/* Repository */}
-      <TableCell>
-        {repo ? (
-          <RepoBadge repo={repo} />
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Branch */}
-      <TableCell className="font-mono text-xs max-w-[150px] truncate" title={task.headBranch || undefined}>
-        {task.headBranch ? (
-          <button
-            type="button"
-            className="hover:text-blue-600 cursor-pointer text-left"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(task.headBranch!);
-              toast.success("Branch copied to clipboard");
-            }}
-          >
-            {task.headBranch}
-          </button>
-        ) : (
-          "—"
-        )}
-      </TableCell>
-
-      {/* PR Number */}
-      <TableCell>
-        {task.prNumber ? (
-          prUrl ? (
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-              <span>#{task.prNumber}</span>
-            </a>
-          ) : (
-            <span className="inline-flex items-center gap-1 font-mono text-xs">
-              <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-              <span>#{task.prNumber}</span>
-            </span>
-          )
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Checks */}
-      <TableCell>
-        <ChecksStatusCell
-          checksStatus={task.checksStatus}
-          checksDetails={task.checksDetails}
-        />
-      </TableCell>
-
-      {/* Review */}
-      <TableCell>
-        <ReviewStatusIcon status={parseReviewStatus(task.reviewStatus)} />
-      </TableCell>
-    </TableRow>
   );
 }

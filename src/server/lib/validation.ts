@@ -12,13 +12,16 @@ export function parseId(value: string, paramName: string = "id"): number {
   return id;
 }
 
-const PR_URL_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
+// A page of the PR (/files, ?w=1, #discussion…) names the same PR.
+const PR_URL_RE = /^(https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+))(?:[/?#].*)?$/;
 
-/** Split a GitHub pull request URL; throws ValidationError for anything else. */
+/** Split a GitHub pull request URL; `url` is the PR's own URL. Throws ValidationError for anything else. */
 export function parsePrUrl(value: string): { url: string; owner: string; repo: string; number: number } {
   const match = value.trim().match(PR_URL_RE);
-  if (!match) throw new ValidationError("prUrl must be a GitHub pull request URL");
-  const [url, owner, repo, number] = match;
+  if (!match) {
+    throw new ValidationError("Expected a GitHub pull request URL: https://github.com/<owner>/<repo>/pull/<number>");
+  }
+  const [, url, owner, repo, number] = match;
   return { url, owner, repo, number: Number(number) };
 }
 

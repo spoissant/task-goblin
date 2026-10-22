@@ -5,50 +5,59 @@
  * a Docker slot. A bulk chore runs every task at that step of
  * a repository in one session, so only the periodic sync starts one.
  */
-import { desc, inArray } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessions, tasks } from "../../db/schema";
-import { autoPromptFor, fingerprintFor, getChores, isAutoChore, isBulkChore, parseChoreSkips } from "../lib/chores";
-import { getChoreModelDefaults } from "../lib/chore-models";
+import { fingerprintFor, matchChores, type Chore } from "../lib/chores";
 import { AppError } from "../lib/errors";
-import { buildRepoMap } from "../lib/queries";
 import { getBoolSetting } from "../lib/settings";
-import { parseDeploymentBranches } from "../lib/validation";
-import { resolveChoreModel, type ChoreModelDefaults } from "@/shared/chore-models";
+import { isAutoPaused } from "@/shared/chore-skips";
+import { resolvePrompt } from "@/shared/chores";
 import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
-import { ACTIVE_STATES, activeTaskIds, startChoreSession, type SessionRow } from "./claude-sessions";
-import { coversTasks, sessionLinks } from "./session-tasks";
+import { startChoreSession, type SessionRow } from "./claude-sessions";
+import { activeTaskIds, coversTasks, isActive, sessionLinks } from "./session-tasks";
 
 /** Auto sessions running at once, blocked ones included. */
 export const MAX_AUTO_ACTIVE = 5;
 /** Auto runs of one chore on one task per rolling day, whatever its states did. */
 export const MAX_AUTO_RUNS_PER_DAY = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const AUTO_DEPLOY_ENV = "staging";
 
 type TaskRow = typeof tasks.$inferSelect;
-type Candidate = { choreKey: string; task: TaskRow; fingerprint: string };
+type Candidate = { chore: Chore; task: TaskRow; fingerprint: string };
 type HistoryRow = Pick<SessionRow, "id" | "taskId" | "choreKey" | "trigger" | "triggerFingerprint" | "createdAt">;
+type SchedulerOptions = { taskId?: number; now?: Date };
 
-/** Start the auto chores whose trigger state is new; returns how many sessions started. */
-export async function runChoreScheduler(opts: { taskId?: number; now?: Date } = {}): Promise<number> {
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Start the auto chores whose trigger state is new; returns how many sessions
+ * started. One run at a time, later calls queued behind it: two runs at once
+ * (a post-session one and the periodic one) would both start the same chore.
+ */
+export function runChoreScheduler(opts: SchedulerOptions = {}): Promise<number> {
+  const run = queue.then(() => schedule(opts));
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function schedule(opts: SchedulerOptions): Promise<number> {
   const now = opts.now ?? new Date();
   if (!(await getBoolSetting(AUTO_CHORES_SETTING, true))) return 0;
 
   let capacity = await freeAutoSlots();
   if (capacity <= 0) return 0;
   // A post-session run leaves bulk chores to the periodic sync, which batches every task at that step.
-  const candidates = (await loadCandidates(opts.taskId)).filter((c) => !opts.taskId || !isBulkChore(c.choreKey));
+  const candidates = (await loadCandidates(opts.taskId)).filter((c) => !opts.taskId || !c.chore.supportsBulk);
   if (candidates.length === 0) return 0;
 
   const history = await loadHistory(candidates.map((c) => c.task.id));
   const busy = await activeTaskIds();
   const due = candidates.filter((c) => !busy.has(c.task.id) && !shouldSkip(c, history, now));
-  const defaults = await getChoreModelDefaults();
   let started = 0;
   for (const batch of toBatches(due)) {
     if (capacity <= 0) break;
-    if (await start(batch, defaults)) {
+    if (await start(batch)) {
       started++;
       capacity--;
     }
@@ -60,7 +69,7 @@ export async function runChoreScheduler(opts: { taskId?: number; now?: Date } = 
 function toBatches(candidates: Candidate[]): Candidate[][] {
   const batches = new Map<string, Candidate[]>();
   for (const c of candidates) {
-    const key = isBulkChore(c.choreKey) ? `${c.choreKey}:${c.task.repositoryId}` : `task:${c.task.id}`;
+    const key = c.chore.supportsBulk ? `${c.chore.key}:${c.task.repositoryId}` : `task:${c.task.id}`;
     batches.set(key, [...(batches.get(key) ?? []), c]);
   }
   return [...batches.values()];
@@ -71,37 +80,23 @@ async function freeAutoSlots(): Promise<number> {
   const active = await db
     .select({ trigger: claudeSessions.trigger, state: claudeSessions.state })
     .from(claudeSessions)
-    .where(inArray(claudeSessions.state, ACTIVE_STATES));
+    .where(isActive());
   if (active.some((s) => s.state === "queued")) return 0;
   return MAX_AUTO_ACTIVE - active.filter((s) => s.trigger === "auto").length;
 }
 
-/** The first auto chore of each task the chore list suggests, with the task row it runs on. */
+/** The first auto chore of each task the chore list suggests, unless the task pauses auto-starts or the chore skips it. */
 async function loadCandidates(taskId?: number): Promise<Candidate[]> {
-  const entries = (await getChores({ taskId })).filter((e) => isAutoChore(e.key));
-  if (entries.length === 0) return [];
-  const ids = [...new Set(entries.map((e) => e.task.id))];
-  const rows = await db.select().from(tasks).where(inArray(tasks.id, ids));
-  const taskById = new Map(rows.map((t) => [t.id, t]));
-  const repoMap = await buildRepoMap(rows);
-
   const seen = new Set<number>();
   const candidates: Candidate[] = [];
-  for (const entry of entries) {
-    const task = taskById.get(entry.task.id);
-    if (!task || seen.has(task.id)) continue;
+  for (const { chore, task, repo } of await matchChores({ taskId })) {
+    if (!chore.auto || seen.has(task.id)) continue;
     seen.add(task.id);
-    if (parseChoreSkips(task.choreSkips).auto) continue;
-    if (entry.key === "deploy-test-env" && !repoHasAutoDeployEnv(task, repoMap)) continue;
-    const fingerprint = fingerprintFor(entry.key, task);
-    if (fingerprint !== null) candidates.push({ choreKey: entry.key, task, fingerprint });
+    if (isAutoPaused(task.choreSkips) || (chore.auto.when && !chore.auto.when(task, repo))) continue;
+    const fingerprint = fingerprintFor(chore.key, task);
+    if (fingerprint !== null) candidates.push({ chore, task, fingerprint });
   }
   return candidates;
-}
-
-function repoHasAutoDeployEnv(task: TaskRow, repoMap: Awaited<ReturnType<typeof buildRepoMap>>): boolean {
-  const repo = task.repositoryId ? repoMap.get(task.repositoryId) : undefined;
-  return parseDeploymentBranches(repo?.deploymentBranches ?? null).includes(AUTO_DEPLOY_ENV);
 }
 
 /** Every session of the candidate tasks, newest first: a row per task it covers, with that task's trigger state. */
@@ -124,22 +119,24 @@ async function loadHistory(taskIds: number[]): Promise<HistoryRow[]> {
 
 /** Already ran on this state (by anyone, whatever the outcome), or ran too often today. */
 function shouldSkip(candidate: Candidate, history: HistoryRow[], now: Date): boolean {
-  const runs = history.filter((h) => h.taskId === candidate.task.id && h.choreKey === candidate.choreKey);
+  const runs = history.filter((h) => h.taskId === candidate.task.id && h.choreKey === candidate.chore.key);
   if (runs[0]?.triggerFingerprint === candidate.fingerprint) return true;
   const since = now.getTime() - DAY_MS;
   const autoRunsToday = runs.filter((h) => h.trigger === "auto" && Date.parse(h.createdAt) >= since).length;
   return autoRunsToday >= MAX_AUTO_RUNS_PER_DAY;
 }
 
-/** True when a session started; a refused start (task or dev stack busy, unknown chore) is logged and skipped. */
-async function start(batch: Candidate[], defaults: ChoreModelDefaults): Promise<boolean> {
-  const [{ choreKey, task, fingerprint }, ...rest] = batch;
+/**
+ * True when a session started; a refused start (task or dev stack busy) is
+ * logged and skipped. The session runs on the chore's model settings.
+ */
+async function start(batch: Candidate[]): Promise<boolean> {
+  const [{ chore, task, fingerprint }, ...rest] = batch;
   const ids = batch.map((c) => c.task.id);
-  const on = `${choreKey} on task ${ids.join(", ")}`;
+  const on = `${chore.key} on task ${ids.join(", ")}`;
   try {
-    await startChoreSession(task.id, choreKey, {
-      prompt: autoPromptFor(choreKey, task, ids),
-      ...resolveChoreModel(defaults, choreKey),
+    await startChoreSession(task.id, chore.key, {
+      prompt: resolvePrompt(chore.auto?.prompt ?? chore.prompt, task, ids),
       trigger: "auto",
       triggerFingerprint: fingerprint,
       withTaskIds: rest.map((c) => c.task.id),

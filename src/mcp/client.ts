@@ -1,3 +1,5 @@
+import { z } from "zod";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { handleResponse } from "@/shared/api";
 import type { Task, Repository, ListResponse } from "@/shared/types";
 
@@ -32,6 +34,25 @@ export async function del<T>(path: string): Promise<T> {
   });
   return handleResponse<T>(res);
 }
+
+/** Run a tool's body: what it returns becomes the JSON result, what it throws an error result. */
+export async function toolResult(body: () => Promise<unknown>): Promise<CallToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify((await body()) ?? null) }] };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+  }
+}
+
+/** Input fields of the tools that locate a task; resolveTaskId reads them. */
+export const taskLookup = {
+  id: z.number().optional().describe("Task ID"),
+  jiraKey: z.string().optional().describe("Jira key to look up task"),
+  prNumber: z.number().optional().describe("GitHub PR number"),
+  repo: z.string().optional().describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
+  branch: z.string().optional().describe("Git branch name (headBranch)"),
+};
 
 // Resolve task ID from various identifiers
 export async function resolveTaskId(params: {

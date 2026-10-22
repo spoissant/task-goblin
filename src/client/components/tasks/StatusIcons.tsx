@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/client/components/ui/tooltip";
 import { reviewGaps, type ReviewGap, type ReviewStatus } from "@/shared/review-status";
+import { cn } from "@/client/lib/utils";
 
 const plural = (n: number, word: string) => `${n} ${word}${n !== 1 ? "s" : ""}`;
 
@@ -121,77 +122,40 @@ export function ReviewStatusIcon({ status, prUrl, highlight = [] }: ReviewStatus
   );
 }
 
+/** A 16px icon that explains itself in a tooltip. */
+export function IconTip({ icon: Icon, tip, className }: { icon: LucideIcon; tip: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-default">
+          <Icon className={cn("h-4 w-4", className)} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+const PR_STATE_ICONS = {
+  merged: { icon: GitMerge, className: "text-purple-500", tip: "Merged" },
+  closed: { icon: GitPullRequestClosed, className: "text-red-500", tip: "Closed" },
+  draft: { icon: FileEdit, className: "text-muted-foreground", tip: "Draft PR" },
+  open: { icon: CheckCircle, className: "text-green-500", tip: "Open PR" },
+};
+
 interface PrStatusIconProps {
   prState: string | null;
   isDraft: number | null;
 }
 
 export function PrStatusIcon({ prState, isDraft }: PrStatusIconProps) {
-  // Check terminal states first (take precedence over draft)
-  if (prState === "merged") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex cursor-default">
-            <GitMerge className="h-4 w-4 text-purple-500" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Merged</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  if (prState === "closed") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex cursor-default">
-            <GitPullRequestClosed className="h-4 w-4 text-red-500" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Closed</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  if (isDraft) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex cursor-default">
-            <FileEdit className="h-4 w-4 text-muted-foreground" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Draft PR</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex cursor-default">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        Open PR
-      </TooltipContent>
-    </Tooltip>
-  );
+  // Terminal states take precedence over draft
+  const state = prState === "merged" || prState === "closed" ? prState : isDraft ? "draft" : "open";
+  return <IconTip {...PR_STATE_ICONS[state]} />;
 }
 
 export function MergeConflictIcon() {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex cursor-default">
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>Has merge conflicts</TooltipContent>
-    </Tooltip>
-  );
+  return <IconTip icon={AlertTriangle} className="text-orange-500" tip="Has merge conflicts" />;
 }
 
 interface UnresolvedCommentsIconProps {
@@ -231,4 +195,3 @@ export function UnresolvedCommentsIcon({ count, prUrl }: UnresolvedCommentsIconP
     </Tooltip>
   );
 }
-

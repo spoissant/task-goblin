@@ -1,10 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Repository, Worktree, ListResponse } from "../types";
+import type { Repository, ListResponse } from "../types";
 
-export const repositoryKeys = {
+const repositoryKeys = {
   all: ["repositories"] as const,
   lists: () => [...repositoryKeys.all, "list"] as const,
+};
+
+// Text fields the Settings page edits; null clears them.
+type RepositoryText = "alias" | "localPath" | "badgeColor" | "slackChannel" | "setupCommand" | "teardownCommand" | "defaultBaseBranch";
+
+export type RepositoryUpdate = Partial<Pick<Repository, "owner" | "repo" | RepositoryText>> & {
+  enabled?: boolean;
+  deploymentBranches?: string[];
+  deploymentUrls?: Record<string, string> | null;
 };
 
 export function useRepositoriesQuery() {
@@ -18,7 +27,7 @@ export function useCreateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { owner: string; repo: string; enabled?: boolean; badgeColor?: string | null }) =>
+    mutationFn: (data: { owner: string; repo: string } & RepositoryUpdate) =>
       api.post<Repository>("/repositories", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
@@ -30,7 +39,7 @@ export function useUpdateRepository() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; owner?: string; repo?: string; alias?: string | null; enabled?: boolean; badgeColor?: string | null; deploymentBranches?: string[]; deploymentUrls?: Record<string, string> | null; slackChannel?: string | null; setupCommand?: string | null; teardownCommand?: string | null; defaultBaseBranch?: string | null }) =>
+    mutationFn: ({ id, ...data }: { id: number } & RepositoryUpdate) =>
       api.patch<Repository>(`/repositories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
@@ -43,29 +52,6 @@ export function useDeleteRepository() {
 
   return useMutation({
     mutationFn: (id: number) => api.delete(`/repositories/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-    },
-  });
-}
-
-export function useCreateWorktree() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ repositoryId, path }: { repositoryId: number; path: string }) =>
-      api.post<Worktree>(`/repositories/${repositoryId}/worktrees`, { path }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-    },
-  });
-}
-
-export function useDeleteWorktree() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: number) => api.delete(`/worktrees/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
     },

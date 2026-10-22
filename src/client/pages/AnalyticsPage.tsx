@@ -22,7 +22,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useConcurrencyQuery, useSessionAnalyticsQuery } from "@/client/lib/queries/sessions";
-import type { SessionAnalyticsRow } from "@/client/lib/types";
+import type { SessionAnalyticsRow } from "@/shared/types";
 import { Button } from "@/client/components/ui/button";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";

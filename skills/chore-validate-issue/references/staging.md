@@ -24,13 +24,11 @@ Other squads and QA use these envs, so its data is not disposable. Reproduce wit
 
 Staging has no login links, and passwords are never typed. The Chrome profile usually holds the user's sessions on these envs. Load the Chrome tools in one `ToolSearch` call and check the browser with `tabs_context_mcp`. If no browser is connected, ask through AskUserQuestion to connect the extension. Before the first subagent, open the env's front office and back office to see who is signed in. If a needed role is signed out or missing, ask the user through AskUserQuestion to sign in in that tab, then continue.
 
-## The subagent
+## Running the steps
 
-The planning session never clicks. It writes the reproduction steps, each tagged with the role that performs it, and the reported and expected outcome of each step. It then delegates them to `Agent` with `subagent_type: "general-purpose"` and `model: "haiku"`: one subagent per role, strictly one after another, because they share one Chrome profile. Each brief carries:
+Write the reproduction steps, each tagged with the role that performs it and with its reported and expected outcome, then run them through Haiku subagents as `~/.claude/skills/chore-ai-qa/references/browser-run.md` describes: one subagent per role, strictly one after another, and this session keeps the verdict. On staging:
 
-- the env URL, the role it acts as, and the numbered steps with their reported and expected outcomes;
-- the shared-data rules above;
-- the rules: load the Chrome tools in one `ToolSearch` call, work in a new tab, never trigger browser-native dialogs (alerts, confirms), and give up on a step after 2–3 failed attempts. Console and network capture start at the first `read_console_messages` / `read_network_requests` call on a tab, so call both once the first page has loaded, then reload before judging a step. Close the tab when done;
-- the report: for every step, what was on screen, the console errors, the failed requests (method, URL, status), the exact actions taken, and whether the reported behaviour appeared.
-
-The planning session decides from the evidence. It counts a step as reproduced only when the evidence shows the reported behaviour. If the first run does not reproduce it, one more attempt that matches the report more closely (network, role, data shape, browser width) is worth making. A run that looks like a tooling hiccup can be retried once in a fresh subagent. Anything beyond that is looping: report what differed instead.
+- There are no sign-in links: each subagent works in the sessions the profile already holds (Sign-in above), and the Touch section does not apply.
+- The brief carries the shared-data rules above, not the line saying local data is disposable.
+- Each step's report says whether the reported behaviour appeared. A step counts as reproduced only when the evidence shows it.
+- If the first run does not reproduce it, one more attempt that matches the report more closely (network, role, data shape, browser width) is worth making. Anything beyond that is looping: report what differed instead.

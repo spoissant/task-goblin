@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { get } from "../client.js";
+import type { ChoreDefinition } from "@/shared/chores";
+import { get, toolResult } from "../client.js";
 
 export function registerChoreTools(server: McpServer) {
   // chore_definitions
@@ -7,17 +8,11 @@ export function registerChoreTools(server: McpServer) {
     "chore_definitions",
     {
       description:
-        "List all chore definitions — number, name, condition, and prompt template. Use this to understand the full chore workflow at a glance without querying live task data.",
+        "List every chore: key (start_session's choreKey), number, name, the condition a task must meet, the prompt " +
+        "template, and the flags supportsBulk (runs on several tasks in one session), requiresSameRepo, repoPairs " +
+        "(two-repo chores) and auto (the chore scheduler starts it on its own).",
       inputSchema: {},
     },
-    async () => {
-      try {
-        const data = await get<{ items: unknown[] }>("/api/v1/chores/definitions");
-        return { content: [{ type: "text", text: JSON.stringify(data) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+    () => toolResult(() => get<{ items: ChoreDefinition[] }>("/api/v1/chores/definitions"))
   );
 }

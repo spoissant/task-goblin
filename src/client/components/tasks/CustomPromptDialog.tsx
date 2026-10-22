@@ -1,21 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/client/lib/types";
+import type { SessionEffort, SessionModel } from "@/client/lib/types";
 import { ApiError } from "@/client/lib/api";
 import { handleResponse } from "@/shared/api";
-import { EFFORT_LABELS, MODEL_LABELS, useChoreModelDefaults } from "@/client/lib/chore-models";
+import { useChoreModelDefaults } from "@/client/lib/chore-models";
 import { useStartSession } from "@/client/lib/queries/sessions";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Label } from "@/client/components/ui/label";
 import { Textarea } from "@/client/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
+import { EffortSelect, ModelSelect } from "@/client/components/settings/ModelEffortSelect";
 
 /** Save a pasted image on the server; returns the file path to put in the prompt. */
 async function uploadImage(file: File): Promise<string> {
@@ -143,33 +137,11 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialP
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="custom-prompt-model">Model</Label>
-              <Select value={model} onValueChange={(v) => setModel(v as SessionModel)}>
-                <SelectTrigger id="custom-prompt-model">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SESSION_MODELS.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {MODEL_LABELS[m]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ModelSelect id="custom-prompt-model" value={model} onValueChange={setModel} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="custom-prompt-effort">Effort</Label>
-              <Select value={effort} onValueChange={(v) => setEffort(v as SessionEffort)}>
-                <SelectTrigger id="custom-prompt-effort">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SESSION_EFFORTS.map((e) => (
-                    <SelectItem key={e} value={e}>
-                      {EFFORT_LABELS[e]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <EffortSelect id="custom-prompt-effort" value={effort} onValueChange={setEffort} />
             </div>
           </div>
           <div className="space-y-2">

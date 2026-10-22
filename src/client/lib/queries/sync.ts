@@ -1,17 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
-import type { SyncResult, MatchResult, Task, Repository } from "../types";
+import { api } from "../api";
+import type { SyncRunResult, Task, TaskSyncResult } from "../types";
 import { taskKeys } from "./tasks";
 import { choreKeys } from "./chores";
 
-
-export type SyncStep = "jira" | "github" | "matching";
-
 const nextSyncKey = ["sync", "next"] as const;
-
-export interface SyncOptions {
-  onStepChange?: (step: SyncStep | null) => void;
-}
 
 /** When the server's next auto sync pass starts; null while its scheduler is off. */
 export function useNextSyncQuery() {
@@ -26,112 +19,29 @@ export function useNextSyncQuery() {
   });
 }
 
-export interface SyncStepFailure {
-  step: SyncStep;
-  message: string;
-}
-
-interface SyncAllResult {
-  jira?: SyncResult;
-  github?: SyncResult;
-  merged?: number;
-  failures: SyncStepFailure[];
-}
-
-function describeSyncError(err: unknown): string {
-  // A rejected fetch (not an ApiError) means the request never reached the
-  // server at all, e.g. the backend process isn't running.
-  return err instanceof ApiError ? err.message : "Could not reach the server";
-}
-
-export function useSyncAll(options?: SyncOptions) {
+/** One full sync pass on the server; joins the pass already running, if any. */
+export function useSyncAll() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (): Promise<SyncAllResult> => {
-      const results: SyncAllResult = { failures: [] };
-
-      options?.onStepChange?.("jira");
-      try {
-        results.jira = await api.post<SyncResult>("/sync/jira");
-      } catch (err) {
-        results.failures.push({ step: "jira", message: describeSyncError(err) });
-      }
-
-      options?.onStepChange?.("github");
-      try {
-        results.github = await api.post<SyncResult>("/sync/github");
-      } catch (err) {
-        results.failures.push({ step: "github", message: describeSyncError(err) });
-      }
-
-      options?.onStepChange?.("matching");
-      try {
-        const matchResult = await api.post<MatchResult>("/sync/match");
-        results.merged = matchResult.merged;
-      } catch (err) {
-        results.failures.push({ step: "matching", message: describeSyncError(err) });
-      }
-
-      // All three steps hit the same server; if every one failed, the
-      // backend is unreachable rather than mid-sync — surface it as an error.
-      if (results.failures.length === 3) {
-        throw new Error(results.failures[0].message);
-      }
-
-      return results;
-    },
+    mutationFn: () => api.post<SyncRunResult>("/sync"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
     onSettled: () => {
-      options?.onStepChange?.(null);
-      // The server restarts its countdown after the after-sync steps.
+      // The server restarts its countdown after the pass.
       queryClient.invalidateQueries({ queryKey: nextSyncKey });
     },
   });
 }
 
-export interface SyncTaskParams {
-  task: Task;
-  repo?: Repository;
-}
-
-interface SingleSyncResult {
-  jira?: { status: "new" | "updated" };
-  github?: { task: Task };
-}
-
+/** Re-pull one task from Jira, GitHub and its worktree; `errors` names each source that failed. */
 export function useSyncTask() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ task, repo }: SyncTaskParams): Promise<SingleSyncResult> => {
-      const results: SingleSyncResult = {};
-
-      // Sync Jira if task has jiraKey
-      if (task.jiraKey) {
-        try {
-          results.jira = await api.post<{ status: "new" | "updated" }>(`/sync/jira/${task.jiraKey}`);
-        } catch {
-          // Jira sync failed, continue
-        }
-      }
-
-      // Sync GitHub if task has PR
-      if (task.prNumber && repo) {
-        try {
-          results.github = await api.post<{ task: Task }>(
-            `/sync/github/${repo.owner}/${repo.repo}/${task.prNumber}`
-          );
-        } catch {
-          // GitHub sync failed
-        }
-      }
-
-      return results;
-    },
+    mutationFn: (taskId: number) => api.post<TaskSyncResult>(`/tasks/${taskId}/sync`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.list() });
@@ -144,33 +54,25 @@ export interface SyncVisibleProgress {
   total: number;
 }
 
+/** Re-pull the tasks one after another. Each error is prefixed with its task's Jira key, else its title. */
 export function useSyncVisibleTasks() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({
-      items,
+      tasks,
       onProgress,
     }: {
-      items: SyncTaskParams[];
+      tasks: Task[];
       onProgress?: (progress: SyncVisibleProgress) => void;
     }) => {
-      for (let i = 0; i < items.length; i++) {
-        onProgress?.({ current: i + 1, total: items.length });
-        const { task, repo } = items[i];
-
-        if (task.jiraKey) {
-          try {
-            await api.post(`/sync/jira/${task.jiraKey}`);
-          } catch {}
-        }
-
-        if (task.prNumber && repo) {
-          try {
-            await api.post(`/sync/github/${repo.owner}/${repo.repo}/${task.prNumber}`);
-          } catch {}
-        }
+      const errors: string[] = [];
+      for (const [i, task] of tasks.entries()) {
+        onProgress?.({ current: i + 1, total: tasks.length });
+        const result = await api.post<TaskSyncResult>(`/tasks/${task.id}/sync`);
+        errors.push(...result.errors.map((error) => `${task.jiraKey ?? task.title}: ${error}`));
       }
+      return { errors };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import {
-  useStatusCategoriesQuery,
   useUpdateStatusCategories,
   useStatusSettingsQuery,
   useUpdateDefaultColor,
@@ -20,15 +19,15 @@ import { Skeleton } from "@/client/components/ui/skeleton";
 import { ArrowUp, ArrowDown, Save, Loader2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { TagInput } from "./TagInput";
-import { ColorSelect } from "./ColorSelect";
+import { ColorSelect, STATUS_COLOR_OPTIONS } from "./ColorSelect";
 import type { StatusCategory } from "@/client/lib/types";
 
-// Local state type (without id since we're bulk replacing)
-type CategoryDraft = Omit<StatusCategory, "id">;
+// A category being edited, without id since we're bulk replacing. Its order is
+// its position in the list, numbered on save.
+type CategoryDraft = Omit<StatusCategory, "id" | "displayOrder">;
 
 export function StatusCategoriesForm() {
-  const { data: categoriesData, isLoading: categoriesLoading, error: categoriesError } = useStatusCategoriesQuery();
-  const { data: settingsData, isLoading: settingsLoading } = useStatusSettingsQuery();
+  const { data: settingsData, isLoading, error } = useStatusSettingsQuery();
   const updateCategories = useUpdateStatusCategories();
   const updateDefaultColor = useUpdateDefaultColor();
 
@@ -38,18 +37,16 @@ export function StatusCategoriesForm() {
 
   // Initialize from query data
   useEffect(() => {
-    if (categoriesData?.items) {
-      // Remove id from each category for local state
-      setCategories(categoriesData.items.map(({ name, color, done, displayOrder, jiraMappings }) => ({
+    if (settingsData?.categories) {
+      setCategories(settingsData.categories.map(({ name, color, done, jiraMappings }) => ({
         name,
         color,
         done,
-        displayOrder,
         jiraMappings,
       })));
       setHasChanges(false);
     }
-  }, [categoriesData?.items]);
+  }, [settingsData?.categories]);
 
   useEffect(() => {
     if (settingsData?.defaultColor) {
@@ -57,16 +54,8 @@ export function StatusCategoriesForm() {
     }
   }, [settingsData?.defaultColor]);
 
-  const handleCategoryChange = (
-    index: number,
-    field: keyof CategoryDraft,
-    value: CategoryDraft[keyof CategoryDraft]
-  ) => {
-    setCategories((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
+  const handleCategoryChange = (index: number, patch: Partial<CategoryDraft>) => {
+    setCategories((prev) => prev.map((category, i) => (i === index ? { ...category, ...patch } : category)));
     setHasChanges(true);
   };
 
@@ -84,45 +73,19 @@ export function StatusCategoriesForm() {
     setHasChanges(true);
   };
 
-  const handleMoveUp = (index: number) => {
-    if (index === 0) return;
+  // Swap a category with its neighbour; the buttons are disabled at the ends.
+  const move = (index: number, delta: number) => {
     setCategories((prev) => {
       const next = [...prev];
-      // Swap displayOrder values
-      const temp = next[index].displayOrder;
-      next[index].displayOrder = next[index - 1].displayOrder;
-      next[index - 1].displayOrder = temp;
-      // Swap positions
-      [next[index], next[index - 1]] = [next[index - 1], next[index]];
-      return next;
-    });
-    setHasChanges(true);
-  };
-
-  const handleMoveDown = (index: number) => {
-    if (index === categories.length - 1) return;
-    setCategories((prev) => {
-      const next = [...prev];
-      // Swap displayOrder values
-      const temp = next[index].displayOrder;
-      next[index].displayOrder = next[index + 1].displayOrder;
-      next[index + 1].displayOrder = temp;
-      // Swap positions
-      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      [next[index], next[index + delta]] = [next[index + delta], next[index]];
       return next;
     });
     setHasChanges(true);
   };
 
   const handleSave = async () => {
-    // Normalize displayOrder to be sequential
-    const normalizedCategories = categories.map((cat, index) => ({
-      ...cat,
-      displayOrder: index,
-    }));
-
     try {
-      await updateCategories.mutateAsync(normalizedCategories);
+      await updateCategories.mutateAsync(categories.map((category, displayOrder) => ({ ...category, displayOrder })));
 
       // Also update default color if it changed
       if (settingsData?.defaultColor !== defaultColor) {
@@ -136,24 +99,12 @@ export function StatusCategoriesForm() {
     }
   };
 
-  const handleJiraMappingChange = (index: number, mapping: string[]) => {
-    handleCategoryChange(index, "jiraMappings", mapping);
-  };
-
   const handleAddCategory = () => {
-    const maxOrder = Math.max(...categories.map(c => c.displayOrder), -1);
-    const newCategory: CategoryDraft = {
-      name: "New Category",
-      color: "bg-slate-500",
-      done: false,
-      displayOrder: maxOrder + 1,
-      jiraMappings: [],
-    };
-    setCategories(prev => [...prev, newCategory]);
+    setCategories((prev) => [...prev, { name: "New Category", color: "bg-slate-500", done: false, jiraMappings: [] }]);
     setHasChanges(true);
   };
 
-  if (categoriesLoading || settingsLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -162,7 +113,7 @@ export function StatusCategoriesForm() {
     );
   }
 
-  if (categoriesError) {
+  if (error) {
     return (
       <div className="text-destructive">Failed to load status categories</div>
     );
@@ -179,6 +130,7 @@ export function StatusCategoriesForm() {
           <ColorSelect
             value={defaultColor}
             onValueChange={handleDefaultColorChange}
+            options={STATUS_COLOR_OPTIONS}
             triggerClassName="w-48"
           />
         </div>
@@ -212,71 +164,15 @@ export function StatusCategoriesForm() {
           </TableHeader>
           <TableBody>
             {categories.map((category, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => handleMoveUp(index)}
-                      disabled={index === 0}
-                    >
-                      <ArrowUp className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => handleMoveDown(index)}
-                      disabled={index === categories.length - 1}
-                    >
-                      <ArrowDown className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Input
-                    value={category.name}
-                    onChange={(e) => handleCategoryChange(index, "name", e.target.value)}
-                    className="h-8 font-medium"
-                  />
-                </TableCell>
-                <TableCell>
-                  <ColorSelect
-                    value={category.color}
-                    onValueChange={(v) => handleCategoryChange(index, "color", v)}
-                    triggerClassName="w-full h-8"
-                  />
-                </TableCell>
-                <TableCell>
-                  <TagInput
-                    tags={category.jiraMappings}
-                    onChange={(mapping) => handleJiraMappingChange(index, mapping)}
-                    placeholder="Add Jira status..."
-                  />
-                </TableCell>
-                <TableCell className="text-center">
-                  <Checkbox
-                    checked={category.done}
-                    onCheckedChange={(checked) =>
-                      handleCategoryChange(index, "done", !!checked)
-                    }
-                  />
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteCategory(index)}
-                    disabled={categories.length <= 1}
-                    title={categories.length <= 1 ? "Cannot delete the last category" : "Delete category"}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </TableCell>
-              </TableRow>
+              <CategoryRow
+                key={index}
+                category={category}
+                isFirst={index === 0}
+                isLast={index === categories.length - 1}
+                onChange={(patch) => handleCategoryChange(index, patch)}
+                onMove={(delta) => move(index, delta)}
+                onDelete={() => handleDeleteCategory(index)}
+              />
             ))}
           </TableBody>
         </Table>
@@ -294,5 +190,69 @@ export function StatusCategoriesForm() {
         </p>
       </div>
     </div>
+  );
+}
+
+interface CategoryRowProps {
+  category: CategoryDraft;
+  isFirst: boolean;
+  isLast: boolean;
+  onChange: (patch: Partial<CategoryDraft>) => void;
+  onMove: (delta: number) => void;
+  onDelete: () => void;
+}
+
+function CategoryRow({ category, isFirst, isLast, onChange, onMove, onDelete }: CategoryRowProps) {
+  const isOnly = isFirst && isLast;
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onMove(-1)} disabled={isFirst}>
+            <ArrowUp className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onMove(1)} disabled={isLast}>
+            <ArrowDown className="h-3 w-3" />
+          </Button>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Input
+          value={category.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          className="h-8 font-medium"
+        />
+      </TableCell>
+      <TableCell>
+        <ColorSelect
+          value={category.color}
+          onValueChange={(color) => onChange({ color })}
+          options={STATUS_COLOR_OPTIONS}
+          triggerClassName="w-full h-8"
+        />
+      </TableCell>
+      <TableCell>
+        <TagInput
+          tags={category.jiraMappings}
+          onChange={(jiraMappings) => onChange({ jiraMappings })}
+          placeholder="Add Jira status..."
+        />
+      </TableCell>
+      <TableCell className="text-center">
+        <Checkbox checked={category.done} onCheckedChange={(checked) => onChange({ done: !!checked })} />
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          onClick={onDelete}
+          disabled={isOnly}
+          title={isOnly ? "Cannot delete the last category" : "Delete category"}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }

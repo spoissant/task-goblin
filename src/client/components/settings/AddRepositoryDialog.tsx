@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useCreateRepository } from "@/client/lib/queries";
+import { useCreateRepository } from "@/client/lib/queries/repositories";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Label } from "@/client/components/ui/label";
 import { toast } from "sonner";
-import { BadgeColorSelect } from "./BadgeColorSelect";
+import { ColorSelect, BADGE_COLOR_OPTIONS } from "./ColorSelect";
 import type { BadgeColorName } from "@/client/components/tasks/RepoBadge";
 
 interface AddRepositoryDialogProps {
@@ -17,6 +17,7 @@ export function AddRepositoryDialog({ open, onOpenChange }: AddRepositoryDialogP
   const createRepo = useCreateRepository();
   const [newOwner, setNewOwner] = useState("");
   const [newRepo, setNewRepo] = useState("");
+  const [newLocalPath, setNewLocalPath] = useState("");
   const [newBadgeColor, setNewBadgeColor] = useState<BadgeColorName | "">("gray");
 
   const handleCreate = () => {
@@ -26,12 +27,18 @@ export function AddRepositoryDialog({ open, onOpenChange }: AddRepositoryDialogP
     }
 
     createRepo.mutate(
-      { owner: newOwner.trim(), repo: newRepo.trim(), badgeColor: newBadgeColor || null },
+      {
+        owner: newOwner.trim(),
+        repo: newRepo.trim(),
+        localPath: newLocalPath.trim() || null,
+        badgeColor: newBadgeColor || null,
+      },
       {
         onSuccess: () => {
           toast.success("Repository added");
           setNewOwner("");
           setNewRepo("");
+          setNewLocalPath("");
           setNewBadgeColor("gray");
           onOpenChange(false);
         },
@@ -84,8 +91,19 @@ export function AddRepositoryDialog({ open, onOpenChange }: AddRepositoryDialogP
           />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="localPath">Local Checkout Path</Label>
+          <Input
+            id="localPath"
+            className="font-mono"
+            value={newLocalPath}
+            onChange={(e) => setNewLocalPath(e.target.value)}
+            placeholder="~/Code/repository-name"
+          />
+        </div>
+        <div className="space-y-2">
           <Label>Badge Color</Label>
-          <BadgeColorSelect
+          <ColorSelect
+            options={BADGE_COLOR_OPTIONS}
             value={newBadgeColor || "gray"}
             onValueChange={(value) => setNewBadgeColor(value as BadgeColorName)}
           />

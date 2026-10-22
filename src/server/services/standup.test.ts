@@ -5,7 +5,8 @@ import { createRouter, type Routes } from "../router";
 import { routes } from "../routes";
 import { withErrorBoundary } from "../middleware";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { reconcileStandups, STANDUP_ARGS } from "./standup";
+import { CHORE_SESSION_SETTINGS } from "./claude-cli";
+import { reconcileStandups } from "./standup";
 
 describe("standups", () => {
   let router: ReturnType<typeof createRouter>;
@@ -42,7 +43,9 @@ describe("standups", () => {
     expect((await res.json()).state).toBe("running");
     await settle();
 
-    expect(calls).toEqual([["claude", ...STANDUP_ARGS]]);
+    expect(calls).toEqual([
+      ["claude", "-p", "/standup", "--output-format", "json", "--model", "sonnet", "--settings", CHORE_SESSION_SETTINGS],
+    ]);
     const [row] = await list();
     expect(row).toMatchObject({ state: "done", markdown: "## Standup\n- EV-1 done", costUsd: 0.31, durationMs: 39000, error: null });
   });

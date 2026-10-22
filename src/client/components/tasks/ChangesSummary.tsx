@@ -1,5 +1,5 @@
 import { Badge } from "@/client/components/ui/badge";
-import type { ChangesByCategory } from "@/client/lib/types";
+import type { ChangesByCategory } from "@/shared/types";
 
 const CATEGORY_LABELS = { frontend: "FE", backend: "BE", other: "OT" } as const;
 

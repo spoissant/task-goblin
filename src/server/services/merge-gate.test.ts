@@ -309,7 +309,7 @@ describe("runMergeGate", () => {
       expect(row.prState).toBe("merged");
       expect(row.mergeCommitSha).toBe("squash-sha");
       expect(row.mergeReady).toBe(0);
-      expect(task).toMatchObject({ prState: "merged", mergeCommitSha: "squash-sha", mergeReady: 0 });
+      expect(task).toMatchObject({ prState: "merged", mergeCommitSha: "squash-sha", mergeReady: 0, prSyncedAt: row.prSyncedAt });
     });
 
     it("refuses with the holds when the task no longer passes, and clears its ready mark", async () => {
@@ -334,14 +334,35 @@ describe("runMergeGate", () => {
       expect((await load(id)).mergeReady).toBe(0);
     });
 
-    it("leaves the task open when GitHub refuses the merge", async () => {
-      setMergeGitHub({ ...stub, mergePr: async () => { throw new Error("Required status check is expected"); } });
+    it("starts the merge watch's timeout at the merge", async () => {
+      const id = await insert({ mergeReady: 1, prSyncedAt: "2026-10-01T00:00:00.000Z" });
+
+      await mergeTaskPr(id);
+
+      expect(Date.now() - Date.parse((await load(id)).prSyncedAt ?? "")).toBeLessThan(60_000);
+    });
+
+    it("leaves the task open when GitHub refuses the merge, answering with GitHub's status and reason", async () => {
+      const refusal = Object.assign(new Error("Pull Request is not mergeable"), { status: 405 });
+      setMergeGitHub({ ...stub, mergePr: async () => { throw refusal; } });
       const id = await insert({ mergeReady: 1 });
 
-      await expect(mergeTaskPr(id)).rejects.toThrow(/Required status check/);
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({
+        statusCode: 405,
+        code: "MERGE_REFUSED",
+        message: "Pull Request is not mergeable",
+      });
       const row = await load(id);
       expect(row.prState).toBe("open");
       expect(row.mergeReady).toBe(1);
+    });
+
+    it("answers 502 when the merge call fails without GitHub refusing it", async () => {
+      setMergeGitHub({ ...stub, mergePr: async () => { throw new Error("socket hang up"); } });
+      const id = await insert({ mergeReady: 1 });
+
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({ statusCode: 502, message: "socket hang up" });
+      expect((await load(id)).prState).toBe("open");
     });
 
     it("refuses a task without an open PR and an unknown task", async () => {

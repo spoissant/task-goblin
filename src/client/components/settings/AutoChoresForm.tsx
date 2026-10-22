@@ -4,8 +4,7 @@ import { Label } from "@/client/components/ui/label";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 
-/** Setting key read by the chore scheduler; unset means enabled. */
-
+/** The chore scheduler's switch; unset means enabled. */
 export function AutoChoresForm() {
   const { data } = useSettingsQuery();
   const update = useUpdateSetting();

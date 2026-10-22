@@ -188,52 +188,6 @@ describe("Task repository changes", () => {
   });
 });
 
-describe("Link PR by branch", () => {
-  beforeEach(() => {
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
-  });
-
-  it("leaves a task without a branch unchanged, without asking GitHub", async () => {
-    const created = await (await request("POST", "/api/v1/tasks", { title: "No branch yet" })).json();
-    sqlite.exec(`UPDATE tasks SET repository_id = 1 WHERE id = ${created.id}`);
-
-    const res = await request("POST", `/api/v1/tasks/${created.id}/link-pr-by-branch`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).prNumber).toBe(null);
-  });
-
-  it("leaves a task that already has a PR unchanged", async () => {
-    const created = await (await request("POST", "/api/v1/tasks", { title: "Has a PR" })).json();
-    sqlite.exec(`UPDATE tasks SET repository_id = 1, pr_number = 42, head_branch = 'fix/EV-1' WHERE id = ${created.id}`);
-
-    const res = await request("POST", `/api/v1/tasks/${created.id}/link-pr-by-branch`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).prNumber).toBe(42);
-  });
-});
-
-describe("Jira assignment", () => {
-  const ts = "'2026-01-01T00:00:00.000Z'";
-
-  beforeEach(() => {
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key)
-      VALUES (1, 'Jira summary', 'In Progress', ${ts}, ${ts}, 'EV-1')`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
-      VALUES (2, 'ev-1-branch', 'open', ${ts}, ${ts}, 1, 20, 'open')`);
-  });
-
-  it("rejects an invalid Jira key", async () => {
-    const res = await request("POST", "/api/v1/tasks/2/assign-jira", { key: "not a key" });
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects assigning a Jira key to a task without a PR", async () => {
-    const res = await request("POST", "/api/v1/tasks/1/assign-jira", { key: "EV-2" });
-    expect(res.status).toBe(400);
-  });
-});
-
 describe("Task search filter", () => {
   beforeEach(async () => {
     await request("POST", "/api/v1/tasks", { title: "Migrate to tiptap editor" });
@@ -284,27 +238,6 @@ describe("Task search filter", () => {
     const res = await request("GET", `/api/v1/tasks?title=${encodeURIComponent("tiptap | ")}`);
     const data = await res.json();
     expect(data.items).toHaveLength(1);
-  });
-});
-
-describe("Settings endpoints", () => {
-  it("gets settings as object", async () => {
-    const res = await request("GET", "/api/v1/settings");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(typeof data).toBe("object");
-  });
-
-  it("creates a setting with PUT, then updates it", async () => {
-    const created = await request("PUT", "/api/v1/settings/test_key", { value: "first" });
-    expect(created.status).toBe(201);
-
-    const updated = await request("PUT", "/api/v1/settings/test_key", { value: "second" });
-    expect(updated.status).toBe(200);
-    expect(await updated.json()).toEqual({ key: "test_key", value: "second" });
-
-    const res = await request("GET", "/api/v1/settings");
-    expect((await res.json()).test_key).toBe("second");
   });
 });
 

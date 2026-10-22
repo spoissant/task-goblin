@@ -5,9 +5,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks } from "../../db/schema";
 import { getJiraClient, getJiraConfig } from "../lib/jira-client";
-import { broadcast } from "../lib/sse";
-import { now } from "../lib/timestamp";
-import { normalize, readyToMergeStatuses } from "./merge-gate";
+import { normalize, readyToMergeStatuses, writeTask } from "./merge-gate";
 
 const READY_TO_PROD = "ready to prod";
 
@@ -18,7 +16,7 @@ export interface IssueTransitions {
 }
 
 /** The Jira calls this step makes, behind a port so tests stub them. */
-export interface MergeJira {
+interface MergeJira {
   issueTransitions(key: string): Promise<IssueTransitions>;
   transition(key: string, transitionId: string): Promise<void>;
 }
@@ -41,7 +39,7 @@ function createDefault(): MergeJira {
 
 let instance: MergeJira | null = null;
 
-export function getMergeJira(): MergeJira {
+function getMergeJira(): MergeJira {
   if (!instance) instance = createDefault();
   return instance;
 }
@@ -73,8 +71,7 @@ async function moveTicket(task: MergedTicket, ready: Set<string>, jira: MergeJir
     await jira.transition(task.jiraKey, toProd.id);
     next = toProd.to;
   }
-  await db.update(tasks).set({ status: next, updatedAt: now() }).where(eq(tasks.id, task.id));
-  broadcast("task");
+  await writeTask(task.id, { status: next });
 }
 
 /** Move the ticket of each merged PR still in Ready to Merge to Ready to Prod. */

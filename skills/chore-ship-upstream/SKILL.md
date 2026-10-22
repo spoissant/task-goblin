@@ -1,7 +1,7 @@
 ---
 name: chore-ship-upstream
-description: Ship an upstream PR (api-contracts or front-monorepo) into the alumni_connect PR that depends on it — checks both PRs are green (checks, approvals, no conflicts), asks for the go-ahead, merges the upstream PR (or picks up one already merged with Task Goblin's Merge button), waits for its release (front-monorepo — approves the bot's release PRs), bumps the SDK or packages in the alumni_connect PR (or opens a draft PR with just the bump when the alumni_connect task has none yet), pushes, and gets that PR green again. Never merges the alumni_connect PR. Use for /chore-ship-upstream <alumniConnectTaskId> <upstreamTaskId> or "ship the upstream PR".
-allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),Skill(chore-fix-pr-checks),Skill(chore-fix-merge-conflicts),mcp__task-goblin__get_task,mcp__task-goblin__sync_task"
+description: Merge a green upstream PR (api-contracts or front-monorepo) after a go-ahead, wait for its release and bump it in the alumni_connect PR that depends on it. Use for /chore-ship-upstream <alumniConnectTaskId> <upstreamTaskId> or "ship the upstream PR".
+allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),Skill(chore-fix-pr-checks),Skill(chore-fix-merge-conflicts),mcp__task-goblin__sync_task"
 ---
 
 # Ship Upstream PR
@@ -12,7 +12,7 @@ Waits happen in the background: a `run_in_background` Bash loop polling `gh` eve
 
 ## 1. Context
 
-`sync_task` then `get_task` on both → `prNumber`, `prState`, `repository`, `headBranch`, `baseBranch`, `unresolvedCommentCount`. The target has an open PR or none yet (a bump-only target: the chore opens its PR in step 5); the upstream PR may be open or already merged (the user merged it with Task Goblin's Merge button). Anything else: stop. `Skill(checkout-branch)` with the target's `headBranch`; without one, keep the worktree's branch (Task Goblin creates `<fix|chore|feat>/<TICKET>` from `origin/sprint`), and only if the worktree is detached create that branch from HEAD.
+`sync_task` on both, which returns each refreshed `task` → `prNumber`, `prState`, `repository`, `headBranch`, `baseBranch`, `unresolvedCommentCount`. The target has an open PR or none yet (a bump-only target: the chore opens its PR in step 5); the upstream PR may be open or already merged (the user merged it with Task Goblin's Merge button). Anything else: stop. `Skill(checkout-branch)` with the target's `headBranch`; without one, keep the worktree's branch (Task Goblin creates `<fix|chore|feat>/<TICKET>` from `origin/sprint`), and only if the worktree is detached create that branch from HEAD.
 
 ## 2. Green gate
 
@@ -50,7 +50,7 @@ Wait for the checks on the new head, then `sync_task(target)` and rerun the step
 - One repair round per kind; still red after it: report.
 - Approvals do not get dismissed by a push on these repos, so a drop in `reviewDecision` means a reviewer acted: report it, don't re-request.
 
-`sync_task` on both tasks. Never merge the alumni_connect PR: the user validates and merges it.
+Never merge the alumni_connect PR: the user validates and merges it.
 
 ## 7. Report
 

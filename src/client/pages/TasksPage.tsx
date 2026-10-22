@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
-import { useTaskFilters } from "@/client/lib/taskFilters";
+import { useTaskFilters, type BoolFilter } from "@/client/lib/taskFilters";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
@@ -9,14 +9,23 @@ import { AutoChoresToggle } from "@/client/components/tasks/AutoChoresToggle";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
 import { SavedSearchBar, effectiveQuery, type SavedSearch } from "@/client/components/tasks/SavedSearchBar";
 import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
-import { useTasksQuery } from "@/client/lib/queries";
+import { useTasksQuery } from "@/client/lib/queries/tasks";
 import { resolvePrompt, type ChoreDefinition } from "@/shared/chores";
 import { orderForRepoPair } from "@/shared/chore-pairs";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
-import { Checkbox } from "@/client/components/ui/checkbox";
-import { Label } from "@/client/components/ui/label";
+import { FilterToggle } from "@/client/components/ui/filter-toggle";
 import { Plus, Search, X } from "lucide-react";
+
+// The URL filters' checkboxes, in display order
+const FILTER_TOGGLES: { key: BoolFilter; label: string }[] = [
+  { key: "sprint", label: "Sprint view" },
+  { key: "backlog", label: "Backlog" },
+  { key: "hideOnIce", label: "Hide on ice" },
+  { key: "hideParents", label: "Hide parents" },
+  { key: "hideIdle", label: "Hide idle" },
+  { key: "idleOnly", label: "Show idle" },
+];
 
 export function TasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -85,84 +94,16 @@ export function TasksPage() {
       <div className="flex items-center gap-4 flex-wrap mb-2">
         <SavedSearchBar searches={savedSearches} onChange={setSavedSearches} />
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="hide-low-priority"
-              checked={filters.sprint}
-              onCheckedChange={(checked) =>
-                updateFilters(checked === true ? { sprint: true, backlog: false } : { sprint: false })
-              }
+          {FILTER_TOGGLES.map(({ key, label }) => (
+            <FilterToggle
+              key={key}
+              id={`filter-${key}`}
+              label={label}
+              checked={filters[key]}
+              onCheckedChange={(checked) => updateFilters({ [key]: checked })}
             />
-            <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
-              Sprint view
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="backlog-only"
-              checked={filters.backlog}
-              onCheckedChange={(checked) =>
-                updateFilters(checked === true ? { backlog: true, sprint: false } : { backlog: false })
-              }
-            />
-            <Label htmlFor="backlog-only" className="text-sm cursor-pointer whitespace-nowrap">
-              Backlog
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="hide-on-ice"
-              checked={filters.hideOnIce}
-              onCheckedChange={(checked) => updateFilters({ hideOnIce: checked === true })}
-            />
-            <Label htmlFor="hide-on-ice" className="text-sm cursor-pointer whitespace-nowrap">
-              Hide on ice
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="hide-parents"
-              checked={filters.hideParents}
-              onCheckedChange={(checked) => updateFilters({ hideParents: checked === true })}
-            />
-            <Label htmlFor="hide-parents" className="text-sm cursor-pointer whitespace-nowrap">
-              Hide parents
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="hide-idle"
-              checked={filters.hideIdle}
-              onCheckedChange={(checked) =>
-                updateFilters(checked === true ? { hideIdle: true, idleOnly: false } : { hideIdle: false })
-              }
-            />
-            <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
-              Hide idle
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="idle-only"
-              checked={filters.idleOnly}
-              onCheckedChange={(checked) =>
-                updateFilters(checked === true ? { idleOnly: true, hideIdle: false } : { idleOnly: false })
-              }
-            />
-            <Label htmlFor="idle-only" className="text-sm cursor-pointer whitespace-nowrap">
-              Show idle
-            </Label>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Checkbox
-              id="compact-mode"
-              checked={compactMode}
-              onCheckedChange={(checked) => setCompactMode(checked === true)}
-            />
-            <Label htmlFor="compact-mode" className="text-sm cursor-pointer whitespace-nowrap">
-              Compact mode
-            </Label>
-          </div>
+          ))}
+          <FilterToggle id="compact-mode" label="Compact mode" checked={compactMode} onCheckedChange={setCompactMode} />
         </div>
       </div>
       <div className="flex items-center gap-2 mb-4">
@@ -215,17 +156,11 @@ export function TasksPage() {
       />
 
       <TaskTable
+        filters={filters}
+        titleFilter={titleFilter}
+        compactMode={compactMode}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
-        titleFilter={titleFilter}
-        hideLowPriority={filters.sprint}
-        backlogOnly={filters.backlog}
-        hideOnIce={filters.hideOnIce}
-        hideParents={filters.hideParents}
-        hideIdle={filters.hideIdle}
-        idleOnly={filters.idleOnly}
-        compactMode={compactMode}
-        repoFilter={filters.repo}
         onSearch={setSearchQuery}
       />
 

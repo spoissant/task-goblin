@@ -1,20 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
-import { useNextSyncQuery, useSyncAll, type SyncStep } from "@/client/lib/queries";
+import { useState, useEffect } from "react";
+import { useNextSyncQuery, useSyncAll } from "@/client/lib/queries";
+import { ApiError } from "@/client/lib/api";
 import { Button } from "@/client/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-
-const stepLabels: Record<SyncStep, string> = {
-  jira: "Jira...",
-  github: "GitHub...",
-  matching: "matching...",
-};
-
-const stepNames: Record<SyncStep, string> = {
-  jira: "Jira",
-  github: "GitHub",
-  matching: "Matching",
-};
 
 /** Milliseconds until `at`, ticking every second; null without a time. */
 function useCountdown(at: string | null): number | null {
@@ -34,54 +23,29 @@ function formatCountdown(ms: number): string {
 }
 
 export function RefreshButton() {
-  const [syncStep, setSyncStep] = useState<SyncStep | null>(null);
   const nextSyncAt = useNextSyncQuery().data?.nextSyncAt ?? null;
   const untilNextSync = useCountdown(nextSyncAt);
-
-  const syncOptions = useMemo(() => ({ onStepChange: setSyncStep }), []);
-
-  const syncAll = useSyncAll(syncOptions);
-
+  const syncAll = useSyncAll();
   const isLoading = syncAll.isPending;
 
   const handleSyncAll = () => {
     syncAll.mutate(undefined, {
-      onSuccess: (results) => {
+      onSuccess: ({ jira, github, errors }) => {
+        const total = (key: "unchanged" | "new" | "updated") => (jira?.[key] ?? 0) + (github?.[key] ?? 0);
         const parts: string[] = [];
-        const jiraUnchanged = results.jira?.unchanged ?? 0;
-        const jiraNew = results.jira?.new ?? 0;
-        const jiraUpdated = results.jira?.updated ?? 0;
-        const ghUnchanged = results.github?.unchanged ?? 0;
-        const ghNew = results.github?.new ?? 0;
-        const ghUpdated = results.github?.updated ?? 0;
-        const merged = results.merged ?? 0;
+        if (total("unchanged") > 0) parts.push(`${total("unchanged")} unchanged`);
+        if (total("new") > 0) parts.push(`${total("new")} created`);
+        if (total("updated") > 0) parts.push(`${total("updated")} updated`);
 
-        const totalUnchanged = jiraUnchanged + ghUnchanged;
-        const totalNew = jiraNew + ghNew;
-        const totalUpdated = jiraUpdated + ghUpdated;
-
-        if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
-        if (totalNew > 0) parts.push(`${totalNew} created`);
-        if (totalUpdated > 0) parts.push(`${totalUpdated} updated`);
-        if (merged > 0) parts.push(`${merged} auto-merged`);
-
-        if (parts.length === 0) {
-          toast.success("Synced. No changes.");
-        } else {
-          toast.success(`Synced. ${parts.join(", ")}.`);
-        }
-
-        for (const failure of results.failures) {
-          toast.error(`${stepNames[failure.step]} sync failed: ${failure.message}`);
-        }
+        // No summary when neither source synced: the errors say why.
+        if (jira || github) toast.success(parts.length ? `Synced. ${parts.join(", ")}.` : "Synced. No changes.");
+        for (const { step, message } of errors) toast.error(`${step} step failed: ${message}`);
       },
-      onError: (err) => {
-        toast.error(err instanceof Error ? err.message : "Sync failed");
-      },
+      // A rejected fetch, not an ApiError, means the request never reached the
+      // server at all, e.g. the backend process isn't running.
+      onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not reach the server"),
     });
   };
-
-  const buttonLabel = syncStep ? stepLabels[syncStep] : "Sync";
 
   return (
     <Button
@@ -91,8 +55,8 @@ export function RefreshButton() {
       title={nextSyncAt ? `Next auto sync at ${new Date(nextSyncAt).toLocaleTimeString()}` : "Auto sync is off"}
     >
       <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-      {buttonLabel}
-      {!syncStep && untilNextSync !== null && (
+      {isLoading ? "Syncing…" : "Sync"}
+      {!isLoading && untilNextSync !== null && (
         <span className="ml-2 tabular-nums text-muted-foreground">{formatCountdown(untilNextSync)}</span>
       )}
     </Button>

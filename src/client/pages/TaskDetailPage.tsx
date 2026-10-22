@@ -1,7 +1,6 @@
 import { Link, useParams, useNavigate } from "react-router";
-import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
+import { useTaskQuery, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
-import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useSyncTask } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
@@ -18,13 +17,10 @@ export function TaskDetailPage() {
   const taskId = parseInt(id || "0", 10);
 
   const { data: task, isLoading, error } = useTaskQuery(taskId);
-  const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const syncTask = useSyncTask();
   const { data: settings } = useSettingsQuery();
-  const { data: repos } = useRepositoriesQuery();
   const jiraHost = settings?.jira_host || undefined;
-  const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
 
   if (isLoading) {
     return (
@@ -50,14 +46,11 @@ export function TaskDetailPage() {
     );
   }
 
-  const handleStatusChange = (status: string) => {
-    updateTask.mutate(
-      { id: taskId, status },
-      {
-        onSuccess: () => toast.success("Status updated"),
-        onError: () => toast.error("Failed to update status"),
-      }
-    );
+  const handleSync = () => {
+    syncTask.mutate(taskId, {
+      onSuccess: ({ errors }) => errors.forEach((message) => toast.error(message)),
+      onError: (err) => toast.error(err.message),
+    });
   };
 
   const handleDelete = () => {
@@ -72,7 +65,8 @@ export function TaskDetailPage() {
     }
   };
 
-  const repo = task?.repository || (task?.repositoryId ? repoMap.get(task.repositoryId) : undefined);
+  // Jira and PR tasks get the summary bar, which carries the status picker.
+  const hasSummary = !!(task.jiraKey || task.prNumber);
 
   return (
     <div className="space-y-8">
@@ -84,12 +78,7 @@ export function TaskDetailPage() {
           </Link>
         </Button>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => syncTask.mutate({ task, repo })}
-            disabled={syncTask.isPending}
-          >
+          <Button variant="outline" size="sm" onClick={handleSync} disabled={syncTask.isPending}>
             <RefreshCw className={`h-4 w-4 mr-2 ${syncTask.isPending ? "animate-spin" : ""}`} />
             Sync
           </Button>
@@ -100,10 +89,7 @@ export function TaskDetailPage() {
         </div>
       </div>
 
-      {/* Summary Bar */}
-      {(task.jiraKey || task.prNumber) && (
-        <TaskSummaryBar task={task} repo={repo} jiraHost={jiraHost} />
-      )}
+      {hasSummary && <TaskSummaryBar task={task} jiraHost={jiraHost} />}
 
       {/* Goblin Chore Skips — only for tasks with PRs */}
       {task.prNumber && (
@@ -112,7 +98,7 @@ export function TaskDetailPage() {
 
       <SessionsSection task={task} />
 
-      <TaskHeader task={task} onStatusChange={handleStatusChange} />
+      <TaskHeader task={task} showStatus={!hasSummary} />
     </div>
   );
 }

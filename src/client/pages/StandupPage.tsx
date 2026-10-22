@@ -1,11 +1,11 @@
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Check, Copy, Mic, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useGenerateStandup, useJiraConfigQuery, useStandupsQuery } from "@/client/lib/queries";
 import { linkJiraKeys } from "@/client/lib/standup";
+import { formatCost } from "@/client/lib/sessions";
 import { Button } from "@/client/components/ui/button";
+import { Markdown } from "@/client/components/ui/markdown";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/client/components/ui/select";
@@ -24,7 +24,7 @@ function formatWhen(iso: string): string {
 function formatUsage(s: Standup): string {
   const parts = [`Generated ${formatWhen(s.createdAt)}`];
   if (s.durationMs !== null) parts.push(`${Math.round(s.durationMs / 1000)}s`);
-  if (s.costUsd !== null) parts.push(`$${s.costUsd.toFixed(2)}`);
+  if (s.costUsd !== null) parts.push(formatCost(s.costUsd));
   return parts.join(" · ");
 }
 
@@ -134,25 +134,9 @@ export function StandupPage() {
 
       {selected?.state === "done" && selected.markdown && (
         <>
-          <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-0 prose-li:my-0.5">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {linkJiraKeys(selected.markdown, jiraConfig?.jira_host)}
-            </ReactMarkdown>
-          </div>
+          <Markdown className="prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-0 prose-li:my-0.5">
+            {linkJiraKeys(selected.markdown, jiraConfig?.jira_host)}
+          </Markdown>
           <p className="mt-6 text-xs text-muted-foreground">{formatUsage(selected)}</p>
         </>
       )}

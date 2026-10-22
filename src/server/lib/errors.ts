@@ -24,19 +24,8 @@ export class ValidationError extends AppError {
   }
 }
 
-// Type guard for API errors from external services (Jira, GitHub)
-export interface ApiError {
-  status?: number;
-  message?: string;
-}
-
-export function isApiError(err: unknown): err is ApiError {
-  if (typeof err !== "object" || err === null) {
-    return false;
-  }
-  const obj = err as Record<string, unknown>;
-  const hasValidStatus = typeof obj.status === "number";
-  const hasValidMessage = typeof obj.message === "string";
-  // Require at least one of status or message to be defined
-  return hasValidStatus || hasValidMessage;
+/** The HTTP status an Octokit or jira.js error carries; undefined for anything else. */
+export function httpStatusOf(err: unknown): number | undefined {
+  const status = (err as { status?: unknown } | null | undefined)?.status;
+  return typeof status === "number" ? status : undefined;
 }

@@ -82,6 +82,7 @@ export interface Repository {
   owner: string;
   repo: string;
   alias: string | null;
+  localPath: string | null; // main checkout on this machine; may start with ~
   enabled: number;
   badgeColor: string | null;
   deploymentBranches: string | null; // JSON array of branch names
@@ -90,7 +91,6 @@ export interface Repository {
   setupCommand: string | null; // shell line run inside a new task worktree
   teardownCommand: string | null; // shell line run before removing a task worktree; may use {{composeProject}}
   defaultBaseBranch: string | null; // base branch for tasks without a branch yet
-  worktrees?: Worktree[];
 }
 
 // Per-task git worktree, created on first AI session start
@@ -271,14 +271,6 @@ export interface TeamChannel {
   slackChannel: string;
 }
 
-export interface Worktree {
-  id: number;
-  repositoryId: number;
-  path: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface Settings {
   [key: string]: string | null;
 }
@@ -320,10 +312,6 @@ export interface SyncResult {
   new: number;
   updated: number;
   unchanged: number;
-}
-
-export interface MatchResult {
-  merged: number;
 }
 
 /** One full sync pass (POST /api/v1/sync): Jira and GitHub counts, null when that step failed, and each failed step's error. */

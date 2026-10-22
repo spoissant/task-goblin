@@ -11,7 +11,7 @@ export interface CommandOptions {
   timeoutMs?: number;
 }
 
-export type CommandRunner = (
+type CommandRunner = (
   cmd: string,
   args: string[],
   opts: CommandOptions,
@@ -70,9 +70,14 @@ export function runCommand(cmd: string, args: string[], opts: CommandOptions): P
 /**
  * Run a shell command line through a login zsh so user tooling (yarn, pnpm,
  * bin/dev, docker) resolves via the same PATH as an interactive terminal.
+ * `args` reach the command line as "$@", so they need no shell quoting.
  */
-export function runShell(cwd: string, commandLine: string, opts: Omit<CommandOptions, "cwd"> = {}): Promise<CommandResult> {
-  return runner("/bin/zsh", ["-lc", commandLine], { cwd, ...opts });
+export function runShell(
+  cwd: string,
+  commandLine: string,
+  { args, ...opts }: Omit<CommandOptions, "cwd"> & { args?: string[] } = {},
+): Promise<CommandResult> {
+  return runner("/bin/zsh", ["-lc", commandLine, ...(args ? ["zsh", ...args] : [])], { cwd, ...opts });
 }
 
 /** Keep the last `max` characters of combined command output for logs. */

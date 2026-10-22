@@ -1,5 +1,4 @@
 import { getGitHubClient } from "../lib/github-client";
-import type { ChecksResult } from "./github-mappers";
 import { countedChecks, isFailedCheck } from "../lib/checks";
 import { REVIEW_STATUS_FIELDS, toReviewStatus } from "./github-review-status";
 import type { ReviewStatus } from "@/shared/review-status";
@@ -56,12 +55,16 @@ export interface GqlPrCore {
   reviewStatus: ReviewStatus;
 }
 
-export interface GqlPrChecks {
+interface GqlPrChecks {
   checkRuns: GqlCheckRun[];
   statusContexts: GqlStatusContext[];
 }
 
-export type GqlPullRequest = GqlPrCore & GqlPrChecks;
+/** The checks summary a task stores. */
+export interface ChecksResult {
+  checksStatus: string | null;
+  checksDetails: string | null;
+}
 
 /** Everything the review-requests board needs per PR beyond the search hit. */
 export interface GqlPrReviewInfo {
@@ -78,7 +81,7 @@ export interface GqlPrReviewInfo {
 }
 
 /** Comparison targets for one PR: env branch names and/or deployed SHAs. */
-export interface ContainmentTarget {
+interface ContainmentTarget {
   label: string;
   /** Branch name or commit SHA to test containment against. */
   ref: string;
@@ -90,7 +93,7 @@ export interface ContainmentRequest extends PrTarget {
   targets: ContainmentTarget[];
 }
 
-export interface ContainmentResult {
+interface ContainmentResult {
   onBranches: string[];
   deployedOn: string[];
 }
@@ -333,22 +336,6 @@ export async function fetchPullRequestReviewInfo(
 
     return result;
   });
-}
-
-const NO_CHECKS: GqlPrChecks = { checkRuns: [], statusContexts: [] };
-
-/** Core + checks together, for callers with a single PR and nothing to overlap. */
-export async function fetchPullRequests(
-  client: GitHubClient,
-  targets: PrTarget[]
-): Promise<Map<string, GqlPullRequest>> {
-  const [core, checks] = await Promise.all([
-    fetchPullRequestCore(client, targets),
-    fetchPullRequestChecks(client, targets),
-  ]);
-  const merged = new Map<string, GqlPullRequest>();
-  for (const [key, pr] of core) merged.set(key, { ...pr, ...(checks.get(key) ?? NO_CHECKS) });
-  return merged;
 }
 
 /**

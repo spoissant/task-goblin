@@ -1,21 +1,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { DevStack, DevStackLoginLink, DevStackRefresh, DevStackStatus } from "@/shared/types";
-import { get, post, del } from "../client.js";
+import { get, post, del, toolResult } from "../client.js";
 
 const POLL_MS = 5_000;
 const MAX_WAIT_SECONDS = 300;
 
 const taskIdSchema = z.number().int().describe("Task ID whose branch the stack runs");
-
-function result(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
-}
-
-function errorResult(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
-  return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
-}
 
 /** Poll until the stack leaves starting/stopping, or the wait runs out. */
 async function waitForSettled(taskId: number, waitSeconds: number): Promise<DevStackStatus> {
@@ -44,13 +35,7 @@ export function registerDevStackTools(server: McpServer) {
         waitSeconds: z.number().int().min(0).optional().describe("Wait up to N seconds for starting/stopping to settle"),
       },
     },
-    async ({ taskId, waitSeconds }) => {
-      try {
-        return result(await waitForSettled(taskId, waitSeconds ?? 0));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId, waitSeconds }) => toolResult(() => waitForSettled(taskId, waitSeconds ?? 0))
   );
 
   // start_dev_stack
@@ -68,13 +53,8 @@ export function registerDevStackTools(server: McpServer) {
         withTaskIds: z.array(z.number().int()).optional().describe("Other tasks whose branches to merge on top"),
       },
     },
-    async ({ taskId, withTaskIds }) => {
-      try {
-        return result(await post<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`, withTaskIds?.length ? { withTaskIds } : undefined));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId, withTaskIds }) =>
+      toolResult(() => post<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`, withTaskIds?.length ? { withTaskIds } : undefined))
   );
 
   // refresh_dev_stack
@@ -86,13 +66,7 @@ export function registerDevStackTools(server: McpServer) {
         "Only works when this task owns a stack that is up. New migrations and packages are not installed. Returns { from, to } short shas.",
       inputSchema: { taskId: taskIdSchema },
     },
-    async ({ taskId }) => {
-      try {
-        return result(await post<DevStackRefresh>(`/api/v1/tasks/${taskId}/dev-stack/refresh`));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId }) => toolResult(() => post<DevStackRefresh>(`/api/v1/tasks/${taskId}/dev-stack/refresh`))
   );
 
   // dev_stack_login_link
@@ -112,13 +86,8 @@ export function registerDevStackTools(server: McpServer) {
         id: z.number().int().optional().describe("User id (member) or admin id (admin); ignored for super_admin"),
       },
     },
-    async ({ taskId, as, id }) => {
-      try {
-        return result(await post<DevStackLoginLink>(`/api/v1/tasks/${taskId}/dev-stack/login-link`, { as, id }));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId, as, id }) =>
+      toolResult(() => post<DevStackLoginLink>(`/api/v1/tasks/${taskId}/dev-stack/login-link`, { as, id }))
   );
 
   // stop_dev_stack
@@ -130,12 +99,6 @@ export function registerDevStackTools(server: McpServer) {
         "in the background. Fails if another task or PR owns the stack. Follow with dev_stack_status(waitSeconds): stack is null once stopped.",
       inputSchema: { taskId: taskIdSchema },
     },
-    async ({ taskId }) => {
-      try {
-        return result(await del<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId }) => toolResult(() => del<DevStack>(`/api/v1/tasks/${taskId}/dev-stack`))
   );
 }

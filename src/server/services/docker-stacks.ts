@@ -9,45 +9,46 @@ import { claudeSessions, tasks, taskWorktrees } from "../../db/schema";
 import { expandPath } from "../lib/path";
 import { runCommand } from "../lib/process";
 
-export const MAX_TASK_STACKS = 3;
+const MAX_TASK_STACKS = 3;
 const IDLE_MS = 15 * 60 * 1000;
 const STOP_TIMEOUT_MS = 120_000;
 
-export interface RunningStack {
+/** A running container's Compose project and the directory it was started from. */
+interface RunningContainer {
   project: string;
   workingDir: string;
 }
 
-export interface TaskStack extends RunningStack {
+interface TaskStack extends RunningContainer {
   taskId: number;
 }
 
-/** Running Compose projects with their working directories; [] when Docker is down. */
-export async function listRunningStacks(): Promise<RunningStack[]> {
+/** Every running Compose container, the main checkout's included; [] when Docker is down. */
+export async function listRunningContainers(): Promise<RunningContainer[]> {
   const result = await runCommand(
     "docker",
     ["ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}'],
     { cwd: process.cwd(), timeoutMs: 30_000 },
   );
   if (result.exitCode !== 0) return [];
-  const seen = new Map<string, RunningStack>();
-  for (const line of result.stdout.split("\n")) {
+  return result.stdout.split("\n").flatMap((line) => {
     const [project, workingDir] = line.split("\t");
-    if (project && workingDir && !seen.has(project)) seen.set(project, { project, workingDir });
-  }
-  return [...seen.values()];
+    return project && workingDir ? [{ project, workingDir }] : [];
+  });
 }
 
-/** Running stacks that belong to a task worktree (the main checkout never matches). */
+/** Running stacks that belong to a task worktree (the main checkout never matches), one per Compose project. */
 export async function listRunningTaskStacks(): Promise<TaskStack[]> {
-  const stacks = await listRunningStacks();
-  if (stacks.length === 0) return [];
+  const containers = await listRunningContainers();
+  if (containers.length === 0) return [];
   const rows = await db.select({ taskId: taskWorktrees.taskId, path: taskWorktrees.path }).from(taskWorktrees);
   const byDir = new Map(rows.map((r) => [expandPath(r.path), r.taskId]));
-  return stacks.flatMap((s) => {
-    const taskId = byDir.get(s.workingDir);
-    return taskId === undefined ? [] : [{ ...s, taskId }];
-  });
+  const stacks = new Map<string, TaskStack>();
+  for (const c of containers) {
+    const taskId = byDir.get(c.workingDir);
+    if (taskId !== undefined && !stacks.has(c.project)) stacks.set(c.project, { ...c, taskId });
+  }
+  return [...stacks.values()];
 }
 
 /** Volumes of a Compose project (named `<project>_<volume>`); null when Docker is down. */
@@ -61,7 +62,7 @@ export async function listProjectVolumes(project: string): Promise<string[] | nu
   return result.stdout.split("\n").filter((name) => name.startsWith(`${project}_`));
 }
 
-export async function stopStack(project: string): Promise<boolean> {
+async function stopStack(project: string): Promise<boolean> {
   const result = await runCommand("docker", ["compose", "-p", project, "stop"], {
     cwd: process.cwd(),
     timeoutMs: STOP_TIMEOUT_MS,

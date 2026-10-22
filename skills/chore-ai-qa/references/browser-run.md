@@ -1,5 +1,7 @@
 # Running the plan in Chrome through Haiku subagents
 
+Also used by `/chore-validate-issue` on a staging env, with the changes listed in `~/.claude/skills/chore-validate-issue/references/staging.md`.
+
 The planning model never clicks. It checks the browser once, while the stack boots (`tabs_context_mcp` after loading the Chrome tools; no browser connected: ask through AskUserQuestion to connect the extension), then delegates the clicking to Haiku and keeps the verdicts.
 
 ## Grouping

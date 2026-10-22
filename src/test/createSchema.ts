@@ -1,86 +1,23 @@
 /**
- * Generates CREATE TABLE SQL from Drizzle schema definitions.
- * This ensures tests always use the same schema as the actual app.
+ * Creates the test tables with the DDL drizzle-kit generates from the Drizzle
+ * schema, indexes and foreign keys included, so tests always run against the
+ * app's real schema.
  */
-import { getTableConfig } from "drizzle-orm/sqlite-core";
-import type { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { generateSQLiteDrizzleJson, generateSQLiteMigration } from "drizzle-kit/api";
 import * as schema from "../db/schema";
 
-interface ColumnConfig {
-  name: string;
-  primary: boolean;
-  autoIncrement?: boolean;
-  notNull: boolean;
-  hasDefault: boolean;
-  default?: unknown;
-  isUnique: boolean;
-  getSQLType: () => string;
-}
+// drizzle-kit's API is async: build the DDL once, at import, so createTestTables stays synchronous.
+const statements = await generateSQLiteMigration(
+  await generateSQLiteDrizzleJson({}),
+  await generateSQLiteDrizzleJson(schema),
+);
 
-function generateCreateTable(table: SQLiteTable): string {
-  const config = getTableConfig(table);
-  const columns: string[] = [];
+// Test files share one in-memory DB, so creating the tables again must be a no-op.
+const ddl = statements
+  .map((statement) => statement.replace(/^CREATE (UNIQUE )?(TABLE|INDEX) /, "CREATE $1$2 IF NOT EXISTS "))
+  .join("\n");
 
-  for (const col of config.columns) {
-    const c = col as unknown as ColumnConfig;
-    let colDef = `${c.name} ${c.getSQLType()}`;
-
-    if (c.primary) {
-      colDef += " PRIMARY KEY";
-      if (c.autoIncrement) {
-        colDef += " AUTOINCREMENT";
-      }
-    }
-
-    if (c.notNull && !c.primary) {
-      colDef += " NOT NULL";
-    }
-
-    if (c.hasDefault && c.default !== undefined) {
-      const defaultVal = c.default;
-      if (typeof defaultVal === "string") {
-        colDef += ` DEFAULT '${defaultVal}'`;
-      } else {
-        colDef += ` DEFAULT ${defaultVal}`;
-      }
-    }
-
-    if (c.isUnique) {
-      colDef += " UNIQUE";
-    }
-
-    columns.push(colDef);
-  }
-
-  return `CREATE TABLE IF NOT EXISTS ${config.name} (\n  ${columns.join(",\n  ")}\n);`;
-}
-
-/**
- * Generates all CREATE TABLE statements for the test database.
- * Tables are ordered to handle foreign key dependencies.
- */
-export function generateTestSchema(): string {
-  const tables: SQLiteTable[] = [
-    // Order matters for foreign key references
-    schema.settings,
-    schema.repositories,
-    schema.worktrees,
-    schema.tasks,
-    schema.taskWorktrees,
-    schema.claudeSessions,
-    schema.claudeSessionTasks,
-    schema.claudeSessionRequests,
-    schema.teamChannels,
-    schema.statusCategories,
-    schema.standups,
-  ];
-
-  return tables.map((table) => generateCreateTable(table)).join("\n\n");
-}
-
-/**
- * Creates all tables in the given SQLite database.
- */
+/** Creates every table and index of the schema that the database doesn't have yet. */
 export function createTestTables(sqlite: { exec: (sql: string) => void }): void {
-  sqlite.exec(generateTestSchema());
+  sqlite.exec(ddl);
 }

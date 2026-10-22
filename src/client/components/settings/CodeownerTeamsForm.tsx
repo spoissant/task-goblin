@@ -9,21 +9,16 @@ import { EmptyState } from "@/client/components/ui/empty-state";
 import { toast } from "sonner";
 import type { GitHubTeam } from "@/client/lib/types";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
+import { parseJson, parseStringList } from "@/shared/json";
 
 /**
  * No stored value means every team counts, so the flag works unconfigured.
  * Returns null for that case rather than a full list, so the meaning survives
- * teams being added or removed on GitHub later.
+ * teams being added or removed on GitHub later. Like the server, a value that
+ * isn't a JSON array counts as no value.
  */
 function parseSelection(value: string | null | undefined): Set<string> | null {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return null;
-    return new Set(parsed.filter((v): v is string => typeof v === "string"));
-  } catch {
-    return null;
-  }
+  return Array.isArray(parseJson<unknown>(value, null)) ? new Set(parseStringList(value)) : null;
 }
 
 function serialize(selection: Set<string>): string {

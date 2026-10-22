@@ -1,15 +1,16 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
+import { TableCell, TableHead } from "@/client/components/ui/table";
 import { Flame, ListTree, MessageSquare, Snowflake } from "lucide-react";
-import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
+import type { Task, Repository, ClaudeSession } from "@/shared/types";
 import type { ChoreEntry } from "@/shared/chores";
 import { parseChangesByCategory } from "@/shared/file-categories";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
-import { UnresolvedCommentsIcon } from "../StatusIcons";
+import { IconTip, UnresolvedCommentsIcon } from "../StatusIcons";
 import { DeploymentBadges } from "../DeploymentBadges";
 import { ChangesSummary } from "../ChangesSummary";
 import { AiCell } from "./AiCell";
 import { SyncCell } from "./SyncCell";
+import { OnIceCell } from "./OnIceCell";
 import {
   TypeCell,
   SprintCell,
@@ -21,24 +22,24 @@ import {
   PrCell,
   ReviewsCell,
   HighPriorityCell,
-  OnIceCell,
   IsParentCell,
 } from "./cells";
 
 // Column definition type
-export interface ColumnDef<T extends Task = Task> {
+interface ColumnDef {
   key: string;
   header: React.ReactNode;
   width?: string;
   cellClassName?: string;
-  render: (task: T, context: ColumnContext) => React.ReactNode;
+  render: (task: Task, context: ColumnContext) => React.ReactNode;
 }
 
-export interface ColumnContext {
-  repo?: Repository;
+interface ColumnContext {
+  repo?: Repository | null;
   jiraHost?: string | null;
   prUrl?: string | null;
   linkToTask?: boolean; // Whether title should link to task detail
+  completed?: boolean; // Completed tasks: no Assign buttons or dev stack toggle
   nextChore?: ChoreEntry;
   session?: ClaudeSession; // latest AI session for the task
   isParent?: boolean; // task has sub-tasks or child issues
@@ -46,43 +47,22 @@ export interface ColumnContext {
 }
 
 // Shared Column Definitions
-export const COLUMNS = {
+const COLUMNS = {
   highPriority: {
     key: "highPriority",
-    header: (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Flame className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent>High Priority</TooltipContent>
-      </Tooltip>
-    ),
+    header: <IconTip icon={Flame} tip="High Priority" />,
     width: "40px",
     render: (task) => <HighPriorityCell task={task} />,
   },
   onIce: {
     key: "onIce",
-    header: (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Snowflake className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent>On Ice (blocked)</TooltipContent>
-      </Tooltip>
-    ),
+    header: <IconTip icon={Snowflake} tip="On Ice (blocked)" />,
     width: "40px",
     render: (task) => <OnIceCell task={task} />,
   },
   isParent: {
     key: "isParent",
-    header: (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ListTree className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent>Has / is sub-task</TooltipContent>
-      </Tooltip>
-    ),
+    header: <IconTip icon={ListTree} tip="Has / is sub-task" />,
     width: "56px",
     render: (task, ctx) => <IsParentCell task={task} isParent={ctx.isParent} onSearch={ctx.onSearch} />,
   },
@@ -109,7 +89,7 @@ export const COLUMNS = {
     key: "key",
     header: "Key",
     width: "100px",
-    render: (task, ctx) => <KeyCell task={task} jiraHost={ctx.jiraHost} />,
+    render: (task, ctx) => <KeyCell task={task} jiraHost={ctx.jiraHost} canAssign={!ctx.completed} />,
   },
   title: {
     key: "title",
@@ -122,7 +102,7 @@ export const COLUMNS = {
     key: "repo",
     header: "Repo",
     width: "120px",
-    render: (task, ctx) => <RepoCell task={task} repo={ctx.repo} />,
+    render: (task, ctx) => <RepoCell task={task} repo={ctx.repo} devStack={!ctx.completed} />,
   },
   branch: {
     key: "branch",
@@ -135,7 +115,7 @@ export const COLUMNS = {
     key: "pr",
     header: "PR",
     width: "60px",
-    render: (task, ctx) => <PrCell task={task} prUrl={ctx.prUrl} />,
+    render: (task, ctx) => <PrCell task={task} prUrl={ctx.prUrl} canAssign={!ctx.completed} />,
   },
   changes: {
     key: "changes",
@@ -182,14 +162,7 @@ export const COLUMNS = {
   },
   comments: {
     key: "comments",
-    header: (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <MessageSquare className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent>Pull Request Comments</TooltipContent>
-      </Tooltip>
-    ),
+    header: <IconTip icon={MessageSquare} tip="Pull Request Comments" />,
     width: "50px",
     render: (task, ctx) => <UnresolvedCommentsIcon count={task.unresolvedCommentCount} prUrl={ctx.prUrl} />,
   },
@@ -203,17 +176,51 @@ export const COLUMNS = {
     key: "sync",
     header: "",
     width: "40px",
-    render: (task, ctx) => <SyncCell task={task} repo={ctx.repo} />,
+    render: (task) => <SyncCell task={task} />,
   },
 } as const satisfies Record<string, ColumnDef>;
 
+export type ColumnKey = keyof typeof COLUMNS;
+
 // Type helper to access columns with full ColumnDef interface
-export function getColumn(key: keyof typeof COLUMNS): ColumnDef {
+function getColumn(key: ColumnKey): ColumnDef {
   return COLUMNS[key];
 }
 
+/** The header cells of a column list. */
+export function ColumnHeads({ columns }: { columns: ColumnKey[] }) {
+  return (
+    <>
+      {columns.map((key) => {
+        const col = getColumn(key);
+        return (
+          <TableHead key={col.key} style={col.width ? { width: col.width } : undefined}>
+            {col.header}
+          </TableHead>
+        );
+      })}
+    </>
+  );
+}
+
+/** A task's cells for a column list. */
+export function ColumnCells({ task, columns, context }: { task: Task; columns: ColumnKey[]; context: ColumnContext }) {
+  return (
+    <>
+      {columns.map((key) => {
+        const col = getColumn(key);
+        return (
+          <TableCell key={col.key} className={col.cellClassName}>
+            {col.render(task, context)}
+          </TableCell>
+        );
+      })}
+    </>
+  );
+}
+
 // Column order for TaskTable (main tasks list)
-export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
+export const TABLE_COLUMNS: ColumnKey[] = [
   "type",
   "sprint",
   "epic",
@@ -236,7 +243,7 @@ export const TABLE_COLUMNS: (keyof typeof COLUMNS)[] = [
 ];
 
 // Column order for TaskSummaryBar (task detail page)
-export const SUMMARY_COLUMNS: (keyof typeof COLUMNS)[] = [
+export const SUMMARY_COLUMNS: ColumnKey[] = [
   "type",
   "sprint",
   "epic",
@@ -249,5 +256,20 @@ export const SUMMARY_COLUMNS: (keyof typeof COLUMNS)[] = [
   "mergedIn",
   "checks",
   "comments",
+  "reviews",
+];
+
+// Column order for the Completed page
+export const COMPLETED_COLUMNS: ColumnKey[] = [
+  "sync",
+  "type",
+  "epic",
+  "key",
+  "status",
+  "title",
+  "repo",
+  "branch",
+  "pr",
+  "checks",
   "reviews",
 ];

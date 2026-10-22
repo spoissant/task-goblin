@@ -1,10 +1,9 @@
 import { Link } from "react-router";
 import { ExternalLink, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState } from "@/client/lib/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { useRespawnSession } from "@/client/lib/queries/sessions";
-import { canRespawn, formatActive, formatCost, formatTime } from "@/client/lib/sessions";
+import { STATE_UI, canRespawn, formatActive, formatCost, formatTime } from "@/client/lib/sessions";
 import {
   Table,
   TableBody,
@@ -15,26 +14,22 @@ import {
 } from "@/client/components/ui/table";
 import { cn } from "@/client/lib/utils";
 
-const STATE_CLASS: Record<ClaudeSessionState, string> = {
-  queued: "text-muted-foreground",
-  preparing: "text-muted-foreground",
-  working: "text-blue-500",
-  blocked: "text-yellow-600",
-  done: "text-green-600",
-  failed: "text-red-500",
-  stopped: "text-muted-foreground",
-};
-
 type SessionRow = ClaudeSession & { taskTitle?: string | null };
+
+/** A session's state as the AI column shows it: its icon, in the state's color, and label. */
+function StateLabel({ state }: { state: ClaudeSessionState }) {
+  const ui = STATE_UI[state];
+  return (
+    <span className="inline-flex items-center gap-1">
+      <ui.icon className={cn("h-3.5 w-3.5 shrink-0", ui.className)} />
+      {ui.label}
+    </span>
+  );
+}
 
 /** AI sessions table; `showTask` adds a column linking to each session's task. */
 export function SessionsTable({ sessions, showTask = false }: { sessions: SessionRow[]; showTask?: boolean }) {
   const respawnSession = useRespawnSession();
-  const respawn = (id: number) =>
-    respawnSession.mutate(id, {
-      onSuccess: () => toast.success("Session respawned"),
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
-    });
 
   return (
     <div className="rounded-lg border bg-card overflow-x-auto">
@@ -77,7 +72,9 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
                 {s.model ?? "default"}
                 {s.effort && ` · ${s.effort}`}
               </TableCell>
-              <TableCell className={cn("text-sm font-medium", STATE_CLASS[s.state])}>{s.state}</TableCell>
+              <TableCell className="text-sm font-medium whitespace-nowrap">
+                <StateLabel state={s.state} />
+              </TableCell>
               <TableCell className="text-sm text-right tabular-nums">{formatCost(s.costUsd)}</TableCell>
               <TableCell className="text-sm text-right tabular-nums" title={s.turnCount !== null ? `${s.turnCount} turns` : undefined}>
                 {formatActive(s.activeMs)}
@@ -102,7 +99,7 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
                   {canRespawn(s) && (
                     <button
                       type="button"
-                      onClick={() => respawn(s.id)}
+                      onClick={() => respawnSession.mutate(s.id)}
                       disabled={respawnSession.isPending}
                       title={`claude respawn ${s.shortId}`}
                       className="text-blue-600 hover:underline inline-flex items-center gap-1 text-xs cursor-pointer disabled:opacity-50"

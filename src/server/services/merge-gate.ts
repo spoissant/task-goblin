@@ -7,24 +7,25 @@ import { db } from "../../db";
 import { repositories, tasks } from "../../db/schema";
 import type { HoldReason } from "@/shared/merge";
 import { parseReviewStatus } from "@/shared/review-status";
-import { getStatusCategories } from "../lib/task-status";
-import { AppError, NotFoundError } from "../lib/errors";
+import { getStatusCategories, statusNamesOf } from "../lib/task-status";
+import { AppError, NotFoundError, httpStatusOf } from "../lib/errors";
+import { GitHubError, toGitHubError } from "../lib/github-client";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
-import { getMergeGitHub, type MergeGitHub, type PrTarget, type PullFile } from "./merge-github";
+import type { PrTarget } from "./github-graphql";
+import { getMergeGitHub, type MergeGitHub, type PullFile } from "./merge-github";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 
-export const READY_TO_MERGE_CATEGORY = "Ready to Merge";
+const READY_TO_MERGE_CATEGORY = "Ready to Merge";
 
 export const normalize = (status: string | null | undefined) => (status ?? "").toLowerCase();
 
 /** Lower-cased status names (category name + Jira mappings) of the Ready to Merge category. */
 export async function readyToMergeStatuses(): Promise<Set<string>> {
-  const categories = await getStatusCategories();
-  const cat = categories.find((c) => c.name === READY_TO_MERGE_CATEGORY);
-  return new Set(cat ? [cat.name, ...cat.jiraMappings].map(normalize) : []);
+  const category = (await getStatusCategories()).find((c) => c.name === READY_TO_MERGE_CATEGORY);
+  return new Set(category ? statusNamesOf(category) : []);
 }
 
 /** The holds the task row itself shows; pins need GitHub and come after. */
@@ -68,9 +69,10 @@ export function findPrereleasePins(files: PullFile[]): string[] {
   return pins;
 }
 
-type TaskPatch = Partial<Pick<TaskRow, "mergeReady" | "prState" | "mergeCommitSha">>;
+type TaskPatch = Partial<typeof tasks.$inferInsert>;
 
-async function writeTask(taskId: number, patch: TaskPatch): Promise<void> {
+/** Write what a merge-pipeline step decided onto the task, and tell the UI. */
+export async function writeTask(taskId: number, patch: TaskPatch): Promise<void> {
   await db.update(tasks).set({ ...patch, updatedAt: now() }).where(eq(tasks.id, taskId));
   broadcast("task");
 }
@@ -161,6 +163,15 @@ export async function runMergeGate(): Promise<void> {
   }
 }
 
+/** A merge GitHub refuses (405 not mergeable, 409 head moved…) answers with GitHub's status and reason; one that fails, 502. */
+function mergeError(err: unknown): AppError {
+  const status = httpStatusOf(err);
+  if (status !== undefined && status >= 400 && status < 500 && err instanceof Error) {
+    return new GitHubError(err.message, status, "MERGE_REFUSED");
+  }
+  return toGitHubError(err, "GitHub failed to merge the PR");
+}
+
 /** The Merge button: re-check the gate on the task row, then squash-merge the PR. */
 export async function mergeTaskPr(taskId: number): Promise<TaskRow> {
   const [row] = await db
@@ -179,9 +190,12 @@ export async function mergeTaskPr(taskId: number): Promise<TaskRow> {
     await writeVerdictIfChanged(task, reasons);
     throw new AppError(`Not ready to merge: ${reasons.join(", ")}`, 409, "MERGE_HELD");
   }
-  const { sha } = await ctx.gh.mergePr(targetOf(task, repo));
-  // The merge watch follows a front-monorepo merge commit's runs; the next sync fills in the rest.
-  const patch: TaskPatch = { prState: "merged", mergeCommitSha: sha, mergeReady: 0 };
+  const { sha } = await ctx.gh.mergePr(targetOf(task, repo)).catch((err: unknown) => {
+    throw mergeError(err);
+  });
+  // The merge watch follows a front-monorepo merge commit's runs and gives up a
+  // day after the PR's last sync, which for a merged PR is this one.
+  const patch = { prState: "merged", mergeCommitSha: sha, mergeReady: 0, prSyncedAt: now() } satisfies TaskPatch;
   await writeTask(task.id, patch);
   return { ...task, ...patch };
 }

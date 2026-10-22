@@ -1,10 +1,10 @@
-import { useMemo, useState, useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { useMemo, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/lib/queries";
+import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/lib/queries/reviews";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useLatestSessionsQuery, useReviewSessionsQuery } from "@/client/lib/queries/sessions";
-import { ReviewCell } from "@/client/components/reviews/ReviewCell";
+import { ReviewTable } from "@/client/components/reviews/ReviewTable";
+import { SizeHeading } from "@/client/components/reviews/SizeBadge";
 import { isSessionActive } from "@/client/lib/sessions";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
@@ -14,157 +14,28 @@ import {
   TEAM_MEMBERS_SETTING,
   VIP_MEMBERS_SETTING,
 } from "@/shared/settings-keys";
-import { isIgnoredRequest, memberTag, parseUsernames, requestTag, type MemberTag } from "@/client/lib/review-ownership";
+import { parseStringList } from "@/shared/json";
+import { isIgnoredRequest, isMostlyBackend, isReviewSatisfied, parseUsernames } from "@/client/lib/review-ownership";
 import { Skeleton } from "@/client/components/ui/skeleton";
-import { Badge } from "@/client/components/ui/badge";
-import { RepoBadge } from "@/client/components/tasks/RepoBadge";
-import { DevStackToggle } from "@/client/components/tasks/DevStackToggle";
-import { ChangesSummary } from "@/client/components/tasks/ChangesSummary";
-import { getJiraUrl } from "@/client/components/tasks/columns/cells";
 import { Button } from "@/client/components/ui/button";
-import { Checkbox } from "@/client/components/ui/checkbox";
-import { Label } from "@/client/components/ui/label";
-import { TooltipProvider } from "@/client/components/ui/tooltip";
+import { FilterToggle } from "@/client/components/ui/filter-toggle";
 import { Tabs, TabsList, TabsTrigger } from "@/client/components/ui/tabs";
-import { ReviewStatusIcon, PrStatusIcon } from "@/client/components/tasks/StatusIcons";
-import { isReviewReady } from "@/shared/review-status";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/client/components/ui/table";
 import { EmptyState } from "@/client/components/ui/empty-state";
-import {
-  RefreshCw,
-  GitPullRequestArrow,
-  SignalLow,
-  SignalMedium,
-  SignalHigh,
-  Flame,
-} from "lucide-react";
-import type { ClaudeSession, ReviewRequest, Repository } from "@/client/lib/types";
+import { RefreshCw, GitPullRequestArrow } from "lucide-react";
+import type { ClaudeSession, PrSize, ReviewRequest, Repository } from "@/shared/types";
 import { categorizePrSize } from "@/shared/pr-size";
-import type { PrSize } from "@/shared/types";
-
-function formatRelativeTime(dateString: string): string {
-  const now = Date.now();
-  const then = new Date(dateString).getTime();
-  const diffSeconds = Math.round((then - now) / 1000);
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-  ];
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  for (const [unit, seconds] of units) {
-    if (Math.abs(diffSeconds) >= seconds) {
-      return rtf.format(Math.round(diffSeconds / seconds), unit);
-    }
-  }
-  return rtf.format(diffSeconds, "second");
-}
-
-type SizeCategory = PrSize;
-
-function categorizePR(pr: ReviewRequest): SizeCategory {
-  return categorizePrSize(pr.additions, pr.deletions);
-}
-
-const SIZE_LABELS: Record<SizeCategory, string> = {
-  small: "Small",
-  medium: "Medium",
-  large: "Large",
-};
-
-const SIZE_DESCRIPTIONS: Record<SizeCategory, string> = {
-  small: "< 10 min",
-  medium: "< 30 min",
-  large: "30+ min",
-};
-
-const SIZE_ICONS: Record<SizeCategory, typeof SignalLow> = {
-  small: SignalLow,
-  medium: SignalMedium,
-  large: SignalHigh,
-};
-
-const SIZE_ICON_COLORS: Record<SizeCategory, string> = {
-  small: "text-emerald-600",
-  medium: "text-amber-600",
-  large: "text-red-600",
-};
 
 type ViewMode = "grouped" | "flat";
-const VIEW_STORAGE_KEY = "reviewsPage.view";
-const SCOPE_STORAGE_KEY = "reviewsPage.scope";
 
-function SizeBadge({ size }: { size: SizeCategory }) {
-  const Icon = SIZE_ICONS[size];
-  return (
-    <span className="inline-flex items-center gap-1 text-xs">
-      <Icon className={`h-4 w-4 ${SIZE_ICON_COLORS[size]}`} />
-      <span>{SIZE_LABELS[size]}</span>
-    </span>
-  );
-}
+const SIZE_ORDER: PrSize[] = ["small", "medium", "large"];
 
-function parseHighPriority(value: string | null | undefined): Set<string> {
-  if (!value) return new Set();
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((v): v is string => typeof v === "string"));
-  } catch {
-    return new Set();
-  }
-}
-
-/**
- * Another review from you can't move the PR: GitHub says its reviews are done,
- * or it has its approvals and only owes code-owner reviews from others.
- * Unknown (null) never counts, so the PR stays listed.
- */
-function isReviewSatisfied(request: ReviewRequest): boolean {
-  const status = request.reviewStatus;
-  if (!status) return false;
-  return (
-    isReviewReady(status) ||
-    (status.approvedCount >= status.requiredApprovals && request.myMissingCodeOwners.length === 0)
-  );
-}
-
-/**
- * Over 75% of the changed lines are backend. Unknown (null) or empty never
- * counts, so the PR stays listed.
- */
-function isMostlyBackend(request: ReviewRequest): boolean {
-  const changes = request.changesByCategory;
-  if (!changes) return false;
-  const lines = (c: { additions: number; deletions: number }) => c.additions + c.deletions;
-  const total = lines(changes.frontend) + lines(changes.backend) + lines(changes.other);
-  return total > 0 && lines(changes.backend) / total > 0.75;
-}
-
-function prKey(request: ReviewRequest): string {
-  return `${request.repo.owner}/${request.repo.repo}#${request.prNumber}`;
-}
+const byCreatedAt = (a: ReviewRequest, b: ReviewRequest) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 
 export function ReviewsPage() {
   const queryClient = useQueryClient();
 
-  const [scope, setScope] = useState<ReviewScope>(() => {
-    if (typeof window === "undefined") return "others";
-    const stored = window.localStorage.getItem(SCOPE_STORAGE_KEY);
-    return stored === "mine" ? "mine" : "others";
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(SCOPE_STORAGE_KEY, scope);
-  }, [scope]);
-
+  const [scope, setScope] = useLocalStorage<ReviewScope>("reviewsPage.scope", "others");
+  const [view, setView] = useLocalStorage<ViewMode>("reviewsPage.view", "grouped");
   const [hideReadyToMerge, setHideReadyToMerge] = useLocalStorage("reviewsPage.hideReadyToMerge", true);
   const [showIgnored, setShowIgnored] = useLocalStorage("reviewsPage.showIgnored", false);
   const [hideBackend, setHideBackend] = useLocalStorage("reviewsPage.hideBackend", false);
@@ -177,7 +48,7 @@ export function ReviewsPage() {
   const vips = useMemo(() => parseUsernames(settings?.[VIP_MEMBERS_SETTING]), [settings?.[VIP_MEMBERS_SETTING]]);
   const ignored = useMemo(() => parseUsernames(settings?.[IGNORED_MEMBERS_SETTING]), [settings?.[IGNORED_MEMBERS_SETTING]]);
   const highPriorityPrs = useMemo(
-    () => parseHighPriority(settings?.[HIGH_PRIORITY_PRS_SETTING]),
+    () => new Set(parseStringList(settings?.[HIGH_PRIORITY_PRS_SETTING])),
     [settings],
   );
 
@@ -190,16 +61,6 @@ export function ReviewsPage() {
     }
     updateSetting.mutate({ key: HIGH_PRIORITY_PRS_SETTING, value: JSON.stringify([...next]) });
   };
-
-  const [view, setView] = useState<ViewMode>(() => {
-    if (typeof window === "undefined") return "grouped";
-    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
-    return stored === "flat" ? "flat" : "grouped";
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
-  }, [view]);
 
   const repoBySlug = useMemo(() => {
     const map = new Map<string, Repository>();
@@ -229,24 +90,15 @@ export function ReviewsPage() {
 
   const groups = useMemo(() => {
     if (!visibleItems) return null;
-    const grouped: Record<SizeCategory, ReviewRequest[]> = { small: [], medium: [], large: [] };
+    const grouped: Record<PrSize, ReviewRequest[]> = { small: [], medium: [], large: [] };
     for (const item of visibleItems) {
-      grouped[categorizePR(item)].push(item);
+      grouped[categorizePrSize(item.additions, item.deletions)].push(item);
     }
-    for (const size of Object.keys(grouped) as SizeCategory[]) {
-      grouped[size].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-    }
+    for (const size of SIZE_ORDER) grouped[size].sort(byCreatedAt);
     return grouped;
   }, [visibleItems]);
 
-  const flatItems = useMemo(() => {
-    if (!visibleItems) return null;
-    return [...visibleItems].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-  }, [visibleItems]);
+  const flatItems = useMemo(() => (visibleItems ? [...visibleItems].sort(byCreatedAt) : null), [visibleItems]);
 
   // Review column: task-less sessions for others' PRs, the task's code-review
   // chore for your own.
@@ -276,6 +128,17 @@ export function ReviewsPage() {
     queryClient.invalidateQueries({ queryKey: reviewKeys.all });
   };
 
+  const tableProps = {
+    repoBySlug,
+    sessionFor,
+    scope,
+    jiraHost: settings?.jira_host,
+    teamMembers,
+    vips,
+    highPriorityPrs,
+    onToggleHighPriority: toggleHighPriority,
+  };
+
   return (
     <div>
       {/* Sticky: -mt-6/pt-6 pull <main>'s top padding inside so rows don't show above it once stuck. */}
@@ -284,37 +147,21 @@ export function ReviewsPage() {
           <h1 className="text-2xl font-bold">Review Requests</h1>
           <div className="flex items-center gap-2">
             {scope === "others" && (
-              <div className="flex items-center gap-2 shrink-0 mr-2">
-                <Checkbox
+              <div className="flex items-center gap-4 shrink-0 mr-2">
+                <FilterToggle
                   id="hide-ready-to-merge"
+                  label="Hide ready to merge"
                   checked={hideReadyToMerge}
-                  onCheckedChange={(checked) => setHideReadyToMerge(checked === true)}
+                  onCheckedChange={setHideReadyToMerge}
                 />
-                <Label htmlFor="hide-ready-to-merge" className="text-sm cursor-pointer whitespace-nowrap">
-                  Hide ready to merge
-                </Label>
-                <Checkbox
-                  id="show-ignored"
-                  checked={showIgnored}
-                  onCheckedChange={(checked) => setShowIgnored(checked === true)}
-                  className="ml-2"
-                />
-                <Label htmlFor="show-ignored" className="text-sm cursor-pointer whitespace-nowrap">
-                  Show ignored
-                </Label>
-                <Checkbox
+                <FilterToggle id="show-ignored" label="Show ignored" checked={showIgnored} onCheckedChange={setShowIgnored} />
+                <FilterToggle
                   id="hide-backend"
-                  checked={hideBackend}
-                  onCheckedChange={(checked) => setHideBackend(checked === true)}
-                  className="ml-2"
-                />
-                <Label
-                  htmlFor="hide-backend"
-                  className="text-sm cursor-pointer whitespace-nowrap"
+                  label="Hide backend"
                   title="Hide PRs with over 75% of changed lines in backend files"
-                >
-                  Hide backend
-                </Label>
+                  checked={hideBackend}
+                  onCheckedChange={setHideBackend}
+                />
               </div>
             )}
             {visibleItems && (
@@ -365,310 +212,24 @@ export function ReviewsPage() {
         />
       )}
 
-      {visibleItems && visibleItems.length > 0 && (
-        <TooltipProvider>
-          {view === "grouped" && groups && (
-            <div className="space-y-8">
-              {(["small", "medium", "large"] as SizeCategory[]).map((size) => {
-                const prs = groups[size];
-                if (!prs.length) return null;
-                const Icon = SIZE_ICONS[size];
-                return (
-                  <div key={size}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon className={`h-4 w-4 ${SIZE_ICON_COLORS[size]}`} />
-                      <h2 className="text-base font-semibold">{SIZE_LABELS[size]}</h2>
-                      <span className="text-xs text-muted-foreground">{SIZE_DESCRIPTIONS[size]}</span>
-                      <Badge variant="secondary" className="text-xs">{prs.length}</Badge>
-                    </div>
-                    <ReviewTable items={prs} repoBySlug={repoBySlug} sessionFor={sessionFor} showSize={false} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {visibleItems && visibleItems.length > 0 && view === "grouped" && groups && (
+        <div className="space-y-8">
+          {SIZE_ORDER.map((size) => {
+            const prs = groups[size];
+            if (!prs.length) return null;
+            return (
+              <div key={size}>
+                <SizeHeading size={size} count={prs.length} />
+                <ReviewTable items={prs} showSize={false} {...tableProps} />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-          {view === "flat" && flatItems && (
-            <ReviewTable items={flatItems} repoBySlug={repoBySlug} sessionFor={sessionFor} showSize={true} scope={scope} jiraHost={settings?.jira_host} teamMembers={teamMembers} vips={vips} highPriorityPrs={highPriorityPrs} onToggleHighPriority={toggleHighPriority} />
-          )}
-        </TooltipProvider>
+      {visibleItems && visibleItems.length > 0 && view === "flat" && flatItems && (
+        <ReviewTable items={flatItems} showSize={true} {...tableProps} />
       )}
     </div>
-  );
-}
-
-interface ReviewTableProps {
-  items: ReviewRequest[];
-  repoBySlug: Map<string, Repository>;
-  sessionFor: (request: ReviewRequest) => ClaudeSession | undefined;
-  showSize: boolean;
-  scope: ReviewScope;
-  jiraHost?: string | null;
-  teamMembers: Set<string>;
-  vips: Set<string>;
-  highPriorityPrs: Set<string>;
-  onToggleHighPriority: (key: string) => void;
-}
-
-function ReviewTable({ items, repoBySlug, sessionFor, showSize, scope, jiraHost, teamMembers, vips, highPriorityPrs, onToggleHighPriority }: ReviewTableProps) {
-  const isMine = scope === "mine";
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {!isMine && (
-            <TableHead className="w-[40px]">
-              <Flame className="h-4 w-4" />
-            </TableHead>
-          )}
-          {isMine && <TableHead className="w-[80px]">Task</TableHead>}
-          {isMine && <TableHead className="w-[110px]">Jira</TableHead>}
-          <TableHead className="w-[80px]">PR</TableHead>
-          <TableHead>Title</TableHead>
-          <TableHead className="w-[110px]">Review</TableHead>
-          <TableHead className="w-[150px]">Repo</TableHead>
-          <TableHead className="w-[120px]">Author</TableHead>
-          <TableHead className="w-[120px]">Assignee</TableHead>
-          <TableHead className="w-[120px]">Created</TableHead>
-          {showSize && <TableHead className="w-[110px]">Size</TableHead>}
-          <TableHead className="w-[100px]">Changes</TableHead>
-          <TableHead>Reviews</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {items.map((request) => (
-          <ReviewRequestRow
-            key={prKey(request)}
-            request={request}
-            repoBySlug={repoBySlug}
-            session={sessionFor(request)}
-            showSize={showSize}
-            scope={scope}
-            jiraHost={jiraHost}
-            teamMembers={teamMembers}
-            vips={vips}
-            isHighPriority={highPriorityPrs.has(prKey(request))}
-            onToggleHighPriority={onToggleHighPriority}
-          />
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-interface ReviewRequestRowProps {
-  request: ReviewRequest;
-  repoBySlug: Map<string, Repository>;
-  session?: ClaudeSession;
-  showSize: boolean;
-  scope: ReviewScope;
-  jiraHost?: string | null;
-  teamMembers: Set<string>;
-  vips: Set<string>;
-  isHighPriority: boolean;
-  onToggleHighPriority: (key: string) => void;
-}
-
-const HIGHLIGHT_ACCENT =
-  "[&>td:first-child]:relative [&>td:first-child]:before:content-[''] [&>td:first-child]:before:absolute [&>td:first-child]:before:inset-y-0 [&>td:first-child]:before:left-0 [&>td:first-child]:before:w-1";
-
-const VIP_ROW = `bg-rose-50/60 hover:bg-rose-100/70 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-rose-400 dark:[&>td:first-child]:before:bg-rose-500`;
-
-const TEAM_ROW = `bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 ${HIGHLIGHT_ACCENT} [&>td:first-child]:before:bg-amber-400 dark:[&>td:first-child]:before:bg-amber-500`;
-
-function MemberName({ login, tag }: { login: string; tag: MemberTag | null }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="inline-flex w-10 shrink-0">
-        {tag === "vip" ? (
-          <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 border-rose-400 bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100 dark:border-rose-500"
-          >
-            VIP
-          </Badge>
-        ) : tag === "team" ? (
-          <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 border-amber-400 bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100 dark:border-amber-500"
-          >
-            Team
-          </Badge>
-        ) : null}
-      </span>
-      <span>{login}</span>
-    </div>
-  );
-}
-
-function ReviewRequestRow({ request, repoBySlug, session, showSize, scope, jiraHost, teamMembers, vips, isHighPriority, onToggleHighPriority }: ReviewRequestRowProps) {
-  const isMine = scope === "mine";
-  const repo = repoBySlug.get(`${request.repo.owner}/${request.repo.repo}`);
-  const tag = requestTag(request, teamMembers, vips);
-  return (
-    <TableRow className={tag === "vip" ? VIP_ROW : tag === "team" ? TEAM_ROW : undefined}>
-      {/* High Priority */}
-      {!isMine && (
-        <TableCell>
-          <button
-            type="button"
-            className="cursor-pointer hover:opacity-80"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleHighPriority(prKey(request));
-            }}
-          >
-            <Flame
-              className={`h-4 w-4 transition-colors ${
-                isHighPriority
-                  ? "text-orange-500 fill-orange-500 flame-glow"
-                  : "text-muted-foreground/30"
-              }`}
-            />
-          </button>
-        </TableCell>
-      )}
-
-      {/* Task */}
-      {isMine && (
-        <TableCell>
-          {request.taskId != null ? (
-            <Link
-              to={`/tasks/${request.taskId}`}
-              className="font-mono text-xs text-blue-600 hover:underline"
-            >
-              #{request.taskId}
-            </Link>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      )}
-
-      {/* Jira */}
-      {isMine && (
-        <TableCell>
-          {request.taskJiraKey ? (
-            (() => {
-              const jiraUrl = getJiraUrl(request.taskJiraKey, jiraHost);
-              return jiraUrl ? (
-                <a
-                  href={jiraUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-xs text-blue-600 hover:underline"
-                >
-                  {request.taskJiraKey}
-                </a>
-              ) : (
-                <span className="font-mono text-xs">{request.taskJiraKey}</span>
-              );
-            })()
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      )}
-
-      {/* PR Number */}
-      <TableCell>
-        <a
-          href={request.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-        >
-          <PrStatusIcon prState={request.state} isDraft={request.isDraft ? 1 : 0} />
-          <span>#{request.prNumber}</span>
-        </a>
-      </TableCell>
-
-      {/* Title */}
-      <TableCell className="max-w-[400px]">
-        <a
-          href={request.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:underline truncate block"
-          title={request.title}
-        >
-          {request.title}
-        </a>
-      </TableCell>
-
-      {/* Review */}
-      <TableCell>
-        <ReviewCell
-          session={session}
-          start={isMine ? (request.taskId != null ? { taskId: request.taskId } : null) : { prUrl: request.url }}
-          disabledReason={isMine && request.taskId == null ? "No task for this PR" : undefined}
-          hasDraft={!isMine && request.hasPendingReview}
-          prUrl={request.url}
-        />
-      </TableCell>
-
-      {/* Repository */}
-      <TableCell>
-        {repo ? (
-          <span className="inline-flex items-center gap-1">
-            <RepoBadge repo={repo} />
-            <DevStackToggle
-              owner={{ prUrl: request.url }}
-              repositoryId={repo.id}
-              label={`${request.repo.repo}#${request.prNumber}`}
-            />
-          </span>
-        ) : (
-          <Badge variant="outline" className="text-xs">
-            {request.repo.repo}
-          </Badge>
-        )}
-      </TableCell>
-
-      {/* Author */}
-      <TableCell className="text-sm">
-        <MemberName login={request.author} tag={memberTag(request.author, teamMembers, vips)} />
-      </TableCell>
-
-      {/* Assignee */}
-      <TableCell className="text-sm">
-        {request.assignees.length === 0 ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <div className="flex flex-col gap-0.5">
-            {request.assignees.map((login) => (
-              <MemberName key={login} login={login} tag={memberTag(login, teamMembers, vips)} />
-            ))}
-          </div>
-        )}
-      </TableCell>
-
-      {/* Created */}
-      <TableCell className="text-sm text-muted-foreground" title={new Date(request.createdAt).toLocaleString()}>
-        {formatRelativeTime(request.createdAt)}
-      </TableCell>
-
-      {/* Size */}
-      {showSize && (
-        <TableCell>
-          <SizeBadge size={categorizePR(request)} />
-        </TableCell>
-      )}
-
-      {/* Changes */}
-      <TableCell>
-        <ChangesSummary
-          changedFiles={request.changedFiles}
-          additions={request.additions}
-          deletions={request.deletions}
-          changesByCategory={request.changesByCategory}
-        />
-      </TableCell>
-
-      {/* Reviews */}
-      <TableCell>
-        <ReviewStatusIcon status={request.reviewStatus} prUrl={request.url} highlight={isMine ? undefined : request.myMissingCodeOwners} />
-      </TableCell>
-    </TableRow>
   );
 }

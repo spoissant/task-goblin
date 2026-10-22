@@ -16,6 +16,5 @@ Numeric task ID argument (ask if missing). `get_task(id)` → `headBranch`, `bas
    - Otherwise show a summary (file, one-line proposed resolution) and ask "Apply proposed resolutions?" with Apply / Skip, plus the republish option from the reference when an alpha pin is involved.
    - Apply: resolve, check that `git diff origin/<base> -- package.json` shows only the branch's intended pins and that `yarn install --immutable` passes, `git add`, commit as `chore: merge <base> into <head> (resolve conflicts)`, push.
    - Skip: `git merge --abort` and `update_task(id, choreSkips: {"fix-merge-conflicts": true})` merged with existing keys.
-5. After any push, `sync_task(id)` so task-goblin picks up the new PR state.
 
 lefthook's `core.hooksPath` hint during commit is a known local setup issue; leave it out of the report. If the PR body names a pin that no longer matches, say so.

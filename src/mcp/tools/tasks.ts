@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { get, post, patch, del, resolveTaskId, resolveRepositoryId } from "../client.js";
-import type { ListResponse, SyncResult, Task, TaskDetail, TaskWorktreeStatus } from "@/shared/types";
+import { get, post, patch, del, resolveTaskId, resolveRepositoryId, taskLookup, toolResult } from "../client.js";
+import type { ListResponse, SyncRunResult, Task, TaskDetail, TaskSyncResult, TaskWorktreeStatus } from "@/shared/types";
 
 const WORKTREE_POLL_MS = 3_000;
 const WORKTREE_MAX_WAIT_SECONDS = 300;
@@ -24,27 +24,9 @@ export function registerTaskTools(server: McpServer) {
     {
       description:
         "Get a single task by ID, Jira key, PR number, or branch name. Returns task with its repository.",
-      inputSchema: {
-        id: z.number().optional().describe("Task ID"),
-        jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("GitHub PR number"),
-        repo: z
-          .string()
-          .optional()
-          .describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
-        branch: z.string().optional().describe("Git branch name (headBranch)"),
-      },
+      inputSchema: taskLookup,
     },
-    async ({ id, jiraKey, prNumber, repo, branch }) => {
-      try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
-        return { content: [{ type: "text", text: JSON.stringify(task) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+    (lookup) => toolResult(async () => get<TaskDetail>(`/api/v1/tasks/${await resolveTaskId(lookup)}`))
   );
 
   // list_tasks
@@ -67,8 +49,8 @@ export function registerTaskTools(server: McpServer) {
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    async ({ status, statuses, title, completed, checks, hasComments, limit, offset }) => {
-      try {
+    ({ status, statuses, title, completed, checks, hasComments, limit, offset }) =>
+      toolResult(async () => {
         const params = new URLSearchParams();
         if (status) params.set("status", status);
         if (statuses) params.set("statuses", statuses);
@@ -82,40 +64,8 @@ export function registerTaskTools(server: McpServer) {
 
         const base = completed ? "/api/v1/tasks/completed" : "/api/v1/tasks";
         const qs = params.toString();
-        const path = qs ? `${base}?${qs}` : base;
-
-        const data = await get<ListResponse<Task>>(path);
-        return { content: [{ type: "text", text: JSON.stringify(data) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // create_task
-  server.registerTool(
-    "create_task",
-    {
-      description: "Create a task from a GitHub PR. Syncs the PR from GitHub and returns the created or updated task.",
-      inputSchema: {
-        owner: z.string().describe("GitHub repo owner (user or org)"),
-        repo: z.string().describe("GitHub repo name"),
-        prNumber: z.number().int().describe("GitHub PR number"),
-      },
-    },
-    async ({ owner, repo, prNumber }) => {
-      try {
-        await post(`/api/v1/sync/github/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${prNumber}`);
-        const task = await get<Task>(
-          `/api/v1/tasks/by-pr/${prNumber}?repo=${encodeURIComponent(`${owner}/${repo}`)}`
-        );
-        return { content: [{ type: "text", text: JSON.stringify(task) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+        return get<ListResponse<Task>>(qs ? `${base}?${qs}` : base);
+      })
   );
 
   // sync
@@ -123,35 +73,14 @@ export function registerTaskTools(server: McpServer) {
     "sync",
     {
       description:
-        "Trigger a full sync: pulls latest Jira issues and GitHub PRs, then auto-matches orphaned tasks.",
+        "Run one full sync pass, the one the 5-minute timer runs: pulls Jira issues and GitHub PRs (linking each PR to its " +
+        "task), recounts worktree git statuses, then runs the merge watch, moves merged tickets to Ready to Prod, runs the " +
+        "merge gate and the chore scheduler, which may start AI sessions on other tasks. If a pass is already running, " +
+        "waits for it and returns its result. Returns { jira, github, errors }: jira and github are " +
+        "{ synced, new, updated, unchanged }, or null when that step failed; errors lists { step, message }.",
       inputSchema: {},
     },
-    async () => {
-      const result: { jira?: SyncResult; github?: SyncResult; matched?: number; errors: string[] } = {
-        errors: [],
-      };
-
-      try {
-        result.jira = await post<SyncResult>("/api/v1/sync/jira");
-      } catch (err) {
-        result.errors.push(`Jira: ${err instanceof Error ? err.message : String(err)}`);
-      }
-
-      try {
-        result.github = await post<SyncResult>("/api/v1/sync/github");
-      } catch (err) {
-        result.errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
-      }
-
-      try {
-        const match = await post<{ merged: number }>("/api/v1/sync/match");
-        result.matched = match.merged;
-      } catch (err) {
-        result.errors.push(`Match: ${err instanceof Error ? err.message : String(err)}`);
-      }
-
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
-    }
+    () => toolResult(() => post<SyncRunResult>("/api/v1/sync"))
   );
 
   // sync_task
@@ -161,62 +90,12 @@ export function registerTaskTools(server: McpServer) {
       description:
         "Sync a single task from its sources: re-pulls its Jira issue and GitHub PR (whichever it has), and recounts its worktree's uncommitted files and unpushed commits. " +
         "A task without a PR gets the PR opened from its branch (headBranch or worktree branch) linked. " +
-        "Located by ID, Jira key, PR number, or branch name. Returns the refreshed task.",
-      inputSchema: {
-        id: z.number().optional().describe("Task ID"),
-        jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("GitHub PR number"),
-        repo: z
-          .string()
-          .optional()
-          .describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
-        branch: z.string().optional().describe("Git branch name (headBranch)"),
-      },
+        "Located by ID, Jira key, PR number, or branch name. Returns { task, errors }: the refreshed task with its " +
+        "repository, and one message per source that failed (\"Jira: …\", \"GitHub: …\", \"Git status: …\").",
+      inputSchema: taskLookup,
     },
-    async ({ id, jiraKey, prNumber, repo, branch }) => {
-      try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
-        const errors: string[] = [];
-
-        if (task.jiraKey) {
-          try {
-            await post(`/api/v1/sync/jira/${encodeURIComponent(task.jiraKey)}`);
-          } catch (err) {
-            errors.push(`Jira: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-
-        // A PR just opened from the task's branch isn't linked yet: look it up by branch.
-        // Linking fetches the PR, so the sync below only runs for an already-linked PR.
-        if (!task.prNumber) {
-          try {
-            await post(`/api/v1/tasks/${taskId}/link-pr-by-branch`);
-          } catch (err) {
-            errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        } else if (task.repository) {
-          const { owner, repo: repoName } = task.repository;
-          try {
-            await post(`/api/v1/sync/github/${owner}/${repoName}/${task.prNumber}`);
-          } catch (err) {
-            errors.push(`GitHub: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-
-        try {
-          await post(`/api/v1/tasks/${taskId}/worktree/git-status`);
-        } catch (err) {
-          errors.push(`Git status: ${err instanceof Error ? err.message : String(err)}`);
-        }
-
-        const refreshed = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
-        return { content: [{ type: "text", text: JSON.stringify({ task: refreshed, errors }) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+    (lookup) =>
+      toolResult(async () => post<TaskSyncResult>(`/api/v1/tasks/${await resolveTaskId(lookup)}/sync`))
   );
 
   // prepare_task_worktree
@@ -233,16 +112,11 @@ export function registerTaskTools(server: McpServer) {
         waitSeconds: z.number().int().min(0).optional().describe("Wait up to N seconds for preparing to settle"),
       },
     },
-    async ({ taskId, waitSeconds }) => {
-      try {
+    ({ taskId, waitSeconds }) =>
+      toolResult(async () => {
         await post(`/api/v1/tasks/${taskId}/worktree`);
-        const status = await waitForWorktree(taskId, waitSeconds ?? 120);
-        return { content: [{ type: "text", text: JSON.stringify(status) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+        return waitForWorktree(taskId, waitSeconds ?? 120);
+      })
   );
 
   // update_task
@@ -254,14 +128,7 @@ export function registerTaskTools(server: McpServer) {
         "returns the full task. status is rejected for Jira-linked tasks (Jira owns it) and must be one of the configured " +
         "statuses. choreSkips replaces the whole skip map, so include existing skips you want to keep.",
       inputSchema: {
-        id: z.number().optional().describe("Task ID"),
-        jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("GitHub PR number"),
-        repo: z
-          .string()
-          .optional()
-          .describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
-        branch: z.string().optional().describe("Git branch name (headBranch)"),
+        ...taskLookup,
         title: z.string().optional().describe("New task title"),
         description: z.string().optional().describe("New task description"),
         status: z.string().optional().describe("New task status"),
@@ -275,9 +142,9 @@ export function registerTaskTools(server: McpServer) {
         choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, repository, choreSkips }) => {
-      try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
+    ({ title, description, status, repository, choreSkips, ...lookup }) =>
+      toolResult(async () => {
+        const taskId = await resolveTaskId(lookup);
 
         const updates: Record<string, unknown> = {};
         if (title !== undefined) updates.title = title;
@@ -292,13 +159,8 @@ export function registerTaskTools(server: McpServer) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
         }
 
-        const fullTask = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
-        return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+        return get<TaskDetail>(`/api/v1/tasks/${taskId}`);
+      })
   );
 
   // delete_task
@@ -308,26 +170,13 @@ export function registerTaskTools(server: McpServer) {
       description:
         "Permanently delete a task, located by ID, Jira key, PR number, or branch name. Also tears down the task's " +
         "worktree. A later sync re-creates it if its Jira issue or PR is still picked up by the sync.",
-      inputSchema: {
-        id: z.number().optional().describe("Task ID"),
-        jiraKey: z.string().optional().describe("Jira key to look up task"),
-        prNumber: z.number().optional().describe("GitHub PR number"),
-        repo: z
-          .string()
-          .optional()
-          .describe("GitHub repo in owner/repo format (use with prNumber if ambiguous)"),
-        branch: z.string().optional().describe("Git branch name (headBranch)"),
-      },
+      inputSchema: taskLookup,
     },
-    async ({ id, jiraKey, prNumber, repo, branch }) => {
-      try {
-        const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
+    (lookup) =>
+      toolResult(async () => {
+        const taskId = await resolveTaskId(lookup);
         await del(`/api/v1/tasks/${taskId}`);
-        return { content: [{ type: "text", text: JSON.stringify({ deleted: taskId }) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
+        return { deleted: taskId };
+      })
   );
 }

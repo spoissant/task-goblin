@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Badge } from "@/client/components/ui/badge";
 import { X } from "lucide-react";
 
-export interface TagInputProps {
+interface TagInputProps {
   tags: string[];
   onChange: (tags: string[]) => void;
   placeholder?: string;

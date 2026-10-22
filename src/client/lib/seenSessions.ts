@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { parseJson } from "@/shared/json";
 import type { ClaudeSession } from "./types";
 
 /**
@@ -15,12 +16,8 @@ interface Stored {
 }
 
 function load(): Stored {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // fall through to a fresh store
-  }
+  const found = parseJson<Stored | null>(localStorage.getItem(KEY), null);
+  if (found) return found;
   const fresh = { since: new Date().toISOString(), ids: [] };
   save(fresh);
   return fresh;

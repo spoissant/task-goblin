@@ -8,11 +8,10 @@ import type {
   ListResponse,
 } from "../types";
 
-export const settingsKeys = {
+const settingsKeys = {
   all: ["settings"] as const,
   jiraConfig: () => [...settingsKeys.all, "jira-config"] as const,
   statusSettings: () => [...settingsKeys.all, "status-settings"] as const,
-  statusCategories: () => [...settingsKeys.all, "status-categories"] as const,
 };
 
 export function useSettingsQuery() {
@@ -54,7 +53,7 @@ export function useUpdateSetting() {
   });
 }
 
-// Combined status settings (categories + filters + defaultColor)
+// Status categories and the color of unmapped statuses
 export function useStatusSettingsQuery() {
   return useQuery({
     queryKey: settingsKeys.statusSettings(),
@@ -63,13 +62,6 @@ export function useStatusSettingsQuery() {
 }
 
 // Status Categories
-export function useStatusCategoriesQuery() {
-  return useQuery({
-    queryKey: settingsKeys.statusCategories(),
-    queryFn: () => api.get<ListResponse<StatusCategory>>("/settings/status-categories"),
-  });
-}
-
 export function useUpdateStatusCategories() {
   const queryClient = useQueryClient();
 
@@ -77,7 +69,6 @@ export function useUpdateStatusCategories() {
     mutationFn: (categories: Omit<StatusCategory, "id">[]) =>
       api.put<ListResponse<StatusCategory>>("/settings/status-categories", { categories }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsKeys.statusCategories() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
     },
   });

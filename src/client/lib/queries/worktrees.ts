@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { RepositoryGuess, Task, TaskWorktreeStatus } from "../types";
 import { taskKeys } from "./tasks";
 
-export const worktreeKeys = {
+const worktreeKeys = {
   all: ["worktree"] as const,
   task: (taskId: number) => [...worktreeKeys.all, taskId] as const,
   guess: (taskId: number) => ["repository-guess", taskId] as const,

@@ -1,4 +1,4 @@
-import { getJiraUrl } from "@/client/components/tasks/columns/cells";
+import { getJiraUrl } from "@/client/lib/links";
 
 const MARKDOWN_LINK = /(\[[^\]]*\]\([^)]*\))/;
 const JIRA_KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g;

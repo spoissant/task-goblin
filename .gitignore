@@ -38,7 +38,6 @@ Thumbs.db
 
 # Local working files
 plans/
-!plans/.gitkeep
 
 # Claude Code local settings
 .claude/settings.local.json

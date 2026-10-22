@@ -4,36 +4,53 @@
  * one per task worktree (a full alumni_connect stack is ~20 containers and its
  * own volumes, see docs/gitworktree.md in that repo).
  *
- * One stack per supported repository (see STACKS), owned by a task or by a PR
- * URL (a colleague's PR from the Reviews page, which has no task). Boot
- * detaches the main checkout at the task branch (`git switch --detach`,
- * allowed even though a worktree owns the branch) or at the PR's
- * `pull/N/head`, and runs the repository's boot command until stopped. The
- * stack counts as up once the log shows its ready line AND the site answers
- * over HTTP. Stop ends the boot process (and the Docker stack), then switches
- * the checkout back to its base branch.
+ * One stack per supported repository (see STACKS in dev-stack-store.ts),
+ * owned by a task or by a PR URL (a colleague's PR from the Reviews page,
+ * which has no task). Boot detaches the main checkout at the task branch
+ * (`git switch --detach`, allowed even though a worktree owns the branch) or
+ * at the PR's `pull/N/head`, and runs the repository's boot command until
+ * stopped. The stack counts as up once the log shows its ready line AND the
+ * site answers over HTTP. Stop ends the boot process (and the Docker stack),
+ * then switches the checkout back to its base branch.
  *
  * A task stack can carry more tasks: their branches are merged locally on
  * top of the owner's (merge commits never leave the detached checkout) so
  * several PRs are QA'd on one boot. Each of those tasks counts as an owner.
- *
- * HARDCODED per repository: alumni_connect mirrors the `hbup` zsh alias and
- * the repo's bin/dev tooling; front-monorepo runs Storybook.
  */
-import { appendFileSync, closeSync, mkdirSync, openSync, rmSync } from "fs";
-import { dirname, join, relative, resolve, sep } from "path";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories, settings } from "../../db/schema";
+import { repositories } from "../../db/schema";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
+import { loadOtherTasks } from "../lib/other-tasks";
 import { parsePrUrl } from "../lib/validation";
-import { abortMerge, changedFileCount, fetchRef, getConflictedFiles, localBranchExists, remoteBranchExists, runGit } from "../lib/git";
-import { runCommand, runShell, tailOutput } from "../lib/process";
-import { broadcast } from "../lib/sse";
+import { changedFileCount, runGit } from "../lib/git";
+import { runShell, tailOutput } from "../lib/process";
 import { now } from "../lib/timestamp";
 import { resolveMainPath } from "./task-worktrees";
+import { listRunningContainers } from "./docker-stacks";
+import {
+  STACKS,
+  appendLog,
+  configFor,
+  label,
+  loadStack,
+  ownerOf,
+  owns,
+  readLog,
+  sameMerged,
+  saveStack,
+  type MergedTask,
+  type StackConfig,
+  type StoredStack,
+} from "./dev-stack-store";
+import { checkoutStack, shortHead } from "./dev-stack-checkout";
+import { defaultRuntime, type DevStackRuntime } from "./dev-stack-runtime";
+import { mintLoginLink } from "./dev-stack-login";
+import { clearBlockingNodeModules } from "./dev-stack-pnpm";
 import type {
   DevStack,
   DevStackLoginAs,
@@ -41,181 +58,16 @@ import type {
   DevStackOverview,
   DevStackOwner,
   DevStackRefresh,
-  DevStackState,
   DevStackStatus,
 } from "../../shared/types";
 
-interface StackConfig {
-  /** Stays in the foreground while the stack runs. */
-  boot: string;
-  /** Run on stop before waiting for the boot process; null kills the process tree right away. */
-  stop: string | null;
-  url: string;
-  /** Log line printed once the first build is served. */
-  ready: RegExp;
-  bootDetail: string;
-  /** Runs a Docker Compose project from the main checkout; its containers are watched. */
-  compose: boolean;
-  fallbackBaseBranch: string;
-  settingKey: string;
-  logPath: string;
-}
-
-const LOG_PATH = process.env.DEV_STACK_LOG ?? "logs/dev-stack.log";
-
-const STACKS: Record<string, StackConfig> = {
-  alumni_connect: {
-    // Same chain as the `hbup` alias; `bin/dev start` stays in the foreground while the host bundler runs.
-    boot: "bin/dev update-dependencies && bin/dev migration && bin/dev routes-typescript && bin/dev start",
-    // Killing the bundler makes `bin/dev start` return and its EXIT trap stop the stack; `dc stop` covers the rest.
-    stop: "bin/dev stop-dev-server; bin/dev dc stop",
-    url: "http://localhost.hvbrt.com",
-    ready: /Compiled successfully/, // Rspack dev server
-    bootDetail: "Running hbup",
-    compose: true,
-    fallbackBaseBranch: "sprint",
-    settingKey: "dev_stack",
-    logPath: LOG_PATH,
-  },
-  "front-monorepo": {
-    // No TTY, so pnpm can't ask before purging an incompatible node_modules.
-    boot: "pnpm install --frozen-lockfile --config.confirmModulesPurge=false && pnpm nx run storybook:dev",
-    stop: null,
-    url: "http://localhost:4400",
-    ready: /Storybook ready!/,
-    bootDetail: "Installing packages and starting Storybook",
-    compose: false,
-    fallbackBaseBranch: "main",
-    settingKey: "dev_stack:front-monorepo",
-    logPath: LOG_PATH.replace(/(\.log)?$/, "-storybook.log"),
-  },
-};
-
-function configFor(repository: { repo: string } | null): StackConfig | null {
-  return repository && Object.hasOwn(STACKS, repository.repo) ? STACKS[repository.repo] : null;
-}
 const STOP_TIMEOUT_MS = 3 * 60 * 1000;
 const EXIT_WAIT_MS = 60_000;
 const READY_TIMEOUT_MS = 30 * 60 * 1000;
 
-interface MergedTask {
-  taskId: number;
-  branch: string;
-}
-
-interface StoredStack {
-  taskId: number | null;
-  prUrl: string | null; // set instead of taskId for a PR
-  branch: string; // task branch, or "repo#N" for a PR
-  merged?: MergedTask[]; // other tasks whose branches are merged on top of the owner's
-  state: DevStackState;
-  pid: number | null;
-  detail: string | null;
-  error: string | null;
-  startedAt: string;
-}
-
 // ---------------------------------------------------------------------------
-// Process seam (replaced in tests)
+// Process seam (replaced in tests, see dev-stack-runtime.ts)
 // ---------------------------------------------------------------------------
-
-export interface DevStackRuntime {
-  /** Start the long-running boot command with stdout/stderr appended to `logPath`. */
-  spawn(cwd: string, command: string, logPath: string): { pid: number; exited: Promise<number> };
-  isAlive(pid: number): boolean;
-  /**
-   * Best-effort SIGTERM (then SIGKILL) of pid and all its descendants.
-   * `bin/dev start` is a shell script whose dev-server supervisor respawns
-   * children on crash and doesn't forward signals (and nx runs Storybook as
-   * a child), so killing just the recorded pid leaves the real work running;
-   * this walks the whole tree.
-   */
-  killTree(pid: number): Promise<void>;
-  /** HTTP status of the booted site, or null when nothing answers. */
-  probe(url: string): Promise<number | null>;
-  /** Delay between readiness checks. */
-  readyPollMs: number;
-  /** How long to wait for the main stack's containers to stop. */
-  downTimeoutMs: number;
-}
-
-const KILL_TREE_GRACE_MS = 2_000;
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function directChildren(pid: number): Promise<number[]> {
-  const proc = Bun.spawn(["pgrep", "-P", String(pid)], { stdout: "pipe", stderr: "ignore", stdin: "ignore" });
-  const [stdout] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  return stdout
-    .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter((n) => Number.isInteger(n) && n > 0);
-}
-
-/** pid and every descendant, breadth-first. */
-async function processTree(pid: number): Promise<number[]> {
-  const all = [pid];
-  let frontier = [pid];
-  while (frontier.length > 0) {
-    const children = (await Promise.all(frontier.map(directChildren))).flat();
-    if (children.length === 0) break;
-    all.push(...children);
-    frontier = children;
-  }
-  return all;
-}
-
-const defaultRuntime: DevStackRuntime = {
-  spawn(cwd, command, logPath) {
-    const fd = openSync(logPath, "a");
-    const proc = Bun.spawn(["/bin/zsh", "-lc", command], {
-      cwd: expandPath(cwd),
-      stdout: fd,
-      stderr: fd,
-      stdin: "ignore",
-    });
-    const exited = proc.exited.finally(() => closeSync(fd));
-    return { pid: proc.pid, exited };
-  },
-  isAlive: pidAlive,
-  async killTree(pid) {
-    const pids = await processTree(pid);
-    for (const p of pids) {
-      try {
-        process.kill(p, "SIGTERM");
-      } catch {
-        // already gone
-      }
-    }
-    await Bun.sleep(KILL_TREE_GRACE_MS);
-    for (const p of pids) {
-      if (pidAlive(p)) {
-        try {
-          process.kill(p, "SIGKILL");
-        } catch {
-          // already gone
-        }
-      }
-    }
-  },
-  async probe(url) {
-    try {
-      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5_000) });
-      return res.status;
-    } catch {
-      return null;
-    }
-  },
-  readyPollMs: 3_000,
-  downTimeoutMs: 3 * 60 * 1000,
-};
 
 let runtime = defaultRuntime;
 export function setDevStackRuntime(rt: DevStackRuntime | null): void {
@@ -229,47 +81,6 @@ export function devStackSettled(): Promise<void> {
 }
 function track(work: Promise<void>): void {
   inFlight = inFlight.then(() => work, () => work);
-}
-
-// ---------------------------------------------------------------------------
-// Persistence (settings row, survives server restarts)
-// ---------------------------------------------------------------------------
-
-async function loadStack(cfg: StackConfig): Promise<StoredStack | null> {
-  const rows = await db.select().from(settings).where(eq(settings.key, cfg.settingKey));
-  if (!rows[0]?.value) return null;
-  try {
-    return JSON.parse(rows[0].value) as StoredStack;
-  } catch {
-    return null;
-  }
-}
-
-async function saveStack(cfg: StackConfig, stack: StoredStack | null): Promise<void> {
-  if (stack) {
-    const value = JSON.stringify(stack);
-    await db.insert(settings).values({ key: cfg.settingKey, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
-  } else {
-    await db.delete(settings).where(eq(settings.key, cfg.settingKey));
-  }
-  broadcast("dev-stack");
-}
-
-async function readLog(cfg: StackConfig): Promise<string> {
-  try {
-    return await Bun.file(cfg.logPath).text();
-  } catch {
-    return "";
-  }
-}
-
-function appendLog(cfg: StackConfig, text: string): void {
-  try {
-    mkdirSync(dirname(cfg.logPath), { recursive: true });
-    appendFileSync(cfg.logPath, text.endsWith("\n") ? text : `${text}\n`);
-  } catch {
-    // logging only
-  }
 }
 
 async function toDevStack(cfg: StackConfig, repositoryId: number, stored: StoredStack): Promise<DevStack> {
@@ -304,7 +115,7 @@ async function resolveOwner(owner: DevStackOwner) {
   return { taskId: task.id, prUrl: null, branch: task.headBranch, repository };
 }
 
-/** The owner's repository with its stack config, for stop and refresh. */
+/** The owner's repository with its stack config, for refresh, login links and stop. */
 async function resolveStack(owner: DevStackOwner): Promise<{ repository: RepoRow; cfg: StackConfig }> {
   const { repository } = await resolveOwner(owner);
   const cfg = configFor(repository);
@@ -312,40 +123,24 @@ async function resolveStack(owner: DevStackOwner): Promise<{ repository: RepoRow
   return { repository, cfg };
 }
 
-function ownerOf(stored: StoredStack): DevStackOwner {
-  return stored.prUrl ? { prUrl: stored.prUrl } : { taskId: stored.taskId! };
-}
-
-function owns(stored: StoredStack, owner: DevStackOwner): boolean {
-  if ("prUrl" in owner) return stored.prUrl === parsePrUrl(owner.prUrl).url;
-  return stored.taskId === owner.taskId || (stored.merged ?? []).some((m) => m.taskId === owner.taskId);
-}
-
-/** The owner's branch, plus how many more are merged on top. */
-function label(stored: StoredStack): string {
-  const more = stored.merged?.length ?? 0;
-  return more > 0 ? `${stored.branch} + ${more} more` : stored.branch;
+/** The stored stack, refused when there is none, another owner holds it, or (with `up`) it is not up. */
+async function ownedStack(cfg: StackConfig, owner: DevStackOwner, { up }: { up: boolean }): Promise<StoredStack> {
+  const stored = await loadStack(cfg);
+  if (!stored) throw new NotFoundError("Dev stack");
+  if (!owns(stored, owner)) throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
+  if (up && stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
+  return stored;
 }
 
 /** Tasks to merge on top of the owner's branch: same repository, each with a branch. */
-async function resolveMerged(owner: DevStackOwner, repositoryId: number, withTaskIds: number[]): Promise<MergedTask[]> {
+async function resolveMerged(owner: DevStackOwner, repositoryId: number, withTaskIds?: number[]): Promise<MergedTask[]> {
   const ownerId = "taskId" in owner ? owner.taskId : null;
-  const ids = [...new Set(withTaskIds)].filter((id) => id !== ownerId);
-  if (ids.length > 0 && ownerId === null) throw new ValidationError("Only a task stack can merge other tasks");
-  const merged: MergedTask[] = [];
-  for (const id of ids) {
-    const result = await getTaskWithRepository(id);
-    if (!result) throw new NotFoundError("Task", id);
-    if (result.repository?.id !== repositoryId) throw new ValidationError(`Task ${id} is in another repository`);
-    if (!result.headBranch) throw new ValidationError(`Task ${id} has no branch`);
-    merged.push({ taskId: id, branch: result.headBranch });
-  }
-  return merged;
-}
-
-function sameMerged(stored: StoredStack, merged: MergedTask[]): boolean {
-  const key = (list: MergedTask[]) => list.map((m) => m.taskId).sort((a, b) => a - b).join(",");
-  return key(stored.merged ?? []) === key(merged);
+  const others = await loadOtherTasks(withTaskIds, ownerId, repositoryId);
+  if (others.length > 0 && ownerId === null) throw new ValidationError("Only a task stack can merge other tasks");
+  return others.map((task) => {
+    if (!task.headBranch) throw new ValidationError(`Task ${task.id} has no branch`);
+    return { taskId: task.id, branch: task.headBranch };
+  });
 }
 
 /** Every stack plus the repositories whose tasks may boot one (for table rows). */
@@ -375,9 +170,9 @@ export async function getDevStackStatus(owner: DevStackOwner): Promise<DevStackS
 
 /**
  * Detach the main checkout at the owner's branch, merge the branches of
- * `withTaskIds` on top, and start the stack in the background.
+ * `withTaskIds` (checked by loadOtherTasks) on top, and start the stack in the background.
  */
-export async function bootDevStack(owner: DevStackOwner, withTaskIds: number[] = []): Promise<DevStack> {
+export async function bootDevStack(owner: DevStackOwner, withTaskIds?: number[]): Promise<DevStack> {
   const { taskId, prUrl, branch, repository } = await resolveOwner(owner);
   const cfg = configFor(repository);
   if (!repository || !cfg || !branch) {
@@ -388,7 +183,7 @@ export async function bootDevStack(owner: DevStackOwner, withTaskIds: number[] =
     );
   }
   const merged = await resolveMerged(owner, repository.id, withTaskIds);
-  const mainPath = await resolveMainPath(repository);
+  const mainPath = resolveMainPath(repository);
 
   const existing = await loadStack(cfg);
   if (existing && !owns(existing, owner)) {
@@ -423,51 +218,6 @@ export async function bootDevStack(owner: DevStackOwner, withTaskIds: number[] =
   await saveStack(cfg, stored);
   track(runBoot(cfg, stored, mainPath));
   return toDevStack(cfg, repository.id, stored);
-}
-
-/**
- * A PR's head as GitHub serves it, or a task branch, fetched first and then
- * preferring the local ref (worktree commits land there) over origin.
- */
-async function resolveTarget(mainPath: string, stored: StoredStack): Promise<string | null> {
-  if (stored.prUrl) {
-    const fetched = await fetchRef(mainPath, `pull/${parsePrUrl(stored.prUrl).number}/head`);
-    return fetched.exitCode === 0 ? "FETCH_HEAD" : null;
-  }
-  return resolveBranch(mainPath, stored.branch);
-}
-
-async function resolveBranch(mainPath: string, branch: string): Promise<string | null> {
-  await fetchRef(mainPath, branch);
-  if (await localBranchExists(mainPath, branch)) return branch;
-  if (await remoteBranchExists(mainPath, branch)) return `origin/${branch}`;
-  return null;
-}
-
-/**
- * Detach the main checkout at the owner's target, then merge each merged
- * task's branch on top. Hooks are off for the merges: these commits are
- * throwaway and commit hooks (lint, message checks) would only slow or block
- * them. Returns an error message, or null once checked out.
- */
-async function checkoutStack(mainPath: string, stored: StoredStack, discardChanges: boolean): Promise<string | null> {
-  const target = await resolveTarget(mainPath, stored);
-  if (!target) return `${stored.branch} not found locally or on origin`;
-
-  const switched = await runGit(mainPath, ["switch", "--detach", ...(discardChanges ? ["--discard-changes"] : []), target]);
-  if (switched.exitCode !== 0) return switched.stderr || `git switch --detach ${target} failed`;
-
-  for (const m of stored.merged ?? []) {
-    const ref = await resolveBranch(mainPath, m.branch);
-    if (!ref) return `${m.branch} not found locally or on origin`;
-    const merge = await runGit(mainPath, ["-c", "core.hooksPath=/dev/null", "merge", "--no-edit", ref]);
-    if (merge.exitCode !== 0) {
-      const files = await getConflictedFiles(mainPath);
-      await abortMerge(mainPath);
-      return `${m.branch} does not merge cleanly on top of ${stored.branch}: ${files.length > 0 ? files.join(", ") : merge.stderr}`;
-    }
-  }
-  return null;
 }
 
 async function runBoot(cfg: StackConfig, stored: StoredStack, mainPath: string): Promise<void> {
@@ -506,7 +256,9 @@ function watchExit(cfg: StackConfig, pid: number, exited: Promise<number>, mainP
   void exited.then(async (code) => {
     const current = await loadStack(cfg);
     if (current?.pid !== pid || (current.state !== "up" && current.state !== "starting")) return; // stopped by us, or superseded
-    if (!retried && current.state === "starting" && code !== 0 && (await clearBlockingNodeModules(cfg, mainPath))) {
+    const cleared = !retried && current.state === "starting" && code !== 0 && (await clearBlockingNodeModules(mainPath, await readLog(cfg)));
+    if (cleared) {
+      appendLog(cfg, `# ${now()} removed ${cleared} (it blocked pnpm's symlink); booting again\n$ ${cfg.boot}`);
       const latest = await loadStack(cfg);
       if (latest?.pid !== pid || latest.state !== "starting") return; // stopped while clearing
       const next = runtime.spawn(mainPath, cfg.boot, cfg.logPath);
@@ -518,36 +270,6 @@ function watchExit(cfg: StackConfig, pid: number, exited: Promise<number>, mainP
     }
     await saveStack(cfg, { ...current, state: "failed", detail: null, error: `Boot process exited with code ${code}; see log` });
   });
-}
-
-/**
- * pnpm can't symlink a dependency where a real directory sits (e.g. a
- * package's node_modules left by an older install). Its error names the
- * symlink path; the first node_modules directory on that path, inside the
- * checkout, is what blocks it. Null when the log has no such error.
- */
-export function blockingNodeModules(checkout: string, log: string): string | null {
-  if (!log.includes("ERR_PNPM_PACKAGE_MANAGER_SYMLINK_FAILED")) return null;
-  // pnpm wraps long paths over indented, coloured lines.
-  const text = log.replace(/\u001b\[[0-9;]*m/g, "").replace(/\n */g, "");
-  const at = /Failed to create symlink at "([^"]+)"/.exec(text)?.[1];
-  if (!at) return null;
-  const root = resolve(expandPath(checkout));
-  const parts = relative(root, resolve(root, at)).split(sep);
-  const i = parts.indexOf("node_modules");
-  if (parts[0] === ".." || i < 0) return null;
-  return join(root, ...parts.slice(0, i + 1));
-}
-
-/** Remove the untracked node_modules directory pnpm's error names; true when one was removed. */
-async function clearBlockingNodeModules(cfg: StackConfig, mainPath: string): Promise<boolean> {
-  const dir = blockingNodeModules(mainPath, await readLog(cfg));
-  if (!dir) return false;
-  const tracked = await runGit(mainPath, ["ls-files", "--", dir]);
-  if (tracked.exitCode !== 0 || tracked.stdout.trim() !== "") return false;
-  rmSync(dir, { recursive: true, force: true });
-  appendLog(cfg, `# ${now()} removed ${dir} (it blocked pnpm's symlink); booting again\n$ ${cfg.boot}`);
-  return true;
 }
 
 /**
@@ -593,10 +315,6 @@ async function waitUntilReady(cfg: StackConfig, stored: StoredStack, mainPath: s
   }
 }
 
-async function shortHead(mainPath: string): Promise<string> {
-  return (await runGit(mainPath, ["rev-parse", "--short", "HEAD"])).stdout.trim();
-}
-
 /**
  * Move the running stack's detached checkout to the branch's latest commit
  * (merging the merged tasks' latest commits again), leaving the stack up so
@@ -606,14 +324,8 @@ async function shortHead(mainPath: string): Promise<string> {
  */
 export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRefresh> {
   const { repository, cfg } = await resolveStack(owner);
-  const stored = await loadStack(cfg);
-  if (!stored) throw new NotFoundError("Dev stack");
-  if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
-  }
-  if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
-
-  const mainPath = await resolveMainPath(repository);
+  const stored = await ownedStack(cfg, owner, { up: true });
+  const mainPath = resolveMainPath(repository);
 
   const from = await shortHead(mainPath);
   const checkoutError = await checkoutStack(mainPath, stored, true);
@@ -623,77 +335,23 @@ export async function refreshDevStack(owner: DevStackOwner): Promise<DevStackRef
   return { from, to };
 }
 
-/**
- * Mints the same signed, single-use "log as" claim link the super-admin panel
- * hands out (LogAs::Grant, 10 minutes), from the CLI with the first super
- * admin as impersonator, so a browser signs in without a password or an
- * existing session. Defaults to the first confirmed member / admin of network
- * 1 (pandora). Prints one JSON line.
- */
-const LOGIN_LINK_SCRIPT = `
-as, id = ARGV
-id = id.presence&.to_i
-sa = SuperAdmin.order(:id).first or abort("No super admin in the local DB")
-case as
-when "member"
-  subject = id ? User.kept.confirmed.find_by(id:) : Network.find(1).users.kept.confirmed.order(:id).first
-  kind, impersonator = :user, sa
-when "admin"
-  subject = id ? SimpleAdmin.find_by(id:) : SimpleAdmin.where(network_id: 1).order(:id).first
-  kind, impersonator = :simple_admin, sa
-when "super_admin"
-  subject = sa
-  kind, impersonator = :super_admin_network, nil
-else
-  abort("Unknown role #{as}")
-end
-abort("No #{as} found#{" with id #{id}" if id}") unless subject
-network = as == "super_admin" ? Network.find(1) : subject.network
-routing = SharedRouting.routing_for(network)
-destination_url = as == "member" ? routing.user_url(subject) : routing.backoffice_root_url
-token = LogAs::Grant.generate(subject:, network:, kind:, destination_url:, impersonator:)
-puts({url: routing.backoffice_log_as_claim_url(token:), subjectId: subject.id, name: subject.try(:name).presence || subject.email, networkId: network.id}.to_json)
-`;
-const LOGIN_LINK_TIMEOUT_MS = 3 * 60 * 1000;
-
 /** A one-time sign-in link into the running alumni_connect stack as a member, network admin or super admin. */
 export async function devStackLoginLink(owner: DevStackOwner, as: DevStackLoginAs, id: number | null): Promise<DevStackLoginLink> {
   const { repository, cfg } = await resolveStack(owner);
   if (repository.repo !== "alumni_connect") {
     throw new AppError("Login links are only available for the alumni_connect stack", 400, "DEV_STACK_UNSUPPORTED");
   }
-  const stored = await loadStack(cfg);
-  if (!stored) throw new NotFoundError("Dev stack");
-  if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
-  }
-  if (stored.state !== "up") throw new AppError("Dev stack is not up", 409, "DEV_STACK_NOT_UP");
-
-  const mainPath = await resolveMainPath(repository);
-  // Script and arguments go through as positional parameters ($0, $@), so nothing needs shell quoting.
-  const result = await runCommand(
-    "/bin/zsh",
-    ["-lc", 'bin/dev dcx webapp bundle exec rails runner "$0" "$@"', LOGIN_LINK_SCRIPT, as, id === null ? "" : String(id)],
-    { cwd: mainPath, timeoutMs: LOGIN_LINK_TIMEOUT_MS },
-  );
-  const line = result.exitCode === 0 ? result.stdout.split("\n").reverse().find((l) => l.startsWith("{")) : undefined;
-  if (!line) {
-    throw new AppError(`Could not mint a login link: ${tailOutput(result, 1000)}`, 500, "DEV_STACK_LOGIN_FAILED");
-  }
-  return JSON.parse(line) as DevStackLoginLink;
+  await ownedStack(cfg, owner, { up: true });
+  return mintLoginLink(resolveMainPath(repository), as, id);
 }
 
 /** Stop the stack of this owner and return the main checkout to its base branch, in the background. */
 export async function stopDevStack(owner: DevStackOwner): Promise<DevStack> {
   const { repository, cfg } = await resolveStack(owner);
-  const stored = await loadStack(cfg);
-  if (!stored) throw new NotFoundError("Dev stack");
-  if (!owns(stored, owner)) {
-    throw new AppError(`Dev stack belongs to ${label(stored)}`, 409, "DEV_STACK_BUSY");
-  }
+  const stored = await ownedStack(cfg, owner, { up: false });
   if (stored.state === "stopping") return toDevStack(cfg, repository.id, stored);
 
-  const mainPath = await resolveMainPath(repository);
+  const mainPath = resolveMainPath(repository);
   const baseBranch = repository.defaultBaseBranch ?? cfg.fallbackBaseBranch;
 
   const stopping: StoredStack = { ...stored, state: "stopping", detail: "Stopping the stack", error: null };
@@ -743,15 +401,10 @@ async function runStop(cfg: StackConfig, stored: StoredStack, mainPath: string, 
   }
 }
 
-/** Running containers of the Compose project whose working dir is the main checkout. */
+/** Running containers of the Compose project whose working dir is the main checkout; 0 when Docker is down. */
 async function runningMainContainers(mainPath: string): Promise<number> {
-  const result = await runCommand(
-    "docker",
-    ["ps", "-q", "--filter", `label=com.docker.compose.project.working_dir=${expandPath(mainPath)}`],
-    { cwd: process.cwd(), timeoutMs: 30_000 },
-  );
-  if (result.exitCode !== 0) return 0; // Docker down: nothing can be running
-  return result.stdout.split("\n").filter(Boolean).length;
+  const dir = expandPath(mainPath);
+  return (await listRunningContainers()).filter((c) => c.workingDir === dir).length;
 }
 
 /** Poll until the main stack has no running containers; returns the leftover count on timeout. */
@@ -790,7 +443,7 @@ export async function reconcileDevStack(): Promise<void> {
       await saveStack(cfg, null);
       continue;
     }
-    const mainPath = await resolveMainPath(repository);
+    const mainPath = resolveMainPath(repository);
 
     if (stored.state === "starting") {
       if (stored.pid !== null && runtime.isAlive(stored.pid)) {

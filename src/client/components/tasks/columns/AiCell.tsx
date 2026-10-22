@@ -17,7 +17,7 @@ import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { resolvePrompt, type ChoreEntry } from "@/shared/chores";
 import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
-import { AUTO_CHORE_KEYS, isAutoPaused, toggleAutoPause } from "@/shared/auto-chores";
+import { isAutoPaused, toggleAutoPause } from "@/shared/chore-skips";
 import { markSessionSeen, useSessionSeen } from "@/client/lib/seenSessions";
 import { DISCONNECTED_UI, STATE_UI, canRespawn, isSessionActive } from "@/client/lib/sessions";
 import {
@@ -40,9 +40,9 @@ const SETTLED_STATES: ClaudeSessionState[] = ["done", "stopped"];
 type PromptTarget = PromptChore | null;
 
 /** How the next chore will run: by the scheduler, or not until the task's pause is lifted. */
-function autoNote(choreKey: string, paused: boolean): string {
+function autoNote(auto: boolean, paused: boolean): string {
   if (paused) return " · paused on this task";
-  return AUTO_CHORE_KEYS.has(choreKey) ? " · starts automatically" : "";
+  return auto ? " · starts automatically" : "";
 }
 
 interface AiCellProps {
@@ -58,8 +58,9 @@ interface AiCellProps {
  */
 export function AiCell({ task, session, nextChore }: AiCellProps) {
   const { data: defsData } = useChoreDefinitionsQuery();
+  const allDefinitions = defsData?.items ?? [];
   // Two-repo chores need a second task, so they start from the selection bar only.
-  const definitions = (defsData?.items ?? []).filter((d) => !d.repoPairs);
+  const definitions = allDefinitions.filter((d) => !d.repoPairs);
   const stopSession = useStopSession();
   const respawnSession = useRespawnSession();
   const updateTask = useUpdateTask();
@@ -102,11 +103,7 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   };
 
   const respawn = () => {
-    if (!session) return;
-    respawnSession.mutate(session.id, {
-      onSuccess: () => toast.success("Session respawned"),
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
-    });
+    if (session) respawnSession.mutate(session.id);
   };
 
   const toggleAuto = () =>
@@ -126,11 +123,12 @@ export function AiCell({ task, session, nextChore }: AiCellProps) {
   };
 
   const idleNext = !shown && nextChore ? nextChore : null;
+  const idleNextAuto = !!idleNext && allDefinitions.some((d) => d.key === idleNext.key && d.auto);
 
   const tooltip = shown
     ? [`${shown.choreName} · ${ui?.label}`, shown.needs ?? shown.detail ?? shown.error].filter(Boolean).join("\n")
     : idleNext
-      ? `Next: #${idleNext.number} ${idleNext.name}${autoNote(idleNext.key, autoPaused)}\nClick to start`
+      ? `Next: #${idleNext.number} ${idleNext.name}${autoNote(idleNextAuto, autoPaused)}\nClick to start`
       : "No AI session yet";
 
   const stateContent = (

@@ -1,7 +1,7 @@
 ---
 name: chore-address-pr-comments
 description: Work through a PR's unresolved review threads and PR-level comments as one worklist, then post replies and resolve threads. Accepts a task ID, auto-detects from the branch, or takes a PR URL. Use when asked to address PR comments or review feedback.
-allowed-tools: "Bash(gh:*),Bash(python*),Bash(git:*),Bash(lavish-axi:*),Read,Grep,Glob,Edit,Write,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:jira-create-ticket),mcp__task-goblin__get_task,mcp__task-goblin__sync_task"
+allowed-tools: "Bash(gh:*),Bash(python*),Bash(git:*),Bash(lavish-axi:*),Read,Grep,Glob,Edit,Write,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:jira-create-ticket),mcp__task-goblin__get_task"
 ---
 
 # Address PR Comments
@@ -40,16 +40,14 @@ Classify each item (praise, question, suggestion, issue, nitpick) and decide val
 
 ## Report and confirm
 
-Produce the report described in `references/report-format.md`, preferably as a Lavish artifact at `.lavish/pr-comments-<prNumber>.html` with a `lavish-axi poll` in the background so the user can annotate items; otherwise print it. List the decisions that need the user first. Keep the one-line banner in the terminal either way.
+Produce the report described in `references/report-format.md`, preferably as a Lavish artifact at `.lavish/pr-comments-<prNumber>.html` (`~/.claude/skills/chore-start-task/references/lavish.md`; playbook `table`, plus `code` if you show diffs) so the user can annotate items; otherwise print it. List the decisions that need the user first. Keep the one-line banner in the terminal either way.
 
 One confirmation covers the whole plan: code changes, commit, push (local commits already on the branch included), PR description, follow-up cards, replies and resolves. Don't ask optional side questions; take the defaults above. Wait for that confirmation ("go", "execute the plan", or an equivalent from the browser) before posting or resolving anything. If the invocation already says what to do, or the only items are threads the user already answered, that counts as confirmation. If the user amends the plan, apply the amendment and execute; ask again only if it opens a new decision.
 
 ## Execute
 
-Make the code changes, commit with `Skill(hivebrite-engineering:github-commit)` and push to `headBranch`; name any pre-existing local commits that went up. Then per item: reply, then resolve. Commands are in `references/github-api.md`. When there is a task, `sync_task(id)` so task-goblin picks up the resolved threads. Report what was posted and resolved. Anything the user must act on (an auth link, a command) goes in the final message.
+Make the code changes, commit with `Skill(hivebrite-engineering:github-commit)` and push to `headBranch`; name any pre-existing local commits that went up. Then per item: reply, then resolve. Commands are in `references/github-api.md`. Report what was posted and resolved. Anything the user must act on (an auth link, a command) goes in the final message.
 
 Replies are short and human: thank praise (or just resolve a "+1"), answer questions directly, say what you changed for accepted feedback, explain your reasoning respectfully when you keep the current approach. Correctness and security over style.
 
 NEVER write `@claude` or any `@login` in a reply or comment: it queues the repo's `claude-interactive` workflow, and editing the comment doesn't stop the run.
-
-Lavish: use the globally installed `lavish-axi` binary, never `npx -y`; only open HTML you generated; keep `.lavish/` in `.git/info/exclude`.

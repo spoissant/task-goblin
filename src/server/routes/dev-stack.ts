@@ -20,14 +20,10 @@ export const devStackRoutes: Routes = {
     },
 
     // Boot the task branch in the main checkout, with the branches of
-    // body.withTaskIds merged on top; finishes in the background.
+    // body.withTaskIds (the boot checks them) merged on top; finishes in the background.
     async POST(req, params) {
       const body = req.body ? await getBody(req) : {};
-      const withTaskIds = body.withTaskIds ?? [];
-      if (!Array.isArray(withTaskIds) || !withTaskIds.every(Number.isInteger)) {
-        throw new ValidationError("withTaskIds must be an array of task IDs");
-      }
-      return json(await bootDevStack({ taskId: parseId(params.id) }, withTaskIds), 202);
+      return json(await bootDevStack({ taskId: parseId(params.id) }, body.withTaskIds), 202);
     },
 
     // Stop the stack and return the main checkout to its base branch.

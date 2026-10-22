@@ -1,6 +1,6 @@
 import { eq, sql, or, and, not, type SQL } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, worktrees, repositories } from "../../db/schema";
+import { tasks, repositories } from "../../db/schema";
 import { NotFoundError } from "./errors";
 
 /**
@@ -99,20 +99,4 @@ export async function getTaskOrThrow(id: number): Promise<typeof tasks.$inferSel
   const result = await db.select().from(tasks).where(eq(tasks.id, id));
   if (result.length === 0) throw new NotFoundError("Task", id);
   return result[0];
-}
-
-/**
- * Get the first worktree path for a repository.
- * Returns null if no worktrees configured.
- */
-export async function getWorktreePath(
-  repositoryId: number
-): Promise<string | null> {
-  const result = await db
-    .select({ path: worktrees.path })
-    .from(worktrees)
-    .where(eq(worktrees.repositoryId, repositoryId))
-    .limit(1);
-
-  return result[0]?.path ?? null;
 }

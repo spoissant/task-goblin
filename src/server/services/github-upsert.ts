@@ -1,234 +1,103 @@
-import { eq, and, inArray } from "drizzle-orm";
+/**
+ * Where a synced PR lands, decided here only. The tasks already holding it (by
+ * number) keep it. The Jira tasks it names take it too: each one its title tags
+ * as [KEY-123] (a PR may close several tickets), else the ticket its branch is
+ * named after. Otherwise it becomes a PR-only task. A PR-only task holding a PR
+ * that turns out to name a Jira task (one created after it) merges into it.
+ */
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks } from "../../db/schema";
 import { now } from "../lib/timestamp";
-import { mapPrStateToTaskStatus } from "./github-mappers";
-import type { PrTaskData } from "./github-mappers";
+import { getNotCompletedCondition } from "../lib/task-status";
+import { mapPrStateToTaskStatus, prFieldsOf, type PrTaskData } from "./github-mappers";
+import { mergeSingleTask } from "./task-merge";
 
-/**
- * Extract Jira keys from PR title in format [KEY-123]
- */
-function extractJiraKeysFromTitle(title: string): string[] {
-  const regex = /\[([A-Z][A-Z0-9]*-\d+)\]/g;
-  const keys: string[] = [];
-  let match;
-  while ((match = regex.exec(title)) !== null) {
-    keys.push(match[1]);
-  }
-  return keys;
+type TaskRow = typeof tasks.$inferSelect;
+type PrOnlyFields = Partial<Pick<TaskRow, "title" | "status">>;
+
+/** Jira keys tagged in a PR title as [KEY-123]. */
+function titleKeys(title: string): string[] {
+  return [...title.matchAll(/\[([A-Z][A-Z0-9]*-\d+)\]/g)].map((m) => m[1]);
+}
+
+/** Jira keys in a branch name: fix/ev-123-polls → EV-123. */
+function branchKeys(branch: string): string[] {
+  return [...branch.toUpperCase().matchAll(/[A-Z][A-Z0-9]*-\d+/g)].map((m) => m[0]);
 }
 
 /**
- * Update a task's PR fields by Jira key (keeps existing title)
+ * A Jira task already set to another repository is not this PR's: a hivetests
+ * PR's branch carries its alumni_connect parent's key too.
  */
-async function updateTaskByJiraKey(
-  jiraKey: string,
-  data: PrTaskData
-): Promise<"updated" | "unchanged" | "not_found"> {
-  const existing = await db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.jiraKey, jiraKey));
-
-  if (existing.length === 0) {
-    return "not_found";
-  }
-
-  const oldTask = existing[0];
-
-  // Update PR fields only, preserve title and other Jira data
-  await db
-    .update(tasks)
-    .set({
-      prNumber: data.prNumber,
-      repositoryId: data.repositoryId,
-      prState: data.prState,
-      headBranch: data.headBranch,
-      baseBranch: data.baseBranch,
-      headSha: data.headSha,
-      mergeCommitSha: data.mergeCommitSha,
-      isDraft: data.isDraft,
-      checksStatus: data.checksStatus,
-      checksDetails: data.checksDetails,
-      reviewStatus: data.reviewStatus,
-      unresolvedCommentCount: data.unresolvedCommentCount,
-      hasConflicts: data.hasConflicts,
-      onDeploymentBranches: data.onDeploymentBranches,
-      labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
-      deployedOnBranches: data.deployedOnBranches,
-      changedFiles: data.changedFiles,
-      additions: data.additions,
-      deletions: data.deletions,
-      changesByCategory: data.changesByCategory,
-      prSyncedAt: data.prSyncedAt,
-      updatedAt: data.updatedAt,
-    })
-    .where(eq(tasks.id, oldTask.id));
-
-  return "updated";
-}
+const inRepository = (repositoryId: number) => or(isNull(tasks.repositoryId), eq(tasks.repositoryId, repositoryId));
 
 /**
- * Upsert by pr_number or headBranch (original matching logic)
+ * The Jira tasks the PR names: those its title tags, else — when no Jira task
+ * holds it yet — the open ticket without a PR its branch is named after.
  */
-async function upsertPrTaskByNumber(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
-  // First, try to find by repositoryId + prNumber (if we already synced this PR)
-  const existingByNumber = await db
+async function namedJiraTasks(data: PrTaskData, holders: TaskRow[]): Promise<TaskRow[]> {
+  const tagged = titleKeys(data.title);
+  if (tagged.length > 0) {
+    const rows = await db.select().from(tasks).where(and(inArray(tasks.jiraKey, tagged), inRepository(data.repositoryId)));
+    if (rows.length > 0) return rows;
+  }
+  const keys = branchKeys(data.headBranch);
+  if (keys.length === 0 || holders.some((t) => t.jiraKey)) return [];
+  return db
     .select()
     .from(tasks)
     .where(
       and(
-        eq(tasks.repositoryId, data.repositoryId),
-        eq(tasks.prNumber, data.prNumber)
+        inArray(tasks.jiraKey, keys),
+        isNull(tasks.prNumber),
+        inRepository(data.repositoryId),
+        await getNotCompletedCondition()
       )
-    );
+    )
+    .limit(1);
+}
 
-  if (existingByNumber.length > 0) {
-    const oldTask = existingByNumber[0];
+/** Write a PR's columns onto a task, plus the title and status a task without a Jira issue takes from it. */
+export async function writePrFields(taskId: number, data: PrTaskData, extra: PrOnlyFields = {}): Promise<void> {
+  await db.update(tasks).set({ ...prFieldsOf(data), ...extra, updatedAt: now() }).where(eq(tasks.id, taskId));
+}
 
-    // Update existing, preserve Jira fields if already merged
-    await db
-      .update(tasks)
-      .set({
-        title: oldTask.jiraKey ? undefined : data.title, // Keep Jira title if merged
-        prState: data.prState,
-        headBranch: data.headBranch,
-        baseBranch: data.baseBranch,
-        headSha: data.headSha,
-        mergeCommitSha: data.mergeCommitSha,
-        isDraft: data.isDraft,
-        checksStatus: data.checksStatus,
-        checksDetails: data.checksDetails,
-        reviewStatus: data.reviewStatus,
-        unresolvedCommentCount: data.unresolvedCommentCount,
-        hasConflicts: data.hasConflicts,
-        onDeploymentBranches: data.onDeploymentBranches,
-        deployedOnBranches: data.deployedOnBranches,
-        changedFiles: data.changedFiles,
-        additions: data.additions,
-        deletions: data.deletions,
-        changesByCategory: data.changesByCategory,
-        prSyncedAt: data.prSyncedAt,
-        updatedAt: data.updatedAt,
-      })
-      .where(eq(tasks.id, oldTask.id));
+/** A task without a Jira issue shows its PR: the PR's title, and the status of its state once that changes. */
+function prOnlyFields(task: TaskRow, data: PrTaskData): PrOnlyFields {
+  if (task.prState === data.prState && task.isDraft === data.isDraft) return { title: data.title };
+  return { title: data.title, status: mapPrStateToTaskStatus(data.prState, data.isDraft) };
+}
 
-    return "updated";
-  }
-
-  // Next, try to find by repositoryId + headBranch (local entry waiting for sync)
-  const existingByBranch = await db
-    .select()
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.repositoryId, data.repositoryId),
-        eq(tasks.headBranch, data.headBranch)
-      )
-    );
-
-  if (existingByBranch.length > 0) {
-    const oldTask = existingByBranch[0];
-
-    // Update existing local entry with GitHub data, preserve Jira fields
-    await db
-      .update(tasks)
-      .set({
-        prNumber: data.prNumber,
-        title: oldTask.jiraKey ? undefined : data.title, // Keep Jira title if merged
-        prState: data.prState,
-        baseBranch: data.baseBranch,
-        headSha: data.headSha,
-        mergeCommitSha: data.mergeCommitSha,
-        isDraft: data.isDraft,
-        checksStatus: data.checksStatus,
-        checksDetails: data.checksDetails,
-        reviewStatus: data.reviewStatus,
-        unresolvedCommentCount: data.unresolvedCommentCount,
-        hasConflicts: data.hasConflicts,
-        onDeploymentBranches: data.onDeploymentBranches,
-        deployedOnBranches: data.deployedOnBranches,
-        changedFiles: data.changedFiles,
-        additions: data.additions,
-        deletions: data.deletions,
-        changesByCategory: data.changesByCategory,
-        prSyncedAt: data.prSyncedAt,
-        updatedAt: data.updatedAt,
-      })
-      .where(eq(tasks.id, oldTask.id));
-
-    return "updated";
-  }
-
-  // Check if PR title contains Jira keys matching existing tasks
-  // If so, skip creation - updateTaskByJiraKey will handle it
-  const jiraKeys = extractJiraKeysFromTitle(data.title);
-  if (jiraKeys.length > 0) {
-    const existingJiraTask = await db
-      .select({ id: tasks.id })
-      .from(tasks)
-      .where(inArray(tasks.jiraKey, jiraKeys))
-      .limit(1);
-
-    if (existingJiraTask.length > 0) {
-      return "unchanged";
-    }
-  }
-
-  // No existing entry, create new PR-only task (orphaned)
+async function insertPrTask(data: PrTaskData): Promise<void> {
   const timestamp = now();
-  await db
-    .insert(tasks)
-    .values({
-      title: data.title,
-      description: null,
-      status: mapPrStateToTaskStatus(data.prState, data.isDraft),
-      prNumber: data.prNumber,
-      repositoryId: data.repositoryId,
-      headBranch: data.headBranch,
-      baseBranch: data.baseBranch,
-      prState: data.prState,
-      isDraft: data.isDraft,
-      checksStatus: data.checksStatus,
-      checksDetails: data.checksDetails,
-      reviewStatus: data.reviewStatus,
-      unresolvedCommentCount: data.unresolvedCommentCount,
-      hasConflicts: data.hasConflicts,
-      onDeploymentBranches: data.onDeploymentBranches,
-      labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
-      deployedOnBranches: data.deployedOnBranches,
-      changedFiles: data.changedFiles,
-      additions: data.additions,
-      deletions: data.deletions,
-      changesByCategory: data.changesByCategory,
-      prSyncedAt: data.prSyncedAt,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-
-  return "new";
+  await db.insert(tasks).values({
+    ...prFieldsOf(data),
+    title: data.title,
+    status: mapPrStateToTaskStatus(data.prState, data.isDraft),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
 }
 
-/**
- * Main upsert function: handles pr_number/branch matching + Jira key matching
- */
-export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated" | "unchanged"> {
-  // 1. Standard upsert by pr_number or branch
-  const primaryResult = await upsertPrTaskByNumber(data);
-
-  // 2. Extract Jira keys from title and update matching tasks
-  const jiraKeys = extractJiraKeysFromTitle(data.title);
-  let jiraUpdated = false;
-
-  for (const key of jiraKeys) {
-    const result = await updateTaskByJiraKey(key, data);
-    if (result === "updated") {
-      jiraUpdated = true;
-    }
+/** Upsert a synced PR; "new" when it became a PR-only task. */
+export async function upsertPrTask(data: PrTaskData): Promise<"new" | "updated"> {
+  const holders = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.repositoryId, data.repositoryId), eq(tasks.prNumber, data.prNumber)));
+  const named = await namedJiraTasks(data, holders);
+  if (named.length === 0 && holders.length === 0) {
+    await insertPrTask(data);
+    return "new";
   }
 
-  // Return most significant result
-  if (primaryResult === "new") return "new";
-  if (primaryResult === "updated" || jiraUpdated) return "updated";
-  return "unchanged";
+  let targets = holders;
+  if (named.length > 0) {
+    for (const orphan of holders.filter((t) => !t.jiraKey)) await mergeSingleTask(named[0].id, orphan.id);
+    const ids = new Set(named.map((t) => t.id));
+    targets = [...named, ...holders.filter((t) => t.jiraKey && !ids.has(t.id))];
+  }
+  for (const task of targets) await writePrFields(task.id, data, task.jiraKey ? {} : prOnlyFields(task, data));
+  return "updated";
 }

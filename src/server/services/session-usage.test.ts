@@ -143,6 +143,54 @@ describe("session usage", () => {
     expect(session().turn_count).toBe(2);
   });
 
+  it("settles a session once collected after its process stopped, and recomputes it when asked", async () => {
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(`${DIR}/${SID}.jsonl`, old, old);
+    utimesSync(`${DIR}/${SID}/subagents/agent-abc.jsonl`, old, old);
+    await collectSessionUsage();
+    // the process stops after that collection
+    const stoppedAt = new Date(Date.parse(session().usage_collected_at as string) + 1).toISOString();
+    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '${stoppedAt}' WHERE id = 1`);
+    await Bun.sleep(5);
+
+    // nothing new since: dated after the stop, which settles it
+    await collectSessionUsage();
+    expect((session().usage_collected_at as string) > stoppedAt).toBe(true);
+
+    // settled: a changed transcript is not looked at any more
+    appendFileSync(`${DIR}/${SID}.jsonl`, "\n" + assistant("msg_3", "claude-opus-5-5", usage(0, 0, 0, 0)));
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(`${DIR}/${SID}.jsonl`, later, later);
+    await collectSessionUsage();
+    expect(requests()).toHaveLength(2);
+
+    // clearing usage_collected_at recomputes it
+    sqlite.exec("UPDATE claude_sessions SET usage_collected_at = NULL WHERE id = 1");
+    await collectSessionUsage();
+    expect(requests()).toHaveLength(3);
+  });
+
+  it("collects a respawned session again", async () => {
+    await collectSessionUsage();
+    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '2000-01-01T00:00:00.000Z' WHERE id = 1`);
+    appendFileSync(`${DIR}/${SID}.jsonl`, "\n" + assistant("msg_3", "claude-opus-5-5", usage(0, 0, 0, 0)));
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(`${DIR}/${SID}.jsonl`, later, later);
+    await collectSessionUsage();
+    expect(requests()).toHaveLength(2); // stopped before it was collected: settled
+
+    sqlite.exec("UPDATE claude_sessions SET process_stopped_at = NULL WHERE id = 1"); // respawned
+    await collectSessionUsage();
+    expect(requests()).toHaveLength(3);
+  });
+
+  it("never marks a session collected that has no transcript to read", async () => {
+    rmSync(PROJECTS, { recursive: true, force: true });
+    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '2026-01-01T00:00:00.000Z' WHERE id = 1`);
+    await collectSessionUsage();
+    expect(session().usage_collected_at).toBeNull();
+  });
+
   it("leaves the session cost empty when a model has no price", async () => {
     appendFileSync(`${DIR}/${SID}.jsonl`, "\n" + assistant("msg_4", "claude-unknown-9", usage(1, 1, 0, 0)));
     await collectSessionUsage();

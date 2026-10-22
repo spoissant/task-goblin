@@ -1,6 +1,6 @@
 ---
 name: chore-validate-issue
-description: Confirm a bug or issue before any work starts on it — reads the Jira ticket, looks for duplicates and for fixes already merged or in flight, checks the code on the base branch and the Datadog logs, reproduces it on a staging env in Chrome, then reports a verdict in the session. Read-only and needs no worktree or branch — it runs in the repo's main checkout and changes nothing in git, Jira or Task Goblin. Use for /chore-validate-issue <taskId>, "validate this bug", "can you reproduce this", or "is this issue real".
+description: Confirm a bug before work starts, read-only — duplicates, merged fixes, code, Datadog logs and a staging repro in Chrome, then a verdict. Use for /chore-validate-issue <taskId>, "validate this bug", "can you reproduce this", or "is this issue real".
 allowed-tools: "ToolSearch,AskUserQuestion,Agent,Bash(git:*),Bash(gh:*),Read,Grep,Glob,mcp__task-goblin__get_task,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__searchJiraIssuesUsingJql,mcp__plugin_hivebrite-engineering_datadog__search_datadog_logs,mcp__plugin_hivebrite-engineering_datadog__analyze_datadog_logs,mcp__claude-in-chrome__*"
 ---
 

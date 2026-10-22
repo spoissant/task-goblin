@@ -19,6 +19,7 @@ import {
 } from "@/client/components/ui/table";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { SaveOnBlurInput } from "./SaveOnBlurInput";
 
 export function TeamChannelList() {
   const { data, isLoading } = useTeamChannelsQuery();
@@ -28,7 +29,6 @@ export function TeamChannelList() {
 
   const [newSlug, setNewSlug] = useState("");
   const [newChannel, setNewChannel] = useState("");
-  const [editValues, setEditValues] = useState<Record<number, { slug?: string; channel?: string }>>({});
 
   const handleCreate = () => {
     if (!newSlug.trim() || !newChannel.trim()) {
@@ -48,12 +48,7 @@ export function TeamChannelList() {
     );
   };
 
-  const handleBlur = (id: number, field: "slug" | "channel") => {
-    const edit = editValues[id];
-    if (!edit) return;
-    const val = field === "slug" ? edit.slug : edit.channel;
-    if (val === undefined) return;
-    const update = field === "slug" ? { githubTeamSlug: val } : { slackChannel: val };
+  const save = (id: number, update: { githubTeamSlug?: string; slackChannel?: string }) => {
     updateTeamChannel.mutate(
       { id, ...update },
       { onError: () => toast.error("Failed to update mapping") }
@@ -88,31 +83,17 @@ export function TeamChannelList() {
               {data.items.map((tc) => (
                 <TableRow key={tc.id}>
                   <TableCell>
-                    <Input
+                    <SaveOnBlurInput
                       className="h-7 text-sm font-mono w-48"
-                      value={editValues[tc.id]?.slug ?? tc.githubTeamSlug}
-                      onChange={(e) =>
-                        setEditValues((prev) => ({
-                          ...prev,
-                          [tc.id]: { ...prev[tc.id], slug: e.target.value },
-                        }))
-                      }
-                      onBlur={() => handleBlur(tc.id, "slug")}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      value={tc.githubTeamSlug}
+                      onSave={(githubTeamSlug) => save(tc.id, { githubTeamSlug })}
                     />
                   </TableCell>
                   <TableCell>
-                    <Input
+                    <SaveOnBlurInput
                       className="h-7 text-sm font-mono w-48"
-                      value={editValues[tc.id]?.channel ?? tc.slackChannel}
-                      onChange={(e) =>
-                        setEditValues((prev) => ({
-                          ...prev,
-                          [tc.id]: { ...prev[tc.id], channel: e.target.value },
-                        }))
-                      }
-                      onBlur={() => handleBlur(tc.id, "channel")}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      value={tc.slackChannel}
+                      onSave={(slackChannel) => save(tc.id, { slackChannel })}
                     />
                   </TableCell>
                   <TableCell>

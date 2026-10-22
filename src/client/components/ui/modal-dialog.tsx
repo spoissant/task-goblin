@@ -13,7 +13,7 @@ const sizeClasses = {
   md: "sm:max-w-lg",
 } as const;
 
-export interface ModalDialogProps {
+interface ModalDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;

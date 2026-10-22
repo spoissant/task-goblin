@@ -1,65 +1,59 @@
 /**
- * Periodic sync so the pipeline advances without anyone clicking Sync: pull
+ * The sync pass, so the pipeline advances without anyone clicking Sync: pull
  * Jira and GitHub, then run the merge watch, the move of merged tickets to
  * Ready to Prod, the merge gate and the chore scheduler on the fresh state.
- * The Sync button ends with the same after-sync
- * steps (runAfterSyncSteps), then restarts the countdown. Started from
- * startClaudeRuntime.
+ * It runs every 5 minutes (started from startClaudeRuntime) and on POST /sync,
+ * which then restarts the countdown. One pass at a time: a call while one runs
+ * gets that pass's result.
  */
 import { syncJiraItems } from "./jira-sync";
 import { syncGitHubPullRequests } from "./github-sync";
 import { refreshWorktreeGitStatuses } from "./task-worktrees";
-import { autoMatchAndMerge } from "./task-merge";
 import { runMergeWatch } from "./merge-watch";
 import { runMergeJira } from "./merge-jira";
 import { runMergeGate } from "./merge-gate";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
 import { runSteps, type Step } from "../lib/steps";
+import type { SyncRunResult } from "@/shared/types";
 
 export const SYNC_INTERVAL_MS = 5 * 60_000;
 const FIRST_RUN_DELAY_MS = 30_000;
 
 let timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
-let running = false;
 let nextRunAt: string | null = null;
+let pass: Promise<SyncRunResult> | null = null;
 
-const SYNC_STEPS: Step[] = [
-  ["jira", syncJiraItems],
-  ["github", syncGitHubPullRequests],
-  ["worktrees", refreshWorktreeGitStatuses],
-  ["match", autoMatchAndMerge],
-  ["broadcast", async () => broadcast("task")],
-];
-
-/** What every sync ends with, periodic or from the Sync button. Each step runs on its own: a failing sync still lets the gate and the chores run. */
-const AFTER_SYNC_STEPS: Step[] = [
-  ["merge-watch", runMergeWatch],
-  ["merge-jira", runMergeJira],
-  ["merge-gate", runMergeGate],
-  ["chores", runChoreScheduler],
-];
-
-let afterSyncQueue: Promise<void> = Promise.resolve();
-
-/** Run the after-sync steps, queued behind any run in progress so two never overlap. */
-export function runAfterSyncSteps(): Promise<void> {
-  afterSyncQueue = afterSyncQueue.then(async () => {
-    await runSteps("sync", AFTER_SYNC_STEPS);
-  });
-  return afterSyncQueue;
+/** Each step runs on its own: a failing sync still lets the gate and the chores run. */
+async function runPass(): Promise<SyncRunResult> {
+  const result: SyncRunResult = { jira: null, github: null, errors: [] };
+  const steps: Step[] = [
+    ["jira", async () => { result.jira = await syncJiraItems(); }],
+    ["github", async () => { result.github = await syncGitHubPullRequests(); }],
+    ["worktrees", refreshWorktreeGitStatuses],
+    ["broadcast", async () => broadcast("task")],
+    ["merge-watch", runMergeWatch],
+    ["merge-jira", runMergeJira],
+    ["merge-gate", runMergeGate],
+    ["chores", runChoreScheduler],
+  ];
+  result.errors = await runSteps("sync", steps);
+  return result;
 }
 
-/** One pass. */
-export async function runPeriodicSync(): Promise<void> {
-  if (running) return;
-  running = true;
-  try {
-    await runSteps("sync", SYNC_STEPS);
-    await runAfterSyncSteps();
-  } finally {
-    running = false;
-  }
+/** One pass, or the one already running. */
+function runSync(): Promise<SyncRunResult> {
+  pass ??= runPass().finally(() => {
+    pass = null;
+  });
+  return pass;
+}
+
+/** POST /sync: a pass (or the one running), then the next periodic pass comes a full interval later. */
+export async function syncNow(): Promise<SyncRunResult> {
+  const result = await runSync();
+  restartSyncTimer();
+  return result;
 }
 
 /** When the next periodic pass starts, or null when the scheduler is stopped. */
@@ -73,7 +67,7 @@ function scheduleNext(delayMs: number): void {
 
 function tick(): void {
   scheduleNext(SYNC_INTERVAL_MS);
-  void runPeriodicSync();
+  void runSync();
 }
 
 function startInterval(): void {
@@ -100,8 +94,8 @@ export function startSyncScheduler(): void {
   timer = first;
 }
 
-/** After a manual sync: the next periodic pass comes a full interval from now. Does nothing while stopped. */
-export function restartSyncTimer(): void {
+/** The next periodic pass comes a full interval from now. Does nothing while stopped. */
+function restartSyncTimer(): void {
   if (!timer) return;
   clearTimer();
   scheduleNext(SYNC_INTERVAL_MS);

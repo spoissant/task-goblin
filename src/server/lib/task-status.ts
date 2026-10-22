@@ -1,29 +1,13 @@
 import { sql, or, and, isNotNull, isNull, eq, asc } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, settings, statusCategories } from "../../db/schema";
-
-/**
- * Status Category - color + completion state + display order
- */
-export interface StatusCategory {
-  id: number;
-  name: string;
-  color: string;
-  done: boolean;
-  displayOrder: number;
-  jiraMappings: string[];
-}
-
-/**
- * Combined status settings response
- */
-export interface StatusSettings {
-  categories: StatusCategory[];
-  defaultColor: string;
-}
+import { tasks, statusCategories } from "../../db/schema";
+import { getSetting, setSetting } from "./settings";
+import { parseStringList } from "@/shared/json";
+import type { StatusCategory, StatusSettings } from "@/shared/types";
 
 // Default values
 const DEFAULT_COLOR = "bg-slate-500";
+const DEFAULT_COLOR_SETTING = "status_default_color";
 
 // Default categories when no data exists
 const DEFAULT_CATEGORIES: Omit<StatusCategory, "id">[] = [
@@ -47,16 +31,6 @@ let defaultColorCache: string | null = null;
 export function invalidateStatusConfigCache(): void {
   categoriesCache = null;
   defaultColorCache = null;
-}
-
-// Helper to parse jiraMappings JSON
-function parseJiraMappings(value: string | null): string[] {
-  if (!value) return [];
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [];
-  }
 }
 
 /**
@@ -84,7 +58,7 @@ export async function getStatusCategories(): Promise<StatusCategory[]> {
     color: row.color,
     done: row.done === 1,
     displayOrder: row.displayOrder,
-    jiraMappings: parseJiraMappings(row.jiraMappings),
+    jiraMappings: parseStringList(row.jiraMappings),
   }));
 
   return categoriesCache;
@@ -98,12 +72,7 @@ export async function getDefaultStatusColor(): Promise<string> {
     return defaultColorCache;
   }
 
-  const result = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "status_default_color"));
-
-  defaultColorCache = result[0]?.value || DEFAULT_COLOR;
+  defaultColorCache = (await getSetting(DEFAULT_COLOR_SETTING)) || DEFAULT_COLOR;
   return defaultColorCache;
 }
 
@@ -144,22 +113,7 @@ export async function saveStatusCategories(categories: Omit<StatusCategory, "id"
  * Save default color
  */
 export async function saveDefaultColor(color: string): Promise<void> {
-  const existing = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "status_default_color"));
-
-  if (existing.length > 0) {
-    await db
-      .update(settings)
-      .set({ value: color })
-      .where(eq(settings.key, "status_default_color"));
-  } else {
-    await db
-      .insert(settings)
-      .values({ key: "status_default_color", value: color });
-  }
-
+  await setSetting(DEFAULT_COLOR_SETTING, color);
   invalidateStatusConfigCache();
 }
 
@@ -206,7 +160,6 @@ export async function isStatusValid(status: string): Promise<boolean> {
   const s = status.toLowerCase();
   return categories.some((c) => c.name.toLowerCase() === s);
 }
-
 
 /**
  * Get SQL condition for completed tasks based on dynamic config
@@ -263,7 +216,7 @@ export async function getNotCompletedCondition(): Promise<ReturnType<typeof sql>
  * Generate SQL CASE expression for status ordering from categories
  * Maps all jiraMappings to their corresponding displayOrder values
  */
-export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>> {
+async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>> {
   const categories = await getStatusCategories();
   const defaultOrder = 999;
 
@@ -299,5 +252,3 @@ export async function getTaskOrderExprsAsync(): Promise<ReturnType<typeof sql>[]
     sql`COALESCE(${tasks.highPriority}, 0) DESC`,
   ];
 }
-
-

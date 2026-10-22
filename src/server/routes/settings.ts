@@ -1,130 +1,72 @@
-import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { settings } from "../../db/schema";
-import { json, created } from "../response";
+import { json } from "../response";
 import { ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
+import { getAllSettings, getSetting, setSetting } from "../lib/settings";
 import {
   getStatusCategories,
   getDefaultStatusColor,
   getStatusSettings,
   saveStatusCategories,
   saveDefaultColor,
-  type StatusCategory,
 } from "../lib/task-status";
+import type { StatusCategory } from "@/shared/types";
 import type { Routes } from "../router";
+
+const JIRA_CONFIG_KEYS = ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"] as const;
+
+// A setting's new value from the body: text, or null (or missing) to clear it.
+function settingValue(body: Record<string, unknown>, field: string): string | null {
+  const value = body[field] ?? null;
+  if (value !== null && typeof value !== "string") {
+    throw new ValidationError(`${field} must be a string or null`);
+  }
+  return value;
+}
+
+async function getJiraConfig(): Promise<Record<string, string | null>> {
+  const config: Record<string, string | null> = {};
+  for (const key of JIRA_CONFIG_KEYS) config[key] = await getSetting(key);
+  return config;
+}
 
 export const settingsRoutes: Routes = {
   "/api/v1/settings": {
     async GET() {
-      const items = await db.select().from(settings);
-      // Convert to key-value object
-      const result: Record<string, string | null> = {};
-      for (const item of items) {
-        result[item.key] = item.value;
-      }
-      return json(result);
+      return json(await getAllSettings());
     },
   },
 
   "/api/v1/settings/:key": {
     async PUT(req, params) {
-      const { key } = params;
-      const body = await getBody(req);
-
-      const existing = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, key));
-
-      if (existing.length === 0) {
-        // Create new
-        const result = await db
-          .insert(settings)
-          .values({ key, value: body.value ?? null })
-          .returning();
-        return created(result[0]);
-      }
-
-      const result = await db
-        .update(settings)
-        .set({ value: body.value ?? null })
-        .where(eq(settings.key, key))
-        .returning();
-
-      return json(result[0]);
+      const value = settingValue(await getBody(req), "value");
+      await setSetting(params.key, value);
+      return json({ key: params.key, value });
     },
   },
 
   // Jira config bundle
   "/api/v1/settings/jira/config": {
     async GET() {
-      const jiraKeys = ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"];
-      const items = await db.select().from(settings);
-
-      const config: Record<string, string | null> = {};
-      for (const item of items) {
-        if (jiraKeys.includes(item.key)) {
-          config[item.key] = item.value;
-        }
-      }
-
-      return json(config);
+      return json(await getJiraConfig());
     },
 
     async PUT(req) {
       const body = await getBody(req);
-
-      const validKeys = ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"];
-      const updates: { key: string; value: string | null }[] = [];
-
-      for (const key of validKeys) {
-        if (body[key] !== undefined) {
-          updates.push({ key, value: body[key] });
-        }
-      }
-
-      for (const { key, value } of updates) {
-        const existing = await db
-          .select()
-          .from(settings)
-          .where(eq(settings.key, key));
-
-        if (existing.length > 0) {
-          await db.update(settings).set({ value }).where(eq(settings.key, key));
-        } else {
-          await db.insert(settings).values({ key, value });
-        }
-      }
-
-      // Return updated config
-      const items = await db.select().from(settings);
-      const config: Record<string, string | null> = {};
-      for (const item of items) {
-        if (validKeys.includes(item.key)) {
-          config[item.key] = item.value;
-        }
-      }
-
-      return json(config);
+      const updates = JIRA_CONFIG_KEYS.filter((key) => body[key] !== undefined).map((key) => [key, settingValue(body, key)] as const);
+      for (const [key, value] of updates) await setSetting(key, value);
+      return json(await getJiraConfig());
     },
   },
 
   // Combined status settings (categories + defaultColor)
   "/api/v1/settings/status-settings": {
     async GET() {
-      const settings = await getStatusSettings();
-      return json(settings);
+      return json(await getStatusSettings());
     },
   },
 
-  // Status Categories
+  // Status Categories (read them from status-settings)
   "/api/v1/settings/status-categories": {
-    async GET() {
-      const categories = await getStatusCategories();
-      return json({ items: categories });
-    },
-
     async PUT(req) {
       const body = await getBody(req);
 

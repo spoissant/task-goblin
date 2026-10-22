@@ -1,6 +1,6 @@
 ---
 name: chore-explain-me-why
-description: Explain a PR to its owner until they understand it — what changes and how it works, who benefits, why it is the right fix, the concepts it relies on, and the alternatives it beat — then answer follow-up questions. Read-only, it teaches and does not review. Use for /chore-explain-me-why <task ID or PR url>, "explain this PR", "help me understand this PR", or "why is this the right change".
+description: Teach a PR to its owner — what changes, why it is the right fix, the alternatives it beat; read-only, no review. Use for /chore-explain-me-why <task ID or PR url>, "explain this PR", "help me understand this PR", or "why is this the right change".
 allowed-tools: "ToolSearch,Bash(gh:*),Bash(git:*),Read,Grep,Glob,Skill(checkout-branch),mcp__task-goblin__get_task,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources"
 ---
 

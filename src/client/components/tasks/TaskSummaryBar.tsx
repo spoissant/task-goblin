@@ -1,66 +1,41 @@
-import { TooltipProvider } from "@/client/components/ui/tooltip";
 import {
   Table,
   TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { SUMMARY_COLUMNS, getColumn } from "./columns";
-import { getPrUrl } from "./columns/cells";
-import type { TaskDetail, Repository } from "@/client/lib/types";
+import { ColumnCells, ColumnHeads, SUMMARY_COLUMNS } from "./columns";
+import { getPrUrl } from "@/client/lib/links";
+import type { TaskDetail } from "@/shared/types";
 
 interface TaskSummaryBarProps {
   task: TaskDetail;
-  repo?: Repository;
   jiraHost?: string;
 }
 
-export function TaskSummaryBar({ task, repo, jiraHost }: TaskSummaryBarProps) {
-  const prUrl = getPrUrl(repo, task.prNumber);
-
+export function TaskSummaryBar({ task, jiraHost }: TaskSummaryBarProps) {
   // Context for column renderers (linkToTask = false since we're on the detail page)
   const columnContext = {
-    repo,
+    repo: task.repository,
     jiraHost,
-    prUrl,
+    prUrl: getPrUrl(task.repository, task.prNumber),
     linkToTask: false,
   };
 
   return (
-    <TooltipProvider>
-      <div className="rounded-lg border bg-card overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {SUMMARY_COLUMNS.map((colKey) => {
-                const col = getColumn(colKey);
-                return (
-                  <TableHead
-                    key={col.key}
-                    style={col.width ? { width: col.width } : undefined}
-                  >
-                    {col.header}
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow>
-              {SUMMARY_COLUMNS.map((colKey) => {
-                const col = getColumn(colKey);
-                return (
-                  <TableCell key={col.key} className={col.cellClassName}>
-                    {col.render(task, columnContext)}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
-    </TooltipProvider>
+    <div className="rounded-lg border bg-card overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <ColumnHeads columns={SUMMARY_COLUMNS} />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <ColumnCells task={task} columns={SUMMARY_COLUMNS} context={columnContext} />
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
   );
 }

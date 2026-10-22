@@ -1,7 +1,7 @@
 ---
 name: chore-hermetic-tests
-description: Write the hermetic Playwright specs a hivetests sub-task's description plans for its alumni_connect parent, in the sub-task's worktree (a branch named like the parent's, so alumni_connect's build runs it and the two PRs merge together), then open the draft hivetests PR. Started by /chore-start-task while the parent is implemented; AI QA on the sub-task runs the specs later. Use for /chore-hermetic-tests <subtaskId>.
-allowed-tools: "Bash,Read,Edit,Write,Grep,Glob,Agent,AskUserQuestion,ToolSearch,Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),mcp__task-goblin__get_task,mcp__task-goblin__sync_task,mcp__task-goblin__sync,mcp__task-goblin__create_task,mcp__task-goblin__prepare_task_worktree,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue"
+description: Write the hermetic Playwright specs a hivetests sub-task plans for its alumni_connect parent, then open the draft hivetests PR; started by /chore-start-task. Use for /chore-hermetic-tests <subtaskId>.
+allowed-tools: "Bash,Read,Edit,Write,Grep,Glob,Agent,AskUserQuestion,ToolSearch,Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),mcp__task-goblin__get_task,mcp__task-goblin__sync_task,mcp__task-goblin__prepare_task_worktree,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue"
 ---
 
 # Hermetic Specs
@@ -26,7 +26,7 @@ When the parent's worktree already registers every seed the specs call (`Hermeti
 
 From this worktree: `Skill(hivebrite-engineering:github-commit)` (the repo's style is `test(<feature>): <what> [<sub-task key>]`), `git push -u origin <branch>`, then `Skill(hivebrite-engineering:github-pr)` with the sub-task key, as a draft, with its Step 4 quality suggestions skipped. The PR title carries the sub-task key, which is how Task Goblin pairs the PR with the sub-task. The body follows the repo's template, links the parent's PR (or names its branch), and says the two merge together: merging alumni_connect squash-merges this one, so it is never merged by hand. An existing PR: push to it.
 
-`sync`, then `get_task(id)` should carry the PR. If it does not, `create_task("Hivebrite", "hivetests", <prNumber>)`.
+Then `sync_task(id)`, which links the PR opened from this branch to the sub-task: the `task` it returns should carry the PR. If it does not, put its `errors` in the report.
 
 ## 5. Report
 

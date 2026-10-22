@@ -17,7 +17,7 @@ export interface SavedSearch {
  * AND two search queries. The search syntax has no parentheses, so the OR groups
  * are distributed: (a | b) & (c | d) becomes a & c | a & d | b & c | b & d.
  */
-export function andQueries(left: string, right: string): string {
+function andQueries(left: string, right: string): string {
   const groups = (q: string) => q.split("|").map((g) => g.trim()).filter(Boolean);
   const l = groups(left);
   const r = groups(right);

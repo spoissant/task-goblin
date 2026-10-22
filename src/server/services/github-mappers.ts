@@ -1,68 +1,68 @@
 import { now } from "../lib/timestamp";
-import type { ReviewStatus } from "@/shared/review-status";
-import type { ChangesByCategory } from "@/shared/types";
+import type { tasks } from "../../db/schema";
+import type { ChecksResult, GqlPrCore } from "./github-graphql";
 
-export interface ChecksResult {
-  checksStatus: string | null;
-  checksDetails: string | null;
+type TaskRow = typeof tasks.$inferSelect;
+
+/**
+ * The task columns a PR sets. Every write of a PR onto a task (the sync, a
+ * manual link, a task merge) copies exactly this list, so none leaves one stale.
+ */
+export const PR_FIELDS = [
+  "prNumber",
+  "repositoryId",
+  "prState",
+  "headBranch",
+  "baseBranch",
+  "headSha",
+  "mergeCommitSha",
+  "isDraft",
+  "checksStatus",
+  "checksDetails",
+  "reviewStatus",
+  "unresolvedCommentCount",
+  "hasConflicts",
+  "changedFiles",
+  "additions",
+  "deletions",
+  "changesByCategory",
+  "prSyncedAt",
+  "onDeploymentBranches",
+  "labelOnlyDeploymentBranches",
+  "deployedOnBranches",
+] as const satisfies readonly (keyof TaskRow)[];
+
+type PrFields = Pick<TaskRow, (typeof PR_FIELDS)[number]>;
+
+/** The PR columns of a task row, or of a fetched PR. */
+export function prFieldsOf(source: PrFields): PrFields {
+  return Object.fromEntries(PR_FIELDS.map((field) => [field, source[field]])) as PrFields;
 }
 
-export interface PrTaskData {
+/** A PR as fetched from GitHub: its title and every PR column. */
+export interface PrTaskData extends PrFields {
+  title: string;
   prNumber: number;
   repositoryId: number;
-  title: string;
   prState: string;
   headBranch: string;
-  baseBranch: string | null;
-  headSha: string | null;
-  mergeCommitSha: string | null;
   isDraft: number;
-  checksStatus: string | null;
-  checksDetails: string | null;
   reviewStatus: string; // JSON ReviewStatus
   unresolvedCommentCount: number;
   hasConflicts: number;
-  changedFiles: number | null;
-  additions: number | null;
-  deletions: number | null;
-  changesByCategory: string | null; // JSON ChangesByCategory
   prSyncedAt: string;
-  updatedAt: string;
-  onDeploymentBranches: string | null;
-  labelOnlyDeploymentBranches: string | null;
-  deployedOnBranches: string | null;
 }
 
-export interface GqlPrLike {
-  number: number;
-  title: string;
-  /** GraphQL PullRequestState: OPEN | CLOSED | MERGED */
-  state: string;
-  isDraft: boolean;
-  /** GraphQL MergeableState: MERGEABLE | CONFLICTING | UNKNOWN */
-  mergeable: string;
-  additions: number | null;
-  deletions: number | null;
-  changedFiles: number | null;
-  changesByCategory: ChangesByCategory | null;
-  headRefName: string | null;
-  headRefOid?: string | null;
-  mergeCommitOid?: string | null;
-  baseRefName: string | null;
-  unresolvedCommentCount: number;
-  reviewStatus: ReviewStatus;
-}
+const branchList = (branches: string[]) => (branches.length > 0 ? JSON.stringify(branches) : null);
 
 export function mapGqlPrToTaskData(
-  pr: GqlPrLike,
+  pr: GqlPrCore,
   repositoryId: number,
   checksResult: ChecksResult,
-  onDeploymentBranches: string[] = [],
-  deployedOnBranches: string[] = [],
-  labelOnlyDeploymentBranches: string[] = []
+  onDeploymentBranches: string[],
+  deployedOnBranches: string[],
+  labelOnlyDeploymentBranches: string[]
 ): PrTaskData {
-  const timestamp = now();
-
   return {
     prNumber: pr.number,
     repositoryId,
@@ -71,8 +71,8 @@ export function mapGqlPrToTaskData(
     prState: pr.state.toLowerCase(),
     headBranch: pr.headRefName || "",
     baseBranch: pr.baseRefName || null,
-    headSha: pr.headRefOid ?? null,
-    mergeCommitSha: pr.mergeCommitOid ?? null,
+    headSha: pr.headRefOid,
+    mergeCommitSha: pr.mergeCommitOid,
     isDraft: pr.isDraft ? 1 : 0,
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,
@@ -81,15 +81,14 @@ export function mapGqlPrToTaskData(
     // UNKNOWN means GitHub is still computing the merge; treated as no conflict,
     // matching REST's null mergeable.
     hasConflicts: pr.mergeable === "CONFLICTING" ? 1 : 0,
-    changedFiles: pr.changedFiles ?? null,
-    additions: pr.additions ?? null,
-    deletions: pr.deletions ?? null,
+    changedFiles: pr.changedFiles,
+    additions: pr.additions,
+    deletions: pr.deletions,
     changesByCategory: pr.changesByCategory ? JSON.stringify(pr.changesByCategory) : null,
-    prSyncedAt: timestamp,
-    updatedAt: timestamp,
-    onDeploymentBranches: onDeploymentBranches.length > 0 ? JSON.stringify(onDeploymentBranches) : null,
-    labelOnlyDeploymentBranches: labelOnlyDeploymentBranches.length > 0 ? JSON.stringify(labelOnlyDeploymentBranches) : null,
-    deployedOnBranches: deployedOnBranches.length > 0 ? JSON.stringify(deployedOnBranches) : null,
+    prSyncedAt: now(),
+    onDeploymentBranches: branchList(onDeploymentBranches),
+    labelOnlyDeploymentBranches: branchList(labelOnlyDeploymentBranches),
+    deployedOnBranches: branchList(deployedOnBranches),
   };
 }
 

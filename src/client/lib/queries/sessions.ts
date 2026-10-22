@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api } from "../api";
 import type {
   ClaudeSession,
@@ -12,7 +13,7 @@ import type {
 } from "../types";
 import { taskKeys } from "./tasks";
 
-export const sessionKeys = {
+const sessionKeys = {
   all: ["sessions"] as const,
   latest: () => [...sessionKeys.all, "latest"] as const,
   recent: (pagination: { limit: number; offset: number }) => [...sessionKeys.all, "recent", pagination] as const,
@@ -63,16 +64,19 @@ export function useReviewSessionsQuery() {
   });
 }
 
-/** A colleague's PR by URL, or one of your own PRs through its task's code-review chore. */
+/**
+ * A colleague's PR by URL, or one of your own PRs through its task's
+ * code-review chore. The server picks the chore's model and effort.
+ */
 export type StartReviewInput = { prUrl: string } | { taskId: number };
 
 export function useStartReviewSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ model, effort, ...input }: StartReviewInput & { model: SessionModel; effort: SessionEffort }) =>
+    mutationFn: (input: StartReviewInput) =>
       "prUrl" in input
-        ? api.post<ClaudeSession>("/review-sessions", { prUrl: input.prUrl, model, effort })
-        : api.post<ClaudeSession>(`/tasks/${input.taskId}/sessions`, { choreKey: "code-review-pr", model, effort }),
+        ? api.post<ClaudeSession>("/review-sessions", { prUrl: input.prUrl })
+        : api.post<ClaudeSession>(`/tasks/${input.taskId}/sessions`, { choreKey: "code-review-pr" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
     },
@@ -87,7 +91,7 @@ export function useTaskSessionsQuery(taskId: number) {
   });
 }
 
-export interface StartSessionInput {
+interface StartSessionInput {
   taskId: number;
   prompt: string;
   model: SessionModel;
@@ -120,12 +124,15 @@ export function useStopSession() {
   });
 }
 
+/** Restart a session's lost process; says how it went in a toast. */
 export function useRespawnSession() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.post<ClaudeSession>(`/sessions/${id}/respawn`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+      toast.success("Session respawned");
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
   });
 }

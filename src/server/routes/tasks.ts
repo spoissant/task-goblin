@@ -1,11 +1,9 @@
 import { eq, and, sql, or } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
-import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow } from "../lib/queries";
+import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow, getTaskWithRepository } from "../lib/queries";
 import { json, created, noContent } from "../response";
-import { AppError, NotFoundError, ValidationError } from "../lib/errors";
-import { GitHubApiError } from "../services/github-sync";
-import { GitHubConfigError } from "../lib/github-client";
+import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
@@ -17,6 +15,8 @@ import {
   getTaskOrderExprsAsync,
   isStatusValid,
 } from "../lib/task-status";
+import { teardownBeforeTaskDelete } from "../services/task-worktrees";
+import type { Routes } from "../router";
 
 async function validateManualStatus(status: string) {
   if (!(await isStatusValid(status))) {
@@ -25,23 +25,6 @@ async function validateManualStatus(status: string) {
       `Manual task status must be one of: ${statuses.map((s) => s.name).join(", ")}`
     );
   }
-}
-import { teardownBeforeTaskDelete } from "../services/task-worktrees";
-import { linkPrByBranch, linkPrToTask } from "../services/task-sync";
-import type { Routes } from "../router";
-
-function toGitHubAppError(err: unknown): unknown {
-  if (err instanceof GitHubConfigError) {
-    return new AppError(err.message, 400, err.code);
-  }
-  if (err instanceof GitHubApiError) {
-    const statusCode =
-      err.code === "GITHUB_AUTH_FAILED" ? 401 :
-      err.code === "GITHUB_PR_NOT_FOUND" ? 404 :
-      err.code === "GITHUB_REPO_NOT_CONFIGURED" ? 400 : 502;
-    return new AppError(err.message, statusCode, err.code);
-  }
-  return err;
 }
 
 export const taskRoutes: Routes = {
@@ -172,22 +155,9 @@ export const taskRoutes: Routes = {
   "/api/v1/tasks/:id": {
     async GET(_req, params) {
       const id = parseId(params.id);
-      const task = await getTaskOrThrow(id);
-
-      // Get repository if task has one
-      let repository = null;
-      if (task.repositoryId) {
-        const repoResult = await db
-          .select()
-          .from(repositories)
-          .where(eq(repositories.id, task.repositoryId));
-        repository = repoResult[0] || null;
-      }
-
-      return json({
-        ...task,
-        repository,
-      });
+      const task = await getTaskWithRepository(id);
+      if (!task) throw new NotFoundError("Task", id);
+      return json(task);
     },
 
     async PATCH(req, params) {
@@ -247,54 +217,6 @@ export const taskRoutes: Routes = {
       await db.delete(tasks).where(eq(tasks.id, id));
 
       return noContent();
-    },
-  },
-
-  // Manually attach a PR (by GitHub URL) to an existing task
-  "/api/v1/tasks/:id/assign-pr": {
-    async POST(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-      const url = typeof body.url === "string" ? body.url.trim() : "";
-
-      if (!url) {
-        throw new ValidationError("url is required");
-      }
-
-      const match = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/);
-      if (!match) {
-        throw new ValidationError(
-          "Invalid PR URL. Expected format: https://github.com/<owner>/<repo>/pull/<number>"
-        );
-      }
-
-      const [, owner, repo, numberStr] = match;
-      const prNumber = parseInt(numberStr, 10);
-
-      const existing = await getTaskOrThrow(id);
-      if (existing.prNumber) {
-        throw new ValidationError("Task already has a PR assigned");
-      }
-
-      try {
-        return json(await linkPrToTask(id, owner, repo, prNumber));
-      } catch (err) {
-        throw toGitHubAppError(err);
-      }
-    },
-  },
-
-  // Link the PR opened from the task's branch (its headBranch, else its worktree's
-  // branch). A no-op that returns the task when it already has a PR, has no
-  // branch or repository, or no PR exists for the branch yet.
-  "/api/v1/tasks/:id/link-pr-by-branch": {
-    async POST(_req, params) {
-      const id = parseId(params.id);
-      try {
-        return json(await linkPrByBranch(id));
-      } catch (err) {
-        throw toGitHubAppError(err);
-      }
     },
   },
 

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "fs";
 import { db, sqlite } from "../../db";
-import { claudeSessionTasks, claudeSessions, repositories, statusCategories, taskWorktrees, tasks, worktrees } from "../../db/schema";
+import { claudeSessionTasks, claudeSessions, repositories, statusCategories, taskWorktrees, tasks } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import { setSetting } from "../lib/settings";
 import { invalidateStatusConfigCache } from "../lib/task-status";
 import { CHORE_MODELS_KEY } from "@/shared/chore-models";
 import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
-import { setCapacityCheck, startChoreSession } from "./claude-sessions";
+import { startChoreSession } from "./claude-sessions";
 import {
   MAX_AUTO_ACTIVE,
   MAX_AUTO_RUNS_PER_DAY,
@@ -85,7 +85,7 @@ describe("runChoreScheduler", () => {
   });
 
   beforeEach(async () => {
-    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories", "settings", "status_categories"]) {
+    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "repositories", "settings", "status_categories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
     invalidateStatusConfigCache();
@@ -96,14 +96,9 @@ describe("runChoreScheduler", () => {
       { name: "Backlog", color: "gray", done: 0, displayOrder: 3, jiraMappings: "[]" },
     ]);
     await db.insert(repositories).values([
-      { id: 1, owner: "hb", repo: "alumni_connect", enabled: 1, deploymentBranches: JSON.stringify(["staging", "qa"]) },
-      { id: 2, owner: "hb", repo: "front-monorepo", enabled: 1, deploymentBranches: JSON.stringify(["qa"]) },
+      { id: 1, owner: "hb", repo: "alumni_connect", enabled: 1, localPath: MAIN_PATH, deploymentBranches: JSON.stringify(["staging", "qa"]) },
+      { id: 2, owner: "hb", repo: "front-monorepo", enabled: 1, localPath: MAIN_PATH, deploymentBranches: JSON.stringify(["qa"]) },
     ]);
-    await db.insert(worktrees).values([
-      { id: 1, repositoryId: 1, path: MAIN_PATH, createdAt: TS, updatedAt: TS },
-      { id: 2, repositoryId: 2, path: MAIN_PATH, createdAt: TS, updatedAt: TS },
-    ]);
-    setCapacityCheck(async () => "ok");
     let spawns = 0; // shortId is unique per session
     setCommandRunner(async (cmd, args) => {
       if (cmd === "claude" && args[0] === "--bg") return ok(`backgrounded · ${String(++spawns).padStart(8, "0")}`);
@@ -240,17 +235,18 @@ describe("runChoreScheduler", () => {
     expect(await sessions()).toHaveLength(0);
   });
 
-  it("auto-deploys to staging only when the repo has that branch", async () => {
+  it("auto-deploys to staging only when the repo has that branch, every task of the repo in one run", async () => {
     const deployable: TaskOverrides = { status: "Code Review", checksStatus: "passing" };
     await seedTask(1, deployable);
-    await seedTask(2, { ...deployable, repositoryId: 2 });
+    await seedTask(2, deployable);
+    await seedTask(3, { ...deployable, repositoryId: 2 });
 
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
     await settle();
 
     const rows = await sessions();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ taskId: 1, choreKey: "deploy-test-env", prompt: "/chore-deploy-to-test-env 1 staging" });
+    expect(rows[0]).toMatchObject({ taskId: 1, choreKey: "deploy-test-env", prompt: "/chore-deploy-to-test-env 1 2 staging" });
   });
 
   it("never starts a task on its own", async () => {
@@ -289,6 +285,16 @@ describe("runChoreScheduler", () => {
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
     await settle();
     expect((await sessions()).at(-1)).toMatchObject({ taskId: 2, prompt: "/chore-ai-qa 2" });
+  });
+
+  it("runs one pass at a time, so a post-session run and the periodic one never start a chore twice", async () => {
+    await seedTask(1);
+
+    const started = await Promise.all([runChoreScheduler({ taskId: 1, now: NOON }), runChoreScheduler({ now: NOON })]);
+    await settle();
+
+    expect(started).toEqual([1, 0]);
+    expect(await sessions()).toHaveLength(1);
   });
 
   it("limits a post-session run to that task", async () => {

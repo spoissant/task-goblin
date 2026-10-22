@@ -8,12 +8,7 @@ import { resetMergeGitHub, setMergeGitHub, type ActionsRun, type MergeGitHub, ty
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const SHA = "abc123";
-const run = (conclusion: string | null, status = "completed"): ActionsRun => ({
-  name: "CI",
-  status,
-  conclusion,
-  headSha: SHA,
-});
+const run = (conclusion: string | null, status = "completed"): ActionsRun => ({ status, conclusion });
 
 describe("merge watch", () => {
   const calls: string[] = [];

@@ -1,21 +1,10 @@
 import { toast } from "sonner";
-import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/client/lib/types";
+import type { SessionEffort, SessionModel } from "@/client/lib/types";
 import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { useUpdateSetting } from "@/client/lib/queries/settings";
-import {
-  CHORE_MODELS_KEY,
-  EFFORT_LABELS,
-  MODEL_LABELS,
-  useChoreModelDefaults,
-  type ChoreModelDefaults,
-} from "@/client/lib/chore-models";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
+import { useChoreModelDefaults } from "@/client/lib/chore-models";
+import { CHORE_MODELS_KEY, type ChoreModelDefaults } from "@/shared/chore-models";
+import { EffortSelect, ModelSelect } from "./ModelEffortSelect";
 import {
   Table,
   TableBody,
@@ -61,32 +50,20 @@ export function ChoreModelsForm() {
             <TableRow key={chore.key}>
               <TableCell>{chore.label}</TableCell>
               <TableCell>
-                <Select value={current.model} onValueChange={(v) => save(chore.key, { model: v as SessionModel })}>
-                  <SelectTrigger className="w-32" aria-label={`${chore.name} model`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SESSION_MODELS.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {MODEL_LABELS[m]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ModelSelect
+                  value={current.model}
+                  onValueChange={(model) => save(chore.key, { model })}
+                  className="w-32"
+                  aria-label={`${chore.name} model`}
+                />
               </TableCell>
               <TableCell>
-                <Select value={current.effort} onValueChange={(v) => save(chore.key, { effort: v as SessionEffort })}>
-                  <SelectTrigger className="w-32" aria-label={`${chore.name} effort`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SESSION_EFFORTS.map((e) => (
-                      <SelectItem key={e} value={e}>
-                        {EFFORT_LABELS[e]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <EffortSelect
+                  value={current.effort}
+                  onValueChange={(effort) => save(chore.key, { effort })}
+                  className="w-32"
+                  aria-label={`${chore.name} effort`}
+                />
               </TableCell>
             </TableRow>
           );

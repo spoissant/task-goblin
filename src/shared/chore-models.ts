@@ -1,3 +1,4 @@
+import { parseJson } from "./json";
 import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "./types";
 
 /** Settings key holding the default model and effort per chore, as JSON. */
@@ -8,17 +9,12 @@ export interface ModelEffort {
   effort: SessionEffort;
 }
 
-export const FALLBACK_MODEL_EFFORT: ModelEffort = { model: "sonnet", effort: "high" };
+const FALLBACK_MODEL_EFFORT: ModelEffort = { model: "sonnet", effort: "high" };
 
 export type ChoreModelDefaults = Record<string, Partial<ModelEffort>>;
 
 export function parseChoreModelDefaults(value: string | null | undefined): ChoreModelDefaults {
-  if (!value) return {};
-  try {
-    return JSON.parse(value) as ChoreModelDefaults;
-  } catch {
-    return {};
-  }
+  return parseJson<ChoreModelDefaults>(value, {});
 }
 
 /** The model and effort a chore runs with: its stored entry, else the fallback. */

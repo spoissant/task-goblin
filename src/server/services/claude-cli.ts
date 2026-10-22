@@ -1,5 +1,6 @@
 /**
- * Thin adapter over the `claude` CLI for background sessions. No DB access.
+ * Thin adapter over the `claude` CLI: background sessions and what their
+ * state files say, and headless `claude -p` runs. No DB access.
  *
  * Verified against Claude Code 2.1.278: `claude --bg --rc --name X "<prompt>"`
  * prints `backgrounded · <shortId>`; the daemon then writes
@@ -8,6 +9,7 @@
 import { homedir } from "os";
 import { expandPath } from "../lib/path";
 import { runCommand, type CommandResult } from "../lib/process";
+import type { ClaudeSessionState } from "../../shared/types";
 
 export interface JobState {
   state: "working" | "blocked" | "done" | "failed" | "stopped" | string;
@@ -29,7 +31,7 @@ export interface JobState {
   linkScanPath?: string;
 }
 
-export interface AgentEntry {
+interface AgentEntry {
   id?: string; // short id, background sessions only
   cwd: string;
   kind: "background" | "interactive" | string;
@@ -44,7 +46,17 @@ export interface AgentEntry {
 const SPAWN_TIMEOUT_MS = 60_000;
 const SHORT_ID_RE = /backgrounded\s*[·•]\s*([0-9a-f]{8})/;
 
-export function jobsDir(): string {
+/** States a session ends in. */
+export const TERMINAL_STATES: ClaudeSessionState[] = ["done", "failed", "stopped"];
+
+/**
+ * Settings layered over the user's for chore sessions and headless runs:
+ * chores never call most claude.ai connectors, yet each one's deferred tool
+ * names ride on every API call. Custom prompts keep them all.
+ */
+export const CHORE_SESSION_SETTINGS = `${import.meta.dir}/chore-session-settings.json`;
+
+function jobsDir(): string {
   return process.env.CLAUDE_JOBS_DIR ?? `${homedir()}/.claude/jobs`;
 }
 
@@ -54,9 +66,9 @@ export function sessionLink(bridgeSessionId: string | null | undefined): string 
   return `https://claude.ai/code/session_${id}`;
 }
 
-export type SpawnResult = { shortId: string } | { error: string };
+type SpawnResult = { shortId: string } | { error: string };
 
-export interface SpawnOptions {
+interface SpawnOptions {
   cwd: string;
   name: string;
   prompt: string;
@@ -95,14 +107,71 @@ export async function spawnBackground(opts: SpawnOptions): Promise<SpawnResult> 
   return { error: `claude --bg did not return a session id (exit ${result.exitCode})${tail ? `: ${tail}` : ""}` };
 }
 
-/** Read a background job's state file; null when missing or unreadable. */
+/**
+ * Read a background job's state file; null when missing or unreadable. A job
+ * parked on an unanswered AskUserQuestion reads as blocked on its question.
+ */
 export async function readJobState(shortId: string): Promise<JobState | null> {
+  let job: JobState;
   try {
     const file = Bun.file(`${jobsDir()}/${shortId}/state.json`);
     if (!(await file.exists())) return null;
-    return (await file.json()) as JobState;
+    job = (await file.json()) as JobState;
   } catch {
     return null;
+  }
+  // WORKAROUND (see pendingQuestion): remove once the CLI marks these prompts blocked.
+  if (job.tempo === "active" && job.linkScanPath) {
+    const question = await pendingQuestion(job.linkScanPath);
+    if (question) return { ...job, tempo: "blocked", needs: question };
+  }
+  return job;
+}
+
+/**
+ * The session state a job's state file stands for. The CLI writes
+ * `state: "working"` with `tempo: "idle"` for two different things: a run that
+ * ended without the agent declaring an outcome, and an agent parked waiting on
+ * CI or a scheduled wake-up. Only the second can resume on its own, so the
+ * job's pending work tells them apart.
+ *
+ * `state: "blocked"` is also sticky: it survives the answer that unblocked the
+ * session, so an active tempo outranks it.
+ */
+export function effectiveState(job: JobState): ClaudeSessionState | null {
+  const state = normalizeState(job.state);
+  if (state && TERMINAL_STATES.includes(state)) return state;
+  if (job.tempo === "blocked") return "blocked";
+  if (job.tempo === "active") return "working";
+  if (job.tempo === "idle" && !willResume(job)) return "done";
+  return state;
+}
+
+/** Anything left that can wake the session back up without a human. */
+function willResume(job: JobState): boolean {
+  const flight = job.inFlight;
+  if (wakePending(job.wake)) return true;
+  if ((flight?.tasks ?? 0) - (flight?.drainableMonitors ?? 0) > 0) return true;
+  if ((flight?.queued ?? 0) > 0) return true;
+  return (flight?.kinds ?? []).includes("session_cron");
+}
+
+function wakePending(wake: JobState["wake"]): boolean {
+  if (!wake) return false;
+  const at = typeof wake.at === "string" ? Date.parse(wake.at) : wake.at;
+  return at === undefined || !Number.isFinite(at) || at > Date.now();
+}
+
+function normalizeState(state: string | undefined): ClaudeSessionState | null {
+  switch (state) {
+    case "working":
+    case "blocked":
+    case "done":
+    case "failed":
+    case "stopped":
+      return state;
+    default:
+      return null;
   }
 }
 
@@ -116,7 +185,7 @@ const TRANSCRIPT_TAIL_BYTES = 64 * 1024;
  * no answer yet, return its question. Delete this once state.json flips to
  * blocked for these prompts.
  */
-export async function pendingQuestion(transcriptPath: string): Promise<string | null> {
+async function pendingQuestion(transcriptPath: string): Promise<string | null> {
   try {
     const file = Bun.file(transcriptPath);
     if (!(await file.exists())) return null;
@@ -160,4 +229,10 @@ export function stopSession(shortId: string): Promise<CommandResult> {
 /** Restart a background session whose process is gone; its conversation is kept. */
 export function respawnSession(shortId: string): Promise<CommandResult> {
   return runCommand("claude", ["respawn", shortId], { cwd: homedir(), timeoutMs: 30_000 });
+}
+
+/** Run a prompt headless with the chore settings (`claude -p`); its JSON result is on stdout. */
+export function runPrint(opts: { cwd: string; prompt: string; model: string; timeoutMs: number }): Promise<CommandResult> {
+  const args = ["-p", opts.prompt, "--output-format", "json", "--model", opts.model, "--settings", CHORE_SESSION_SETTINGS];
+  return runCommand("claude", args, { cwd: opts.cwd, timeoutMs: opts.timeoutMs });
 }

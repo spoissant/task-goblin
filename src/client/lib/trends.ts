@@ -8,7 +8,7 @@
  * swing a daily mean. Samples are dated by when the work ended, so a task's
  * cost lands on the day of its last session.
  */
-import type { ConcurrencyDay, SessionAnalyticsRow } from "./types";
+import type { ConcurrencyDay, SessionAnalyticsRow } from "../../shared/types";
 
 export type TrendMetric = "cost" | "active";
 /** "day" samples per session too: the daily average sums them. */
@@ -16,7 +16,7 @@ export type TrendUnit = "session" | "task" | "day";
 /** Dimensions a line can be split on. Tasks live in one repo, so per-task series only split on repo. */
 export type TrendDimension = "model" | "effort" | "chore" | "repo";
 
-export interface TrendSample {
+interface TrendSample {
   day: string; // YYYY-MM-DD, UTC
   series: string;
   value: number;

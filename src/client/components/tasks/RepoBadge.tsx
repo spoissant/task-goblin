@@ -1,6 +1,6 @@
 import { Badge } from "@/client/components/ui/badge";
 import { cn } from "@/client/lib/utils";
-import type { Repository } from "@/client/lib/types";
+import type { Repository } from "@/shared/types";
 
 // Predefined color options for repository badges
 export const BADGE_COLORS = {

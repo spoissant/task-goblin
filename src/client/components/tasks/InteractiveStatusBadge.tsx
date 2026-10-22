@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { toast } from "sonner";
 import { StatusBadge } from "./StatusBadge";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { useUpdateTask } from "@/client/lib/queries/tasks";
@@ -33,7 +34,7 @@ export function InteractiveStatusBadge({
 
   const handleStatusChange = (newStatus: string) => {
     if (newStatus !== status) {
-      updateTask.mutate({ id: taskId, status: newStatus });
+      updateTask.mutate({ id: taskId, status: newStatus }, { onError: () => toast.error("Failed to update status") });
     }
   };
 

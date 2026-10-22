@@ -1,7 +1,6 @@
 import { Version3Client } from "jira.js";
-import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { settings } from "../../db/schema";
+import { AppError, httpStatusOf } from "./errors";
+import { getSetting } from "./settings";
 
 export interface JiraConfig {
   host: string;
@@ -10,52 +9,39 @@ export interface JiraConfig {
   sprintField: string | null;
 }
 
-export class JiraConfigError extends Error {
-  constructor(
-    message: string,
-    public code: string
-  ) {
-    super(message);
-    this.name = "JiraConfigError";
+/** Jira failed or refused a call, or isn't configured; carries the status the API answers with. */
+export class JiraError extends AppError {
+  constructor(message: string, statusCode: number, code: string) {
+    super(message, statusCode, code);
+    this.name = "JiraError";
   }
 }
 
-async function getSetting(key: string): Promise<string | null> {
-  const result = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, key));
-  return result[0]?.value ?? null;
+/**
+ * A failed Jira call as the API answers it: 401 when the credentials are
+ * refused (Jira says 401 or 403), 404 when the issue isn't there, 502 for
+ * anything else. An AppError, already classified, passes through.
+ */
+export function toJiraError(err: unknown, failed: string, notFound?: string): AppError {
+  if (err instanceof AppError) return err;
+  const status = httpStatusOf(err);
+  if (status === 401 || status === 403) {
+    return new JiraError("Jira authentication failed. Check your API token and email.", 401, "JIRA_AUTH_FAILED");
+  }
+  const message = err instanceof Error && err.message ? err.message : failed;
+  if (status === 404) return new JiraError(notFound ?? message, 404, "JIRA_NOT_FOUND");
+  return new JiraError(message, 502, "JIRA_API_ERROR");
 }
+
+const notConfigured = (message: string) => new JiraError(message, 400, "JIRA_NOT_CONFIGURED");
 
 export async function getJiraConfig(): Promise<JiraConfig> {
-  const host = await getSetting("jira_host");
-  const email = await getSetting("jira_email");
-  const jql = await getSetting("jira_jql");
-  const sprintField = await getSetting("jira_sprint_field");
-
-  if (!host) {
-    throw new JiraConfigError(
-      "Jira host not configured. Set jira_host in settings.",
-      "JIRA_NOT_CONFIGURED"
-    );
-  }
-
-  if (!email) {
-    throw new JiraConfigError(
-      "Jira email not configured. Set jira_email in settings.",
-      "JIRA_NOT_CONFIGURED"
-    );
-  }
-
-  const apiToken = process.env.JIRA_API_TOKEN;
-  if (!apiToken) {
-    throw new JiraConfigError(
-      "JIRA_API_TOKEN environment variable not set.",
-      "JIRA_NOT_CONFIGURED"
-    );
-  }
-
+  const [host, email, jql, sprintField] = await Promise.all(
+    ["jira_host", "jira_email", "jira_jql", "jira_sprint_field"].map(getSetting)
+  );
+  if (!host) throw notConfigured("Jira host not configured. Set jira_host in settings.");
+  if (!email) throw notConfigured("Jira email not configured. Set jira_email in settings.");
+  if (!process.env.JIRA_API_TOKEN) throw notConfigured("JIRA_API_TOKEN environment variable not set.");
   return { host, email, jql, sprintField };
 }
 

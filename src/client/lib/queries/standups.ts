@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { ListResponse, Standup } from "@/shared/types";
 
-export const standupKeys = {
+const standupKeys = {
   all: ["standups"] as const,
 };
 

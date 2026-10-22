@@ -4,7 +4,6 @@ import { createTestTables } from "../../test/createSchema";
 import { appendFileSync, existsSync, mkdirSync, rmSync } from "fs";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import {
-  blockingNodeModules,
   bootDevStack,
   devStackLoginLink,
   devStackSettled,
@@ -53,13 +52,11 @@ describe("dev stack", () => {
     spawnedCommands.length = 0;
     exits.length = 0;
     bootOutput = "";
-    for (const t of ["settings", "tasks", "worktrees", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint')`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (2, 'hb', 'front-monorepo', 1)`);
+    for (const t of ["settings", "tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch, local_path) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint', '${MAIN}')`);
+    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (2, 'hb', 'front-monorepo', 1, '${MAIN}')`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (3, 'hb', 'harborhive', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${MAIN}', ${ts}, ${ts})`);
-    sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (2, '${MAIN}', ${ts}, ${ts})`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (1, 't1', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-1')`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (2, 't2', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-2')`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (3, 't3', 'In Progress', ${ts}, ${ts}, 2, 'feat/x')`);
@@ -72,7 +69,7 @@ describe("dev stack", () => {
         return { stdout: "", stderr: "CONFLICT", exitCode: 1 };
       }
       if (cmd === "git" && args[0] === "diff" && args.includes("--diff-filter=U")) return ok(conflictOn ? "app.rb" : "");
-      if (cmd === "docker" && args[0] === "ps") return ok(Array.from({ length: running }, (_, i) => `c${i}`).join("\n"));
+      if (cmd === "docker" && args[0] === "ps") return ok(Array.from({ length: running }, () => `alumni_connect\t${MAIN}`).join("\n"));
       if (cmd === "/bin/zsh" && args[1]?.includes("stop-dev-server")) alive = false; // the stop command ends the bundler
       if (cmd === "git" && args[0] === "rev-parse" && args.includes("refs/heads/fix/EV-1")) {
         return localBranch ? ok("abc") : { stdout: "", stderr: "", exitCode: 1 };
@@ -208,14 +205,6 @@ describe("dev stack", () => {
   const symlinkFailure = (path: string) =>
     "\u001b[31m ERR_PNPM_PACKAGE_MANAGER_SYMLINK_FAILED\u001b[0m\n\n  × installing dependencies\n" +
     `  ╰─▶ Failed to symlink "@types/node": Failed to create symlink at "${path.slice(0, 30)}\n\u001b[31m      \u001b[0m${path.slice(30)}" to "/elsewhere": Directory not empty (os error 66)\n`;
-
-  it("finds the node_modules directory that blocked pnpm's symlink, only inside the checkout", () => {
-    const blocked = `${MAIN}/packages/tooling/tsconfig/node_modules/@types/node`;
-    expect(blockingNodeModules(MAIN, symlinkFailure(blocked))).toBe(`${MAIN}/packages/tooling/tsconfig/node_modules`);
-    expect(blockingNodeModules(MAIN, symlinkFailure("/tmp/other/node_modules/@types/node"))).toBeNull();
-    expect(blockingNodeModules(MAIN, symlinkFailure(`${MAIN}/packages/tooling/tsconfig/src`))).toBeNull();
-    expect(blockingNodeModules(MAIN, "ERR_PNPM_FROZEN_LOCKFILE")).toBeNull();
-  });
 
   it("removes the node_modules that blocked pnpm and boots once more", async () => {
     const dir = `${MAIN}/logs/dev-stack-test-pkg/node_modules`;
@@ -437,12 +426,13 @@ describe("dev stack", () => {
 
     const link = await devStackLoginLink({ taskId: 1 }, "member", 7);
     expect(link).toEqual({ url: "http://pandora.localhost.hvbrt.com/log-as/claim?token=t", subjectId: 7, name: "Ann", networkId: 1 });
-    expect(zshArgs[0][1]).toBe('bin/dev dcx webapp bundle exec rails runner "$0" "$@"');
-    expect(zshArgs[0][2]).toContain("LogAs::Grant.generate");
-    expect(zshArgs[0].slice(3)).toEqual(["member", "7"]);
+    // The script and its arguments reach rails runner as "$@", unquoted.
+    expect(zshArgs[0][1]).toBe('bin/dev dcx webapp bundle exec rails runner "$@"');
+    expect(zshArgs[0][3]).toContain("LogAs::Grant.generate");
+    expect(zshArgs[0].slice(4)).toEqual(["member", "7"]);
 
     await devStackLoginLink({ taskId: 1 }, "super_admin", null);
-    expect(zshArgs[1].slice(3)).toEqual(["super_admin", ""]);
+    expect(zshArgs[1].slice(4)).toEqual(["super_admin", ""]);
   });
 
   it("refuses login links when the script fails or the stack is not this task's or not alumni_connect", async () => {

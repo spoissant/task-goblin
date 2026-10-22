@@ -1,75 +1,40 @@
 /**
  * Re-pull one task from its sources: its Jira issue, its GitHub PR (linking the
- * PR opened from its branch when it has none yet), and its worktree's git status.
+ * PR opened from its branch when it has none yet), and its worktree's git
+ * status. Also the manual links: a PR or a Jira issue attached by hand.
  */
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories, tasks, taskWorktrees } from "../../db/schema";
-import { AppError } from "../lib/errors";
+import { repositories, tasks } from "../../db/schema";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors";
 import { getTaskOrThrow, getTaskWithRepository } from "../lib/queries";
-import { now } from "../lib/timestamp";
-import { fetchPrTaskData, findPrNumberByBranch, syncGitHubPullRequestByNumber } from "./github-sync";
+import { fetchPrTaskData, findPrNumberByBranch } from "./github-sync";
+import { upsertPrTask, writePrFields } from "./github-upsert";
 import { syncJiraItemByKey } from "./jira-sync";
-import { refreshTaskGitStatus } from "./task-worktrees";
+import { mergeSingleTask } from "./task-merge";
+import { getTaskWorktreeRow, refreshTaskGitStatus } from "./task-worktrees";
+import type { TaskSyncResult } from "@/shared/types";
+
+type TaskRow = typeof tasks.$inferSelect;
 
 /**
- * Link a GitHub PR to an existing task: fetch it, reject it when another task
- * already has it, and copy its fields onto the task.
+ * Link a GitHub PR to a task. A PR-only task already holding it merges into
+ * this one; a task with a Jira issue holding it is refused.
  */
-export async function linkPrToTask(id: number, owner: string, repo: string, prNumber: number) {
+export async function linkPrToTask(id: number, owner: string, repo: string, prNumber: number): Promise<TaskRow> {
   const data = await fetchPrTaskData(owner, repo, prNumber);
-
-  // Reject if another task already has this PR
-  const conflict = await db
-    .select({ id: tasks.id, title: tasks.title })
+  const holders = await db
+    .select()
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.repositoryId, data.repositoryId),
-        eq(tasks.prNumber, data.prNumber),
-        ne(tasks.id, id)
-      )
-    )
-    .limit(1);
+    .where(and(eq(tasks.repositoryId, data.repositoryId), eq(tasks.prNumber, data.prNumber), ne(tasks.id, id)));
 
-  if (conflict.length > 0) {
-    throw new AppError(
-      `PR #${prNumber} is already linked to task #${conflict[0].id}: ${conflict[0].title}`,
-      409,
-      "PR_ALREADY_LINKED"
-    );
+  const linked = holders.find((t) => t.jiraKey);
+  if (linked) {
+    throw new AppError(`PR #${prNumber} is already linked to task #${linked.id}: ${linked.title}`, 409, "PR_ALREADY_LINKED");
   }
-
-  const result = await db
-    .update(tasks)
-    .set({
-      prNumber: data.prNumber,
-      repositoryId: data.repositoryId,
-      prState: data.prState,
-      headBranch: data.headBranch,
-      baseBranch: data.baseBranch,
-      headSha: data.headSha,
-      mergeCommitSha: data.mergeCommitSha,
-      isDraft: data.isDraft,
-      checksStatus: data.checksStatus,
-      checksDetails: data.checksDetails,
-      reviewStatus: data.reviewStatus,
-      unresolvedCommentCount: data.unresolvedCommentCount,
-      hasConflicts: data.hasConflicts,
-      onDeploymentBranches: data.onDeploymentBranches,
-      labelOnlyDeploymentBranches: data.labelOnlyDeploymentBranches,
-      deployedOnBranches: data.deployedOnBranches,
-      changedFiles: data.changedFiles,
-      additions: data.additions,
-      deletions: data.deletions,
-      changesByCategory: data.changesByCategory,
-      prSyncedAt: data.prSyncedAt,
-      updatedAt: now(),
-    })
-    .where(eq(tasks.id, id))
-    .returning();
-
-  return result[0];
+  for (const orphan of holders) await mergeSingleTask(id, orphan.id);
+  await writePrFields(id, data);
+  return getTaskOrThrow(id);
 }
 
 /**
@@ -77,11 +42,11 @@ export async function linkPrToTask(id: number, owner: string, repo: string, prNu
  * branch). A no-op that returns the task when it already has a PR, has no
  * branch or repository, or no PR exists for the branch yet.
  */
-export async function linkPrByBranch(id: number) {
+async function linkPrByBranch(id: number): Promise<TaskRow> {
   const task = await getTaskOrThrow(id);
   if (task.prNumber) return task;
 
-  const [worktree] = await db.select().from(taskWorktrees).where(eq(taskWorktrees.taskId, id));
+  const worktree = await getTaskWorktreeRow(id);
   const branch = task.headBranch ?? worktree?.branch ?? null;
   const repositoryId = task.repositoryId ?? worktree?.repositoryId ?? null;
   if (!branch || !repositoryId) return task;
@@ -95,7 +60,22 @@ export async function linkPrByBranch(id: number) {
   return linkPrToTask(id, repo.owner, repo.repo, prNumber);
 }
 
-/** Same steps as the MCP sync_task tool; each source fails on its own. Returns the errors. */
+/** Attach a Jira issue (by key) to a PR task that has none: the issue's task merges into it. */
+export async function linkJiraToTask(id: number, key: string): Promise<TaskRow> {
+  const task = await getTaskOrThrow(id);
+  if (!task.prNumber) throw new ValidationError("Task has no PR");
+  if (task.jiraKey) throw new ValidationError("Task already has a Jira key");
+
+  // Make sure a local task exists for the issue, then merge it into this one
+  await syncJiraItemByKey(key);
+  const [jiraTask] = await db.select().from(tasks).where(eq(tasks.jiraKey, key));
+  if (jiraTask.prNumber) {
+    throw new AppError(`${key} is already linked to task #${jiraTask.id}: ${jiraTask.title}`, 409, "JIRA_ALREADY_LINKED");
+  }
+  return mergeSingleTask(id, jiraTask.id);
+}
+
+/** Re-pull one task from its sources; each fails on its own. Returns the errors, per source. */
 export async function syncTask(taskId: number): Promise<string[]> {
   const task = await getTaskWithRepository(taskId);
   if (!task) return [];
@@ -113,8 +93,29 @@ export async function syncTask(taskId: number): Promise<string[]> {
     await attempt("GitHub", () => linkPrByBranch(taskId));
   } else if (task.repository) {
     const { owner, repo } = task.repository;
-    await attempt("GitHub", () => syncGitHubPullRequestByNumber(owner, repo, task.prNumber!));
+    await attempt("GitHub", async () => upsertPrTask(await fetchPrTaskData(owner, repo, task.prNumber!)));
   }
   await attempt("Git status", () => refreshTaskGitStatus(taskId));
   return errors;
+}
+
+/**
+ * POST /tasks/:id/sync: syncTask, then the refreshed task. A PR-only task the
+ * sync merged into the Jira task its PR names comes back as that task.
+ */
+export async function syncTaskDetail(taskId: number): Promise<TaskSyncResult> {
+  const before = await getTaskOrThrow(taskId);
+  const errors = await syncTask(taskId);
+  let task = await getTaskWithRepository(taskId);
+  if (!task && before.repositoryId !== null && before.prNumber !== null) {
+    const [holder] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.repositoryId, before.repositoryId), eq(tasks.prNumber, before.prNumber)))
+      .orderBy(tasks.id)
+      .limit(1);
+    task = holder ? await getTaskWithRepository(holder.id) : null;
+  }
+  if (!task) throw new NotFoundError("Task", taskId);
+  return { task, errors };
 }

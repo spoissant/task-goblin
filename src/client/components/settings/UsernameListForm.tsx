@@ -5,16 +5,7 @@ import { Button } from "@/client/components/ui/button";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { TagInput } from "./TagInput";
 import { toast } from "sonner";
-
-function parseMembers(value: string | null | undefined): string[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
+import { parseStringList } from "@/shared/json";
 
 interface UsernameListFormProps {
   /** Settings key holding the JSON array of GitHub usernames. */
@@ -27,11 +18,11 @@ export function UsernameListForm({ settingKey, label }: UsernameListFormProps) {
   const { data, isLoading } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
 
-  const stored = parseMembers(data?.[settingKey]);
+  const stored = parseStringList(data?.[settingKey]);
   const [members, setMembers] = useState<string[]>(stored);
 
   useEffect(() => {
-    setMembers(parseMembers(data?.[settingKey]));
+    setMembers(parseStringList(data?.[settingKey]));
   }, [data?.[settingKey]]);
 
   const dirty = JSON.stringify(members) !== JSON.stringify(stored);

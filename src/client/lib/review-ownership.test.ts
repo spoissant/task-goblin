@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { ReviewRequest } from "../../shared/types";
-import { isIgnoredRequest, memberTag, parseUsernames, requestTag } from "./review-ownership";
+import type { ChangesByCategory, ReviewRequest } from "../../shared/types";
+import type { ReviewStatus } from "../../shared/review-status";
+import {
+  isIgnoredRequest,
+  isMostlyBackend,
+  isReviewSatisfied,
+  memberTag,
+  parseUsernames,
+  prKey,
+  requestTag,
+} from "./review-ownership";
 
 function request(author: string, assignees: string[] = []): ReviewRequest {
   return {
@@ -39,6 +48,73 @@ describe("parseUsernames", () => {
     expect(parseUsernames(undefined)).toEqual(new Set());
     expect(parseUsernames("not json")).toEqual(new Set());
     expect(parseUsernames('{"a":1}')).toEqual(new Set());
+  });
+});
+
+function reviewStatus(status: Partial<ReviewStatus>): ReviewStatus {
+  return {
+    decision: "REVIEW_REQUIRED",
+    approvedCount: 0,
+    requiredApprovals: 1,
+    missingCodeOwners: [],
+    optionalCodeOwners: [],
+    changesRequestedBy: [],
+    baseBranch: "master",
+    ...status,
+  };
+}
+
+describe("isReviewSatisfied", () => {
+  const withStatus = (status: ReviewStatus | null, myMissingCodeOwners: string[] = []) => ({
+    ...request("alice"),
+    reviewStatus: status,
+    myMissingCodeOwners,
+  });
+
+  test("is satisfied once GitHub says the reviews are done", () => {
+    expect(isReviewSatisfied(withStatus(reviewStatus({ decision: "APPROVED", approvedCount: 1 })))).toBe(true);
+    expect(isReviewSatisfied(withStatus(reviewStatus({ decision: null, requiredApprovals: 0 })))).toBe(true);
+  });
+
+  test("is satisfied when only others' code-owner reviews are missing", () => {
+    expect(isReviewSatisfied(withStatus(reviewStatus({ approvedCount: 1, missingCodeOwners: ["backend"] })))).toBe(true);
+  });
+
+  test("still needs you when an approval or one of your code-owner reviews is missing", () => {
+    expect(isReviewSatisfied(withStatus(reviewStatus({})))).toBe(false);
+    expect(isReviewSatisfied(withStatus(reviewStatus({ approvedCount: 1, missingCodeOwners: ["front"] }), ["front"]))).toBe(false);
+  });
+
+  test("keeps a PR whose review status is unknown", () => {
+    expect(isReviewSatisfied(withStatus(null))).toBe(false);
+  });
+});
+
+describe("isMostlyBackend", () => {
+  const changes = (backend: number, frontend: number): ChangesByCategory => ({
+    frontend: { files: 1, additions: frontend, deletions: 0 },
+    backend: { files: 1, additions: backend, deletions: 0 },
+    other: { files: 0, additions: 0, deletions: 0 },
+  });
+  const withChanges = (changesByCategory: ChangesByCategory | null) => ({ ...request("alice"), changesByCategory });
+
+  test("is true over 75% backend lines", () => {
+    expect(isMostlyBackend(withChanges(changes(80, 20)))).toBe(true);
+  });
+
+  test("is false at or under 75%", () => {
+    expect(isMostlyBackend(withChanges(changes(75, 25)))).toBe(false);
+  });
+
+  test("keeps PRs with unknown or empty changes", () => {
+    expect(isMostlyBackend(withChanges(null))).toBe(false);
+    expect(isMostlyBackend(withChanges(changes(0, 0)))).toBe(false);
+  });
+});
+
+describe("prKey", () => {
+  test("names the PR as owner/repo#number", () => {
+    expect(prKey(request("alice"))).toBe("o/r#1");
   });
 });
 

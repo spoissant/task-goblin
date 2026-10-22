@@ -5,14 +5,15 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, tasks } from "../../db/schema";
-import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
-import { getMergeGitHub, type ActionsRun, type MergeGitHub, type PrTarget } from "./merge-github";
+import type { PrTarget } from "./github-graphql";
+import { writeTask } from "./merge-gate";
+import { getMergeGitHub, type ActionsRun, type MergeGitHub } from "./merge-github";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 
-export const WATCH_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const WATCH_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const RELEASE_REPO = "front-monorepo";
 
 /** Actions runs of one commit: red if any failed, green once all completed, pending until then (or before any shows up). */
@@ -52,12 +53,6 @@ function timedOut(task: TaskRow): boolean {
   return Number.isFinite(since) && Date.now() - since > WATCH_TIMEOUT_MS;
 }
 
-async function markVerified(taskId: number): Promise<void> {
-  const timestamp = now();
-  await db.update(tasks).set({ mergeVerifiedAt: timestamp, updatedAt: timestamp }).where(eq(tasks.id, taskId));
-  broadcast("task");
-}
-
 async function watchTask(task: TaskRow, repo: RepoRow, gh: MergeGitHub): Promise<void> {
   const state = actionsBuildState(await gh.runsForSha(repo.owner, repo.repo, task.mergeCommitSha ?? ""));
   if (state === "passed") {
@@ -65,7 +60,7 @@ async function watchTask(task: TaskRow, repo: RepoRow, gh: MergeGitHub): Promise
   } else if (state === "pending" && !timedOut(task)) {
     return;
   }
-  await markVerified(task.id);
+  await writeTask(task.id, { mergeVerifiedAt: now() });
 }
 
 /** Follow the merge commit of each merged front-monorepo PR the watch isn't done with. */

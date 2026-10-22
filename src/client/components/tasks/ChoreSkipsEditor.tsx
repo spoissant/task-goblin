@@ -2,6 +2,7 @@ import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { useUpdateTask } from "@/client/lib/queries";
 import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
+import { parseChoreSkips, setChoreSkip } from "@/shared/chore-skips";
 import { toast } from "sonner";
 
 interface ChoreSkipsEditorProps {
@@ -12,18 +13,11 @@ interface ChoreSkipsEditorProps {
 export function ChoreSkipsEditor({ taskId, choreSkips }: ChoreSkipsEditorProps) {
   const updateTask = useUpdateTask();
   const { data } = useChoreDefinitionsQuery();
-  const skips: Record<string, boolean> = choreSkips ? JSON.parse(choreSkips) : {};
+  const skips = parseChoreSkips(choreSkips);
 
   const handleToggle = (choreKey: string, checked: boolean) => {
-    const updated = { ...skips };
-    if (checked) {
-      updated[choreKey] = true;
-    } else {
-      delete updated[choreKey];
-    }
-    const json = Object.keys(updated).length > 0 ? JSON.stringify(updated) : null;
     updateTask.mutate(
-      { id: taskId, choreSkips: json ?? "" },
+      { id: taskId, choreSkips: setChoreSkip(choreSkips, choreKey, checked) },
       {
         onError: () => toast.error("Failed to update chore skips"),
       }

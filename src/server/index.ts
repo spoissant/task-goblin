@@ -1,6 +1,6 @@
 import { createRouter } from "./router";
 import { routes } from "./routes";
-import { withCors, handleCors, withErrorBoundary } from "./middleware";
+import { withErrorBoundary } from "./middleware";
 import { addClient, removeClient, autoBroadcast } from "./lib/sse";
 import { startClaudeRuntime } from "./services/claude-runtime";
 
@@ -9,17 +9,11 @@ const router = createRouter(routes);
 
 // Run startup tasks
 function startup() {
-  // Start server
+  // Start server. No CORS: the UI reaches it through Vite's same-origin proxy, and the MCP server from Bun.
   Bun.serve({
     port,
     idleTimeout: 120, // 2 minutes for slow API operations
     async fetch(req) {
-      // Handle CORS preflight
-      const corsResponse = handleCors(req);
-      if (corsResponse) {
-        return corsResponse;
-      }
-
       const url = new URL(req.url);
 
       // SSE endpoint — handled before router to avoid response cloning
@@ -39,7 +33,6 @@ function startup() {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
             Connection: "keep-alive",
-            "Access-Control-Allow-Origin": "*",
           },
         });
       }
@@ -52,8 +45,7 @@ function startup() {
         autoBroadcast(url.pathname);
       }
 
-      // Add CORS headers to response
-      return withCors(response);
+      return response;
     },
   });
 

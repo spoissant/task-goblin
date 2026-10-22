@@ -5,8 +5,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/client/components/ui/select";
+import { BADGE_COLORS } from "@/client/components/tasks/RepoBadge";
 
-export const COLOR_OPTIONS = [
+interface ColorOption {
+  value: string;
+  label: string;
+  /** Background class of the swatch next to the label. */
+  swatch: string;
+}
+
+/** Status category colors: the value is the badge's background class. */
+export const STATUS_COLOR_OPTIONS: ColorOption[] = [
   { value: "bg-slate-500", label: "Slate" },
   { value: "bg-gray-500", label: "Gray" },
   { value: "bg-red-500", label: "Red" },
@@ -29,27 +38,35 @@ export const COLOR_OPTIONS = [
   { value: "bg-fuchsia-500", label: "Fuchsia" },
   { value: "bg-pink-500", label: "Pink" },
   { value: "bg-rose-500", label: "Rose" },
-];
+].map((color) => ({ ...color, swatch: color.value }));
+
+/** Repository badge colors: the value is the color's name. */
+export const BADGE_COLOR_OPTIONS: ColorOption[] = Object.entries(BADGE_COLORS).map(([name, classes]) => ({
+  value: name,
+  label: name,
+  swatch: classes.split(" ")[0],
+}));
 
 interface ColorSelectProps {
   value: string;
   onValueChange: (value: string) => void;
+  options: ColorOption[];
   triggerClassName?: string;
 }
 
-export function ColorSelect({ value, onValueChange, triggerClassName }: ColorSelectProps) {
+export function ColorSelect({ value, onValueChange, options, triggerClassName }: ColorSelectProps) {
   return (
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger className={triggerClassName}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {COLOR_OPTIONS.map((color) => (
+        {options.map((color) => (
           <SelectItem key={color.value} value={color.value}>
-            <div className="flex items-center gap-2">
-              <div className={`w-4 h-4 rounded ${color.value}`} />
+            <span className="flex items-center gap-2">
+              <span className={`inline-block w-3 h-3 rounded-full ${color.swatch}`} />
               {color.label}
-            </div>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

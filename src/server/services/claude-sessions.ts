@@ -2,62 +2,36 @@
  * Background Claude Code sessions per task: one fresh session per chore run,
  * never resumed. Continuity lives in the worktree, Task Goblin and the PR.
  * PR reviews from the Reviews page are the exception: no task, keyed by PR URL.
+ * This starts and stops them; session-poller.ts follows them while they run.
  */
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessions, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
+import { getSetting } from "../lib/settings";
+import { loadOtherTasks } from "../lib/other-tasks";
 import { parsePrUrl } from "../lib/validation";
-import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, isBulkChore } from "../lib/chores";
+import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition } from "../lib/chores";
+import { CHORE_MODELS_KEY, parseChoreModelDefaults, resolveChoreModel } from "@/shared/chore-models";
 import { resolvePrompt } from "@/shared/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
-  listAgents,
-  pendingQuestion,
-  readJobState,
+  CHORE_SESSION_SETTINGS,
+  TERMINAL_STATES,
   respawnSession as cliRespawn,
   sessionLink,
   spawnBackground,
   stopSession as cliStop,
-  type JobState,
 } from "./claude-cli";
-import {
-  branchForTask,
-  ensureTaskWorktree,
-  getTaskWorktreeRow,
-  reconcileWorktrees,
-  resolveMainPath,
-  worktreePathFor,
-} from "./task-worktrees";
+import { ensureTaskWorktree, reconcileWorktrees, resolveMainPath } from "./task-worktrees";
 import { getDevStackStatus } from "./dev-stack";
-import { coversTasks, coveredTaskIds, linkSessionTasks, sessionLinks, type SessionTaskLink } from "./session-tasks";
+import { ensureStackCapacity } from "./docker-stacks";
+import { coversTasks, findActiveSession, isActive, linkSessionTasks, sessionLinks } from "./session-tasks";
 
 export type SessionRow = typeof claudeSessions.$inferSelect;
-
-export const ACTIVE_STATES: ClaudeSessionState[] = ["queued", "preparing", "working", "blocked"];
-export const TERMINAL_STATES: ClaudeSessionState[] = ["done", "failed", "stopped"];
-const POLLED_STATES: ClaudeSessionState[] = ["working", "blocked"];
-const MISSING_STATE_TOLERANCE = 6; // poll ticks before a missing state.json is treated as a vanished session
-const REAP_IDLE_MS = 10 * 60 * 1000;
-
-export type CapacityCheck = (cwd: string) => Promise<"ok" | "queued">;
-let capacityCheck: CapacityCheck = async () => "ok";
-
-/** Slice 4 installs the Docker stack cap here. */
-export function setCapacityCheck(fn: CapacityCheck): void {
-  capacityCheck = fn;
-}
-
-export type SessionFinishedHook = (taskId: number) => void;
-let onSessionFinished: SessionFinishedHook = () => {};
-
-/** Called when a task's session reaches a terminal state; the runtime syncs the task here. */
-export function setOnSessionFinished(fn: SessionFinishedHook): void {
-  onSessionFinished = fn;
-}
 
 /** API shape of each row, with the other tasks a bulk run covers. */
 export async function toApiList<T extends SessionRow>(rows: T[]): Promise<(T & ClaudeSession)[]> {
@@ -79,7 +53,8 @@ async function getRow(id: number): Promise<SessionRow | null> {
   return rows[0] ?? null;
 }
 
-async function updateRow(id: number, updates: Partial<SessionRow>): Promise<SessionRow> {
+/** Write a session row and tell the UI; a session that ended changes its task's row too. */
+export async function updateSession(id: number, updates: Partial<SessionRow>): Promise<SessionRow> {
   const rows = await db
     .update(claudeSessions)
     .set({ ...updates, updatedAt: now() })
@@ -127,8 +102,10 @@ export async function listLatestReviewSessions(): Promise<SessionRow[]> {
     .orderBy(desc(claudeSessions.id));
 }
 
-/** A page of sessions across all tasks and PR reviews, newest first, with the task title, for the sessions page. */
-/** `since` (ISO) keeps sessions Claude was active in from then on: last activity, or creation if it never ran. */
+/**
+ * A page of sessions across all tasks and PR reviews, newest first, with the task title, for the sessions page.
+ * `since` (ISO) keeps sessions Claude was active in from then on: last activity, or creation if it never ran.
+ */
 export async function listRecentSessions(
   limit: number,
   offset: number,
@@ -155,13 +132,7 @@ async function assertDevStackFree(taskIds: number[], repositoryId: number): Prom
   const [other] = await db
     .select({ taskId: claudeSessions.taskId })
     .from(claudeSessions)
-    .where(
-      and(
-        eq(claudeSessions.repositoryId, repositoryId),
-        inArray(claudeSessions.choreKey, DEV_STACK_CHORES),
-        inArray(claudeSessions.state, ACTIVE_STATES),
-      ),
-    )
+    .where(and(eq(claudeSessions.repositoryId, repositoryId), inArray(claudeSessions.choreKey, DEV_STACK_CHORES), isActive()))
     .limit(1);
   if (other) throw new AppError(`AI QA is already running on task ${other.taskId}`, 409, "DEV_STACK_BUSY");
   const { stack } = await getDevStackStatus({ taskId: taskIds[0] });
@@ -171,37 +142,25 @@ async function assertDevStackFree(taskIds: number[], repositoryId: number): Prom
   }
 }
 
-async function findActiveSession(taskId: number): Promise<SessionRow | null> {
-  const rows = await db
-    .select()
-    .from(claudeSessions)
-    .where(and(coversTasks([taskId]), inArray(claudeSessions.state, ACTIVE_STATES)))
-    .limit(1);
-  return rows[0] ?? null;
+/** The model and effort a session runs with: the caller's, else its chore's defaults from the Settings page. */
+async function modelFor(choreKey: string, input: { model?: string | null; effort?: string | null }) {
+  const defaults = resolveChoreModel(parseChoreModelDefaults(await getSetting(CHORE_MODELS_KEY)), choreKey);
+  return { model: input.model ?? defaults.model, effort: input.effort ?? defaults.effort };
 }
 
-/** Tasks with an active session, their own or a bulk run's they are linked into. */
-export async function activeTaskIds(): Promise<Set<number>> {
-  const rows = await db
-    .select({ id: claudeSessions.id, taskId: claudeSessions.taskId })
-    .from(claudeSessions)
-    .where(inArray(claudeSessions.state, ACTIVE_STATES));
-  const links = await sessionLinks(rows.map((r) => r.id));
-  return new Set(rows.flatMap((r) => [r.taskId, ...(links.get(r.id) ?? []).map((l) => l.taskId)]).filter((id) => id !== null));
-}
+type SessionTrigger = "auto" | "manual";
 
-export type SessionTrigger = "auto" | "manual";
-
-export interface ChoreSessionInput {
+interface ChoreSessionInput {
   /** Replaces the chore's own prompt, e.g. the command plus hand-typed context. */
   prompt?: string | null;
+  /** Model and effort default to the chore's settings. */
   model?: string | null;
   effort?: string | null;
   /** Who started it: the chore scheduler or a person (default). */
   trigger?: SessionTrigger;
   /** The task state the chore was started on; the scheduler won't restart it on the same state. */
   triggerFingerprint?: string | null;
-  /** The other tasks of a bulk chore run, linked to the session. */
+  /** The other tasks of a bulk chore run, linked to the session; checked by loadOtherTasks. */
   withTaskIds?: number[];
 }
 
@@ -215,26 +174,20 @@ export async function startChoreSession(
   input: ChoreSessionInput = {},
 ): Promise<SessionRow> {
   const chore = getChoreDefinition(choreKey);
-  if (!chore || chore.key === CUSTOM_CHORE.key) {
-    throw new AppError(`Unknown chore: ${choreKey}`, 400, "UNKNOWN_CHORE");
-  }
-  const withTaskIds = [...new Set(input.withTaskIds ?? [])].filter((id) => id !== taskId);
-  if (withTaskIds.length > 0 && !isBulkChore(chore.key)) {
-    throw new AppError(`${chore.name} runs on one task at a time`, 400, "VALIDATION_ERROR");
-  }
+  if (!chore) throw new AppError(`Unknown chore: ${choreKey}`, 400, "UNKNOWN_CHORE");
   const override = input.prompt?.trim();
   return createSession(taskId, {
     chore,
-    withTaskIds,
-    prompt: (task) => override || resolvePrompt(chore.prompt, task, [taskId, ...withTaskIds]),
-    model: input.model ?? null,
-    effort: input.effort ?? null,
+    withTaskIds: input.withTaskIds,
+    prompt: (task, taskIds) => override || resolvePrompt(chore.prompt, task, taskIds),
+    model: input.model,
+    effort: input.effort,
     trigger: input.trigger ?? "manual",
     triggerFingerprint: input.triggerFingerprint ?? null,
   });
 }
 
-export interface CustomSessionInput {
+interface CustomSessionInput {
   prompt: string;
   model?: string | null;
   effort?: string | null;
@@ -244,12 +197,7 @@ export interface CustomSessionInput {
 export async function startCustomSession(taskId: number, input: CustomSessionInput): Promise<SessionRow> {
   const prompt = input.prompt.trim();
   if (!prompt) throw new AppError("prompt is required", 400, "VALIDATION_ERROR");
-  return createSession(taskId, {
-    chore: CUSTOM_CHORE,
-    prompt: () => prompt,
-    model: input.model ?? null,
-    effort: input.effort ?? null,
-  });
+  return createSession(taskId, { chore: CUSTOM_CHORE, prompt: () => prompt, model: input.model, effort: input.effort });
 }
 
 /**
@@ -264,12 +212,12 @@ export async function startReviewSession(
 
   const repository = await findRepository(owner, repo);
   if (!repository) throw new AppError(`Repository ${owner}/${repo} is not configured`, 400, "NO_REPOSITORY");
-  const cwd = await resolveMainPath(repository);
+  const cwd = resolveMainPath(repository);
 
   const active = await db
     .select()
     .from(claudeSessions)
-    .where(and(eq(claudeSessions.prUrl, url), inArray(claudeSessions.state, ACTIVE_STATES)))
+    .where(and(eq(claudeSessions.prUrl, url), isActive()))
     .limit(1);
   if (active[0]) {
     throw new AppError(`Session ${active[0].id} is already ${active[0].state} on this PR`, 409, "SESSION_ACTIVE");
@@ -287,8 +235,7 @@ export async function startReviewSession(
       prompt: `${REVIEW_CHORE.prompt} ${url}`,
       cwd,
       name: `${repository.alias ?? repository.repo}#${number} · ${REVIEW_CHORE.name}`,
-      model: opts.model ?? null,
-      effort: opts.effort ?? null,
+      ...(await modelFor(REVIEW_CHORE.key, opts)),
       state: "preparing",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -300,14 +247,15 @@ export async function startReviewSession(
   return row;
 }
 
-type ChoreLike = { key: string; name: string; cwd: "task" | "main"; requiresSameRepo?: boolean };
+type ChoreLike = { key: string; name: string; cwd: "task" | "main"; supportsBulk?: boolean; requiresSameRepo?: boolean };
 type TaskForPrompt = { id: number; jiraKey: string | null };
 
 async function createSession(
   taskId: number,
   opts: {
     chore: ChoreLike;
-    prompt: (task: TaskForPrompt) => string;
+    /** `taskIds`: the task, then the other tasks of a bulk run. */
+    prompt: (task: TaskForPrompt, taskIds: number[]) => string;
     model?: string | null;
     effort?: string | null;
     trigger?: SessionTrigger;
@@ -321,22 +269,12 @@ async function createSession(
 
   const { chore } = opts;
   if (!repository) throw new AppError("Task has no associated repository", 400, "NO_REPOSITORY");
-  const mainPath = await resolveMainPath(repository);
+  // A task chore's worktree is set up, and its path known, once runStart has run.
+  const mainPath = resolveMainPath(repository);
 
-  const active = await findActiveSession(taskId);
-  if (active) {
-    throw new AppError(`Session ${active.id} is already ${active.state} on this task`, 409, "SESSION_ACTIVE");
-  }
-  const links = await checkLinkedTasks(chore, repository.id, opts.withTaskIds ?? []);
-  if (DEV_STACK_CHORES.includes(chore.key)) {
-    await assertDevStackFree([taskId, ...links.map((l) => l.taskId)], repository.id);
-  }
-
-  let cwd = mainPath;
-  if (chore.cwd === "task") {
-    const worktree = await getTaskWorktreeRow(taskId);
-    cwd = worktree?.path ?? worktreePathFor(mainPath, await branchForTask(task, repository));
-  }
+  const others = await checkLinkedTasks(taskId, chore, repository.id, opts.withTaskIds);
+  const taskIds = [taskId, ...others.map((other) => other.id)];
+  if (DEV_STACK_CHORES.includes(chore.key)) await assertDevStackFree(taskIds, repository.id);
 
   const timestamp = now();
   const rows = await db
@@ -346,11 +284,10 @@ async function createSession(
       repositoryId: repository.id,
       choreKey: chore.key,
       choreName: chore.name,
-      prompt: opts.prompt(task),
-      cwd,
-      name: `${task.jiraKey ?? `#${task.id}`}${links.length > 0 ? ` +${links.length}` : ""} · ${chore.name}`,
-      model: opts.model ?? null,
-      effort: opts.effort ?? null,
+      prompt: opts.prompt(task, taskIds),
+      cwd: mainPath,
+      name: `${task.jiraKey ?? `#${task.id}`}${others.length > 0 ? ` +${others.length}` : ""} · ${chore.name}`,
+      ...(await modelFor(chore.key, opts)),
       trigger: opts.trigger ?? "manual",
       // A manual run records the state too, so the scheduler won't redo it.
       triggerFingerprint: opts.triggerFingerprint ?? fingerprintFor(chore.key, task),
@@ -360,52 +297,56 @@ async function createSession(
     })
     .returning();
   const row = rows[0];
-  await linkSessionTasks(row.id, links);
+  await linkSessionTasks(row.id, others.map((other) => ({ taskId: other.id, triggerFingerprint: fingerprintFor(chore.key, other) })));
   broadcast("session");
   void runStart(row.id);
   return row;
 }
 
-/** The other tasks of a bulk run, each idle (and in the repository when the chore needs it), with its trigger state. */
-async function checkLinkedTasks(chore: ChoreLike, repositoryId: number, taskIds: number[]): Promise<SessionTaskLink[]> {
-  const links: SessionTaskLink[] = [];
-  for (const id of taskIds) {
-    const result = await getTaskWithRepository(id);
-    if (!result) throw new NotFoundError("Task", id);
-    if (chore.requiresSameRepo && result.repository?.id !== repositoryId) {
-      throw new AppError(`Task ${id} is in another repository`, 400, "VALIDATION_ERROR");
-    }
-    const active = await findActiveSession(id);
-    if (active) throw new AppError(`Session ${active.id} is already ${active.state} on task ${id}`, 409, "SESSION_ACTIVE");
-    const { repository: _repository, ...task } = result;
-    links.push({ taskId: id, triggerFingerprint: fingerprintFor(chore.key, task) });
+/**
+ * The other tasks of a bulk run (in the repository when the chore needs it),
+ * refused for a chore that runs on one task at a time. The task and each of
+ * them must be idle.
+ */
+async function checkLinkedTasks(taskId: number, chore: ChoreLike, repositoryId: number, withTaskIds?: number[]) {
+  const active = await findActiveSession(taskId);
+  if (active) {
+    throw new AppError(`Session ${active.id} is already ${active.state} on this task`, 409, "SESSION_ACTIVE");
   }
-  return links;
+  const others = await loadOtherTasks(withTaskIds, taskId, chore.requiresSameRepo ? repositoryId : undefined);
+  if (others.length > 0 && !chore.supportsBulk) {
+    throw new AppError(`${chore.name} runs on one task at a time`, 400, "VALIDATION_ERROR");
+  }
+  for (const other of others) {
+    const busy = await findActiveSession(other.id);
+    if (busy) throw new AppError(`Session ${busy.id} is already ${busy.state} on task ${other.id}`, 409, "SESSION_ACTIVE");
+  }
+  return others;
 }
 
 // Capacity check + spawn are serialized so two starts cannot both pass the cap.
 let spawnChain: Promise<void> = Promise.resolve();
 
-export async function runStart(sessionId: number): Promise<void> {
+async function runStart(sessionId: number): Promise<void> {
   try {
     const row = await getRow(sessionId);
     if (!row || (row.state !== "preparing" && row.state !== "queued")) return;
 
-    const chore = getChoreDefinition(row.choreKey);
+    const chore = getChoreDefinition(row.choreKey) ?? [CUSTOM_CHORE, REVIEW_CHORE].find((c) => c.key === row.choreKey);
     if (!chore) {
-      await updateRow(sessionId, { state: "failed", error: `Unknown chore: ${row.choreKey}` });
+      await updateSession(sessionId, { state: "failed", error: `Unknown chore: ${row.choreKey}` });
       return;
     }
 
     let cwd = row.cwd;
     if (chore.cwd === "task") {
       if (row.taskId === null) {
-        await updateRow(sessionId, { state: "failed", error: `${chore.name} needs a task` });
+        await updateSession(sessionId, { state: "failed", error: `${chore.name} needs a task` });
         return;
       }
       const worktree = await ensureTaskWorktree(row.taskId);
       if (worktree.state !== "ready") {
-        await updateRow(sessionId, {
+        await updateSession(sessionId, {
           state: "failed",
           error: `Worktree ${worktree.state}${worktree.error ? `: ${worktree.error}` : ""}`,
         });
@@ -418,23 +359,17 @@ export async function runStart(sessionId: number): Promise<void> {
     spawnChain = task.catch(() => undefined);
     await task;
   } catch (err) {
-    await updateRow(sessionId, { state: "failed", error: err instanceof Error ? err.message : String(err) });
+    await updateSession(sessionId, { state: "failed", error: err instanceof Error ? err.message : String(err) });
   }
 }
-
-/**
- * Chores never call most claude.ai connectors, yet each one's deferred tool
- * names ride on every API call. Custom prompts keep them all.
- */
-const CHORE_SESSION_SETTINGS = `${import.meta.dir}/chore-session-settings.json`;
 
 async function spawnGated(sessionId: number, cwd: string): Promise<void> {
   const row = await getRow(sessionId);
   if (!row || (row.state !== "preparing" && row.state !== "queued")) return; // stopped meanwhile
 
   // The cap guards task Docker stacks; a task-less PR review never boots one.
-  if (row.taskId !== null && (await capacityCheck(cwd)) === "queued") {
-    if (row.state !== "queued") await updateRow(sessionId, { state: "queued", cwd });
+  if (row.taskId !== null && (await ensureStackCapacity(cwd)) === "queued") {
+    if (row.state !== "queued") await updateSession(sessionId, { state: "queued", cwd });
     return;
   }
 
@@ -447,17 +382,17 @@ async function spawnGated(sessionId: number, cwd: string): Promise<void> {
     settings: row.choreKey === CUSTOM_CHORE.key ? undefined : CHORE_SESSION_SETTINGS,
   });
   if ("error" in spawned) {
-    await updateRow(sessionId, { state: "failed", cwd, error: spawned.error });
+    await updateSession(sessionId, { state: "failed", cwd, error: spawned.error });
     return;
   }
-  await updateRow(sessionId, { state: "working", cwd, shortId: spawned.shortId, error: null });
+  await updateSession(sessionId, { state: "working", cwd, shortId: spawned.shortId, error: null });
 }
 
 export async function stopSession(id: number): Promise<SessionRow> {
   const row = await getSession(id);
   if (TERMINAL_STATES.includes(row.state as ClaudeSessionState)) return row;
   if (row.shortId) await cliStop(row.shortId);
-  return updateRow(id, {
+  return updateSession(id, {
     state: "stopped",
     processStoppedAt: row.shortId ? now() : null,
   });
@@ -472,175 +407,7 @@ export async function respawnSession(id: number): Promise<SessionRow> {
     const output = (result.stderr || result.stdout).trim();
     throw new AppError(`claude respawn failed${output ? `: ${output}` : ""}`, 502, "RESPAWN_FAILED");
   }
-  return updateRow(id, { processStoppedAt: null });
-}
-
-/**
- * Mirror each session's process liveness into `processStoppedAt`, so the UI can
- * offer a respawn when the daemon lost it (reboot, CLI update, reaper) and
- * clear it when it was respawned from a terminal.
- */
-export async function syncProcessLiveness(): Promise<void> {
-  const rows = await db.select().from(claudeSessions).where(isNotNull(claudeSessions.shortId));
-  if (rows.length === 0) return;
-  // `--all` lists dead sessions too, so an empty list means the CLI failed: do not guess.
-  const agents = await listAgents();
-  if (agents.length === 0) return;
-  const alive = new Set(agents.filter((a) => a.pid).map((a) => a.id));
-  for (const row of rows) {
-    const running = alive.has(row.shortId!);
-    if (running && row.processStoppedAt) await updateRow(row.id, { processStoppedAt: null });
-    if (!running && !row.processStoppedAt) await updateRow(row.id, { processStoppedAt: now() });
-  }
-}
-
-// Consecutive polls where state.json was missing, per session id.
-const missingStateCounts = new Map<number, number>();
-
-/**
- * Copy state.json into each working/blocked session; broadcast on change.
- * Done sessions with a live process are polled too: chatting with one resumes it.
- */
-export async function pollActiveSessions(): Promise<void> {
-  const rows = await db
-    .select()
-    .from(claudeSessions)
-    .where(
-      and(
-        isNotNull(claudeSessions.shortId),
-        or(
-          inArray(claudeSessions.state, POLLED_STATES),
-          and(eq(claudeSessions.state, "done"), isNull(claudeSessions.processStoppedAt)),
-        ),
-      ),
-    );
-  if (rows.length === 0) return;
-
-  let agents: Awaited<ReturnType<typeof listAgents>> | null = null;
-
-  for (const row of rows) {
-    let job = await readJobState(row.shortId!);
-    if (!job) {
-      if (row.state === "done") continue;
-      const misses = (missingStateCounts.get(row.id) ?? 0) + 1;
-      missingStateCounts.set(row.id, misses);
-      if (misses < MISSING_STATE_TOLERANCE) continue;
-      agents ??= await listAgents();
-      if (!agents.some((a) => a.id === row.shortId)) {
-        missingStateCounts.delete(row.id);
-        await updateRow(row.id, { state: "failed", error: "Session vanished before reporting a state" });
-      }
-      continue;
-    }
-    missingStateCounts.delete(row.id);
-
-    // WORKAROUND (see pendingQuestion): remove once the CLI marks these prompts blocked.
-    if (job.tempo === "active" && job.linkScanPath) {
-      const question = await pendingQuestion(job.linkScanPath);
-      if (question) job = { ...job, tempo: "blocked", needs: question };
-    }
-
-    const nextState = effectiveState(job);
-    // A finished run whose idle process dies later (e.g. its worktree was reaped) stays done.
-    if (row.state === "done" && nextState === "failed") {
-      await updateRow(row.id, { processStoppedAt: now() });
-      continue;
-    }
-    const updates: Partial<SessionRow> = {};
-    if (nextState && nextState !== row.state) updates.state = nextState;
-    if ((job.detail ?? null) !== row.detail) updates.detail = job.detail ?? null;
-    if ((job.needs ?? null) !== row.needs) updates.needs = job.needs ?? null;
-    const result = job.output?.result ?? null;
-    if (result !== row.result) updates.result = result;
-    if (job.sessionId && job.sessionId !== row.sessionId) updates.sessionId = job.sessionId;
-    if (job.bridgeSessionId && job.bridgeSessionId !== row.bridgeSessionId) updates.bridgeSessionId = job.bridgeSessionId;
-    if ((job.updatedAt ?? null) !== row.claudeUpdatedAt) updates.claudeUpdatedAt = job.updatedAt ?? null;
-    const terminalAt = job.firstTerminalAt ?? null;
-    if (terminalAt && terminalAt !== row.firstTerminalAt) updates.firstTerminalAt = terminalAt;
-    if (nextState && TERMINAL_STATES.includes(nextState) && !terminalAt && !row.firstTerminalAt) {
-      updates.firstTerminalAt = now();
-    }
-
-    if (Object.keys(updates).length > 0) await updateRow(row.id, updates);
-    if (nextState && nextState !== row.state && TERMINAL_STATES.includes(nextState)) {
-      for (const taskId of await coveredTaskIds(row)) onSessionFinished(taskId);
-    }
-  }
-}
-
-/**
- * The CLI writes `state: "working"` with `tempo: "idle"` for two different
- * things: a run that ended without the agent declaring an outcome, and an
- * agent parked waiting on CI or a scheduled wake-up. Only the second can
- * resume on its own, so the job's pending work tells them apart.
- *
- * `state: "blocked"` is also sticky: it survives the answer that unblocked the
- * session, so an active tempo outranks it.
- */
-function effectiveState(job: JobState): ClaudeSessionState | null {
-  const state = normalizeState(job.state);
-  if (state && TERMINAL_STATES.includes(state)) return state;
-  if (job.tempo === "blocked") return "blocked";
-  if (job.tempo === "active") return "working";
-  if (job.tempo === "idle" && !willResume(job)) return "done";
-  return state;
-}
-
-/** Anything left that can wake the session back up without a human. */
-function willResume(job: JobState): boolean {
-  const flight = job.inFlight;
-  if (wakePending(job.wake)) return true;
-  if ((flight?.tasks ?? 0) - (flight?.drainableMonitors ?? 0) > 0) return true;
-  if ((flight?.queued ?? 0) > 0) return true;
-  return (flight?.kinds ?? []).includes("session_cron");
-}
-
-function wakePending(wake: JobState["wake"]): boolean {
-  if (!wake) return false;
-  const at = typeof wake.at === "string" ? Date.parse(wake.at) : wake.at;
-  return at === undefined || !Number.isFinite(at) || at > Date.now();
-}
-
-function normalizeState(state: string | undefined): ClaudeSessionState | null {
-  switch (state) {
-    case "working":
-    case "blocked":
-    case "done":
-    case "failed":
-    case "stopped":
-      return state;
-    default:
-      return null;
-  }
-}
-
-/**
- * Stop finished sessions' processes once they have been idle long enough.
- * Idle is read from state.json, not the row: a done session can still be
- * chatted with, or respawned, and the row stops tracking it once done.
- */
-export async function reapIdleProcesses(): Promise<void> {
-  const cutoff = new Date(Date.now() - REAP_IDLE_MS).toISOString();
-  const rows = await db
-    .select()
-    .from(claudeSessions)
-    .where(
-      and(
-        inArray(claudeSessions.state, ["done", "failed"]),
-        isNotNull(claudeSessions.shortId),
-        isNull(claudeSessions.processStoppedAt),
-        lt(claudeSessions.firstTerminalAt, cutoff),
-      ),
-    );
-  for (const row of rows) {
-    const job = await readJobState(row.shortId!);
-    if (job && ((job.tempo ?? "idle") !== "idle" || (job.updatedAt ?? "") >= cutoff)) continue;
-    await cliStop(row.shortId!);
-    await db
-      .update(claudeSessions)
-      .set({ processStoppedAt: now(), updatedAt: now() })
-      .where(eq(claudeSessions.id, row.id));
-  }
+  return updateSession(id, { processStoppedAt: null });
 }
 
 /** Start queued sessions in order while capacity allows. */

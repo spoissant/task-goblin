@@ -1,11 +1,11 @@
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export type RouteHandler = (
+type RouteHandler = (
   req: Request,
   params: Record<string, string>
 ) => Promise<Response> | Response;
 
-export type RouteDefinition = {
+type RouteDefinition = {
   [method in HttpMethod]?: RouteHandler;
 };
 

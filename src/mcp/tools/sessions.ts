@@ -7,16 +7,7 @@ import {
   type ListResponse,
   type RecentClaudeSession,
 } from "@/shared/types";
-import { get, post } from "../client.js";
-
-function result(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
-}
-
-function errorResult(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
-  return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
-}
+import { get, post, toolResult } from "../client.js";
 
 export function registerSessionTools(server: McpServer) {
   // start_session
@@ -41,13 +32,7 @@ export function registerSessionTools(server: McpServer) {
         effort: z.enum(SESSION_EFFORTS).optional(),
       },
     },
-    async ({ taskId, ...body }) => {
-      try {
-        return result(await post<ClaudeSession>(`/api/v1/tasks/${taskId}/sessions`, body));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId, ...body }) => toolResult(() => post<ClaudeSession>(`/api/v1/tasks/${taskId}/sessions`, body))
   );
 
   // list_sessions
@@ -64,16 +49,13 @@ export function registerSessionTools(server: McpServer) {
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    async ({ since, limit, offset }) => {
-      try {
+    ({ since, limit, offset }) =>
+      toolResult(async () => {
         const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
         if (since) params.set("since", since);
         const data = await get<ListResponse<RecentClaudeSession>>(`/api/v1/sessions/recent?${params}`);
-        return result({ ...data, items: data.items.map(({ prompt: _prompt, ...rest }) => rest) });
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+        return { ...data, items: data.items.map(({ prompt: _prompt, ...rest }) => rest) };
+      })
   );
 
   // list_task_sessions
@@ -83,12 +65,6 @@ export function registerSessionTools(server: McpServer) {
       description: "List a task's Claude Code sessions, newest first, with state and Remote Control link.",
       inputSchema: { taskId: z.number().int().describe("Task ID") },
     },
-    async ({ taskId }) => {
-      try {
-        return result(await get<ListResponse<ClaudeSession>>(`/api/v1/tasks/${taskId}/sessions`));
-      } catch (err) {
-        return errorResult(err);
-      }
-    }
+    ({ taskId }) => toolResult(() => get<ListResponse<ClaudeSession>>(`/api/v1/tasks/${taskId}/sessions`))
   );
 }

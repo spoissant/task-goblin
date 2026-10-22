@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/client/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { useRepositoriesQuery, useUpdateTask } from "@/client/lib/queries";
 import { useRepositoryGuessQuery } from "@/client/lib/queries/worktrees";
 import { cn } from "@/client/lib/utils";
@@ -55,43 +48,46 @@ export function RepoConfirmDialog({ open, onOpenChange, taskId, onConfirmed }: R
     );
   };
 
+  const footer = (
+    <>
+      <Button variant="ghost" onClick={() => onOpenChange(false)}>
+        Cancel
+      </Button>
+      <Button onClick={confirm} disabled={selected === null || updateTask.isPending}>
+        Use this repository
+      </Button>
+    </>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Which repository?</DialogTitle>
-          <DialogDescription>
-            {isLoading
-              ? "Looking for a hint…"
-              : guess?.reason
-                ? `Prefilled: ${GUESS_LABEL[guess.reason] ?? guess.reason}. Confirm or pick another.`
-                : "No hint available. Pick the repository this task lives in."}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-wrap gap-2 py-2">
-          {enabledRepos.map((repo) => (
-            <button
-              key={repo.id}
-              type="button"
-              onClick={() => setSelected(repo.id)}
-              className={cn(
-                "rounded-full ring-offset-background transition",
-                selected === repo.id ? "ring-2 ring-primary ring-offset-2" : "opacity-70 hover:opacity-100",
-              )}
-            >
-              <RepoBadge repo={repo} />
-            </button>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={confirm} disabled={selected === null || updateTask.isPending}>
-            Use this repository
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Which repository?"
+      description={
+        isLoading
+          ? "Looking for a hint…"
+          : guess?.reason
+            ? `Prefilled: ${GUESS_LABEL[guess.reason] ?? guess.reason}. Confirm or pick another.`
+            : "No hint available. Pick the repository this task lives in."
+      }
+      footer={footer}
+    >
+      <div className="flex flex-wrap gap-2 py-4">
+        {enabledRepos.map((repo) => (
+          <button
+            key={repo.id}
+            type="button"
+            onClick={() => setSelected(repo.id)}
+            className={cn(
+              "rounded-full ring-offset-background transition",
+              selected === repo.id ? "ring-2 ring-primary ring-offset-2" : "opacity-70 hover:opacity-100",
+            )}
+          >
+            <RepoBadge repo={repo} />
+          </button>
+        ))}
+      </div>
+    </ModalDialog>
   );
 }

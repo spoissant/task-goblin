@@ -1,7 +1,7 @@
 ---
 name: chore-preview-upstream
-description: Pin the alumni_connect PR to a prerelease of the upstream PR it depends on, before the upstream merges — front-monorepo publishes an alpha of the packages the upstream branch changes, api-contracts waits for the SDK branch build CI makes on every push — then bumps the alumni_connect PR to it and pushes. /chore-ship-upstream later moves it to the stable release. Use for /chore-preview-upstream <alumniConnectTaskId> <upstreamTaskId>, "publish an alpha", or "preview the upstream PR in alumni_connect".
-allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__sync_task,mcp__task-goblin__prepare_task_worktree"
+description: Pin the alumni_connect PR to a prerelease (alpha or SDK branch build) of the unmerged upstream PR it depends on. Use for /chore-preview-upstream <alumniConnectTaskId> <upstreamTaskId>, "publish an alpha", or "preview the upstream PR in alumni_connect".
+allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__sync_task,mcp__task-goblin__prepare_task_worktree"
 ---
 
 # Preview Upstream PR
@@ -14,7 +14,7 @@ Waits happen in the background: a `run_in_background` Bash loop polling `gh` eve
 
 ## 1. Context
 
-`sync_task` then `get_task` on both → `headBranch`, `prNumber`, `repository`, `uncommittedFiles`, `unpushedCommits`. A task without a branch: stop. `Skill(checkout-branch)` with the target's `headBranch`.
+`sync_task` on both, which returns each refreshed `task` → `headBranch`, `prNumber`, `repository`, `uncommittedFiles`, `unpushedCommits`. A task without a branch: stop. `Skill(checkout-branch)` with the target's `headBranch`.
 
 ## 2. Build the prerelease
 
@@ -22,7 +22,7 @@ Follow the reference. It also says which dependencies of the alumni_connect PR t
 
 ## 3. Bump the alumni_connect PR
 
-Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Then `sync_task(target)`. CI on the alumni_connect PR is left to the usual chores (#5 fix PR checks).
+Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. CI on the alumni_connect PR is left to the usual chores (#5 fix PR checks).
 
 ## 4. Report
 

@@ -2,7 +2,6 @@ import { CheckCircle, PencilLine, RotateCcw, Sparkles, XCircle } from "lucide-re
 import { toast } from "sonner";
 import type { ClaudeSession } from "@/client/lib/types";
 import { useRespawnSession, useStartReviewSession, type StartReviewInput } from "@/client/lib/queries/sessions";
-import { useChoreModelDefaults } from "@/client/lib/chore-models";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
 import { DISCONNECTED_UI, STATE_UI, canRespawn, isSessionActive } from "@/client/lib/sessions";
@@ -31,24 +30,17 @@ const DRAFT_PILL = `${PILL} border border-violet-400 bg-violet-100 text-violet-9
 export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: ReviewCellProps) {
   const startReview = useStartReviewSession();
   const respawnSession = useRespawnSession();
-  const { getDefault } = useChoreModelDefaults();
 
   const run = () => {
     if (!start) return;
-    // A colleague's PR runs the review pseudo-chore; your own runs its task's chore.
-    const defaults = getDefault("prUrl" in start ? "review-pr" : "code-review-pr");
-    startReview.mutate({ ...start, ...defaults }, {
+    startReview.mutate(start, {
       onSuccess: () => toast.success("Code review started"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to start the review"),
     });
   };
 
   const respawn = () => {
-    if (!session) return;
-    respawnSession.mutate(session.id, {
-      onSuccess: () => toast.success("Session respawned"),
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to respawn session"),
-    });
+    if (session) respawnSession.mutate(session.id);
   };
 
   // Its Remote Control link is dead until the process is back: respawn, then
@@ -61,10 +53,7 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
         if (tab) tab.location.href = href;
         else window.open(href, "_blank", "noopener,noreferrer");
       },
-      onError: (err) => {
-        tab?.close();
-        toast.error(err instanceof Error ? err.message : "Failed to respawn session");
-      },
+      onError: () => tab?.close(),
     });
   };
 

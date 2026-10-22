@@ -4,26 +4,17 @@ import { Badge } from "@/client/components/ui/badge";
 import { ReviewStatusIcon, PrStatusIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
-import { AlertTriangle, CornerDownRight, Flame, ListTree, Snowflake, Zap } from "lucide-react";
+import { AssignDialog } from "../AssignDialog";
+import { AlertTriangle, CornerDownRight, Flame, ListTree, Zap } from "lucide-react";
 import { toast } from "sonner";
-import type { Task, Repository } from "@/client/lib/types";
+import type { Task, Repository } from "@/shared/types";
 import { parseReviewStatus } from "@/shared/review-status";
+import { getJiraUrl } from "@/client/lib/links";
 import { useMergePr, useUpdateTask } from "@/client/lib/queries/tasks";
 import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/client/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Button } from "@/client/components/ui/button";
-import { Textarea } from "@/client/components/ui/textarea";
-import { Linkify } from "@/client/components/ui/Linkify";
 import { CopyChip } from "@/client/components/ui/copy-chip";
-import { AssignPrDialog } from "../AssignPrDialog";
-import { AssignJiraDialog } from "../AssignJiraDialog";
 
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-600 text-white hover:bg-red-600",
@@ -32,19 +23,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   P3: "bg-yellow-600 text-white hover:bg-yellow-600",
   P4: "bg-blue-500 text-white hover:bg-blue-500",
 };
-
-// Build Jira URL - requires jiraHost, returns null if not configured
-export function getJiraUrl(jiraKey: string, jiraHost: string | undefined | null): string | null {
-  if (!jiraHost) return null;
-  const cleanHost = jiraHost.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  return `https://${cleanHost}/browse/${jiraKey}`;
-}
-
-// Build GitHub PR URL
-export function getPrUrl(repo: Pick<Repository, "owner" | "repo"> | undefined | null, prNumber: number | null): string | null {
-  if (!repo || !prNumber) return null;
-  return `https://github.com/${repo.owner}/${repo.repo}/pull/${prNumber}`;
-}
 
 export function TypeCell({ task }: { task: Task }) {
   if (!task.type) {
@@ -73,80 +51,64 @@ export function SprintCell({ task }: { task: Task }) {
   );
 }
 
+/** A Jira key (or `children`) linking to the issue; plain text while no Jira host is set. */
+export function JiraLink({ jiraKey, jiraHost, children }: { jiraKey: string; jiraHost?: string | null; children?: React.ReactNode }) {
+  const url = getJiraUrl(jiraKey, jiraHost);
+  if (!url) return <span className="font-mono text-xs">{children ?? jiraKey}</span>;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:underline font-mono text-xs"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children ?? jiraKey}
+    </a>
+  );
+}
+
 export function ParentCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
   const key = task.epicKey ?? task.parentKey;
   if (!key) {
     return <span className="text-muted-foreground">—</span>;
   }
-  const isEpic = task.epicKey != null;
-  const url = getJiraUrl(key, jiraHost);
-  const content = (
-    <span className="inline-flex items-center gap-1">
-      {isEpic && <Zap className="h-3 w-3 text-purple-600 shrink-0" />}
-      {key}
-    </span>
+  return (
+    <JiraLink jiraKey={key} jiraHost={jiraHost}>
+      <span className="inline-flex items-center gap-1">
+        {task.epicKey != null && <Zap className="h-3 w-3 text-purple-600 shrink-0" />}
+        {key}
+      </span>
+    </JiraLink>
   );
-  if (url) {
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 hover:underline font-mono text-xs"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {content}
-      </a>
-    );
-  }
-  return <span className="font-mono text-xs">{content}</span>;
 }
 
-export function KeyCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
-  const [assignOpen, setAssignOpen] = useState(false);
-
-  if (!task.jiraKey) {
-    if (!task.prNumber) {
-      return <span className="text-muted-foreground">—</span>;
-    }
-    return (
-      <>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs text-muted-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            setAssignOpen(true);
-          }}
-        >
-          Assign
-        </Button>
-        {assignOpen && (
-          <AssignJiraDialog
-            taskId={task.id}
-            open={assignOpen}
-            onOpenChange={setAssignOpen}
-          />
-        )}
-      </>
-    );
-  }
-  const jiraUrl = getJiraUrl(task.jiraKey, jiraHost);
-  if (jiraUrl) {
-    return (
-      <a
-        href={jiraUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 hover:underline font-mono text-xs"
-        onClick={(e) => e.stopPropagation()}
+/** Opens the dialog that gives the task its Jira key or PR. */
+function AssignButton({ kind, taskId }: { kind: "jira" | "pr"; taskId: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 text-xs text-muted-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
       >
-        {task.jiraKey}
-      </a>
-    );
-  }
-  return <span className="font-mono text-xs">{task.jiraKey}</span>;
+        Assign
+      </Button>
+      {open && <AssignDialog kind={kind} taskId={taskId} open={open} onOpenChange={setOpen} />}
+    </>
+  );
+}
+
+export function KeyCell({ task, jiraHost, canAssign }: { task: Task; jiraHost?: string | null; canAssign: boolean }) {
+  if (task.jiraKey) return <JiraLink jiraKey={task.jiraKey} jiraHost={jiraHost} />;
+  // A PR task without a key can be given one.
+  if (task.prNumber && canAssign) return <AssignButton kind="jira" taskId={task.id} />;
+  return <span className="text-muted-foreground">—</span>;
 }
 
 export function TitleCell({ task, linkToTask }: { task: Task; linkToTask?: boolean }) {
@@ -166,14 +128,14 @@ export function TitleCell({ task, linkToTask }: { task: Task; linkToTask?: boole
   );
 }
 
-export function RepoCell({ task, repo }: { task: Task; repo?: Repository }) {
+export function RepoCell({ task, repo, devStack }: { task: Task; repo?: Repository | null; devStack: boolean }) {
   if (!repo) {
     return <span className="text-muted-foreground">—</span>;
   }
   return (
     <span className="inline-flex items-center gap-1">
       <RepoBadge repo={repo} />
-      <DevStackToggle owner={{ taskId: task.id }} repositoryId={task.repositoryId} label={task.headBranch} />
+      {devStack && <DevStackToggle owner={{ taskId: task.id }} repositoryId={task.repositoryId} label={task.headBranch} />}
     </span>
   );
 }
@@ -238,32 +200,9 @@ function UnpushedWarning({ task }: { task: Task }) {
   );
 }
 
-export function PrCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
-  const [assignOpen, setAssignOpen] = useState(false);
-
+export function PrCell({ task, prUrl, canAssign }: { task: Task; prUrl?: string | null; canAssign: boolean }) {
   if (!task.prNumber) {
-    return (
-      <>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs text-muted-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            setAssignOpen(true);
-          }}
-        >
-          Assign
-        </Button>
-        {assignOpen && (
-          <AssignPrDialog
-            taskId={task.id}
-            open={assignOpen}
-            onOpenChange={setAssignOpen}
-          />
-        )}
-      </>
-    );
+    return canAssign ? <AssignButton kind="pr" taskId={task.id} /> : <span className="text-muted-foreground">—</span>;
   }
   const content = (
     <>
@@ -319,113 +258,32 @@ function MergeButton({ task }: { task: Task }) {
   );
 }
 
-export function OnIceCell({ task }: { task: Task }) {
-  const updateTask = useUpdateTask();
-  const isOnIce = !!task.onIce;
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState(task.onIceReason ?? "");
-
-  const handleOpenChange = (next: boolean) => {
-    if (next) setReason(task.onIceReason ?? "");
-    setOpen(next);
-  };
-
-  const handleFreeze = () => {
-    updateTask.mutate(
-      { id: task.id, onIce: true, onIceReason: reason.trim() || null },
-      { onSuccess: () => setOpen(false) }
-    );
-  };
-
-  const handleThaw = () => {
-    updateTask.mutate(
-      { id: task.id, onIce: false, onIceReason: null },
-      { onSuccess: () => setOpen(false) }
-    );
-  };
-
-  const button = (
-    <button
-      type="button"
-      className="cursor-pointer hover:opacity-80"
-      onClick={(e) => {
-        e.stopPropagation();
-        handleOpenChange(true);
-      }}
-    >
-      <Snowflake
-        className={`h-4 w-4 transition-colors ${
-          isOnIce
-            ? "text-sky-400 fill-sky-400/30 ice-glow"
-            : "text-muted-foreground/30"
-        }`}
-      />
-    </button>
-  );
-
-  return (
-    <>
-      {isOnIce && task.onIceReason ? (
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent className="max-w-xs whitespace-pre-wrap">
-            <Linkify>{task.onIceReason}</Linkify>
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        button
-      )}
-
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent onClick={(e) => e.stopPropagation()}>
-          <DialogHeader>
-            <DialogTitle>{isOnIce ? "On ice" : "Put task on ice"}</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Why is this task on ice? (links allowed)"
-            rows={5}
-            autoFocus
-          />
-          <DialogFooter>
-            {isOnIce && (
-              <Button variant="outline" onClick={handleThaw} disabled={updateTask.isPending}>
-                Thaw
-              </Button>
-            )}
-            <Button onClick={handleFreeze} disabled={updateTask.isPending}>
-              {isOnIce ? "Save" : "Freeze"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-export function HighPriorityCell({ task }: { task: Task }) {
-  const updateTask = useUpdateTask();
-  const isHigh = !!task.highPriority;
-
+/** The flame that flags something high priority, lit while it is. */
+export function FlameToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       className="cursor-pointer hover:opacity-80"
       onClick={(e) => {
         e.stopPropagation();
-        updateTask.mutate({ id: task.id, highPriority: !isHigh });
+        onToggle();
       }}
     >
       <Flame
         className={`h-4 w-4 transition-colors ${
-          isHigh
+          active
             ? "text-orange-500 fill-orange-500 flame-glow"
             : "text-muted-foreground/30"
         }`}
       />
     </button>
   );
+}
+
+export function HighPriorityCell({ task }: { task: Task }) {
+  const updateTask = useUpdateTask();
+  const isHigh = !!task.highPriority;
+  return <FlameToggle active={isHigh} onToggle={() => updateTask.mutate({ id: task.id, highPriority: !isHigh })} />;
 }
 
 // Derived flags (not editable): the task has sub-tasks or child issues, and/or is itself a sub-task.

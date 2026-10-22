@@ -7,6 +7,13 @@ import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
+// Both columns are required text: trimmed, and blank or non-string is rejected.
+function requiredText(body: Record<string, unknown>, key: "githubTeamSlug" | "slackChannel"): string {
+  const value = body[key];
+  if (typeof value !== "string" || !value.trim()) throw new ValidationError(`${key} is required`);
+  return value.trim();
+}
+
 export const teamChannelRoutes: Routes = {
   "/api/v1/team-channels": {
     async GET() {
@@ -17,18 +24,11 @@ export const teamChannelRoutes: Routes = {
     async POST(req) {
       const body = await getBody(req);
 
-      if (!body.githubTeamSlug || typeof body.githubTeamSlug !== "string") {
-        throw new ValidationError("githubTeamSlug is required");
-      }
-      if (!body.slackChannel || typeof body.slackChannel !== "string") {
-        throw new ValidationError("slackChannel is required");
-      }
-
       const result = await db
         .insert(teamChannels)
         .values({
-          githubTeamSlug: body.githubTeamSlug.trim(),
-          slackChannel: body.slackChannel.trim(),
+          githubTeamSlug: requiredText(body, "githubTeamSlug"),
+          slackChannel: requiredText(body, "slackChannel"),
         })
         .returning();
 
@@ -46,9 +46,9 @@ export const teamChannelRoutes: Routes = {
         throw new NotFoundError("TeamChannel", id);
       }
 
-      const updates: Record<string, unknown> = {};
-      if (body.githubTeamSlug !== undefined) updates.githubTeamSlug = body.githubTeamSlug.trim();
-      if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel.trim();
+      const updates: Partial<typeof teamChannels.$inferInsert> = {};
+      if (body.githubTeamSlug !== undefined) updates.githubTeamSlug = requiredText(body, "githubTeamSlug");
+      if (body.slackChannel !== undefined) updates.slackChannel = requiredText(body, "slackChannel");
 
       if (Object.keys(updates).length === 0) {
         return json(existing[0]);

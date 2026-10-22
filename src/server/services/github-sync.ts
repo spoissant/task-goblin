@@ -1,38 +1,83 @@
-import { eq, and, or, isNotNull, isNull } from "drizzle-orm";
+/**
+ * Pulls PRs from GitHub into tasks: the open PRs the user authored in enabled
+ * repositories, plus those of tasks still open here (merged or closed since,
+ * or someone else's). A single PR goes through the same batched fetch.
+ */
+import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
-import { getGitHubClient, getGitHubConfig, GitHubConfigError } from "../lib/github-client";
-import { mapGqlPrToTaskData } from "./github-mappers";
-import { fetchDeployedVersions } from "./github-fetchers";
+import { getGitHubClient, getGitHubConfig, GitHubError, toGitHubError } from "../lib/github-client";
+import { httpStatusOf } from "../lib/errors";
+import { findRepository } from "../lib/queries";
+import { parseDeploymentBranches } from "../lib/validation";
+import { parseJson } from "@/shared/json";
+import { mapGqlPrToTaskData, type PrTaskData } from "./github-mappers";
 import {
-  fetchPullRequests,
-  fetchPullRequestCore,
-  fetchPullRequestChecks,
   fetchContainment,
+  fetchPullRequestChecks,
+  fetchPullRequestCore,
   mapChecks,
   prKey,
-  type PrTarget,
   type ContainmentRequest,
-  type ContainmentTarget,
   type GqlPrCore,
 } from "./github-graphql";
 import { upsertPrTask } from "./github-upsert";
-import { isApiError } from "../lib/errors";
 import type { SyncResult } from "@/shared/types";
 
-export class GitHubApiError extends Error {
-  constructor(
-    message: string,
-    public code: string
-  ) {
-    super(message);
-    this.name = "GitHubApiError";
-  }
+type RepoRow = typeof repositories.$inferSelect;
+type GitHubClient = ReturnType<typeof getGitHubClient>;
+
+/** A PR to fetch: its configured repository and its number. */
+interface PrRef {
+  repo: RepoRow;
+  number: number;
 }
 
-/** Deployment branches configured for a repo. */
-function deploymentBranchesOf(repo: { deploymentBranches: string | null }): string[] {
-  return repo.deploymentBranches ? JSON.parse(repo.deploymentBranches) : [];
+const keyOf = ({ repo, number }: PrRef) => prKey(repo.owner, repo.repo, number);
+
+/** The SHA each deployment environment serves, probed over plain HTTP. */
+async function fetchDeployedVersions(deploymentUrls: Record<string, string>): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+
+  await Promise.allSettled(
+    Object.entries(deploymentUrls).map(async ([branch, url]) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const res = await fetch(url, { method: "HEAD", signal: controller.signal });
+        // Prefer full 40-char SHA from the link header's static asset URL
+        // (e.g. https://static.hvbrt.com/v-<sha>/...) — GitHub's compare API
+        // rejects abbreviated SHAs.
+        const linkHeader = res.headers.get("link");
+        const fullSha = linkHeader?.match(/\/v-([a-f0-9]{40})\//)?.[1];
+        if (fullSha) {
+          result.set(branch, fullSha);
+        } else {
+          const version = res.headers.get("x-app-version");
+          const shortSha = version?.match(/-([a-f0-9]{7,40})\.\w+$/)?.[1];
+          if (shortSha) result.set(branch, shortSha);
+        }
+      } catch {
+        // Skip on error
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+
+  return result;
+}
+
+/** Deployed SHAs per environment, by repository id. */
+async function deployedVersionsByRepo(repos: RepoRow[]): Promise<Map<number, Map<string, string>>> {
+  const byRepo = new Map<number, Map<string, string>>();
+  await Promise.all(
+    repos.map(async (repo) => {
+      const urls = parseJson<Record<string, string>>(repo.deploymentUrls, {});
+      if (Object.keys(urls).length > 0) byRepo.set(repo.id, await fetchDeployedVersions(urls));
+    })
+  );
+  return byRepo;
 }
 
 /**
@@ -44,300 +89,130 @@ function labelDetectedBranches(pr: GqlPrCore, deploymentBranches: string[]): str
   return deploymentBranches.filter((branch) => pr.labels.includes(`merged in ${branch}`));
 }
 
-export async function syncGitHubPullRequests(): Promise<SyncResult> {
-  const config = await getGitHubConfig();
-  const client = getGitHubClient();
-
-  // Get enabled repositories
-  const repos = await db
-    .select()
-    .from(repositories)
-    .where(eq(repositories.enabled, 1));
-
-  if (repos.length === 0) {
-    return { synced: 0, new: 0, updated: 0, unchanged: 0 };
-  }
-
-  // Build lookup maps for O(1) repo access
-  const reposByKey = new Map(repos.map((r) => [`${r.owner}/${r.repo}`, r]));
-  const reposById = new Map(repos.map((r) => [r.id, r]));
-
-  // Build repo filter: (repo:owner/name OR repo:owner/name2 ...)
-  const repoFilters = repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ");
-
-  let synced = 0;
-  let newCount = 0;
-  let updatedCount = 0;
-  let unchangedCount = 0;
-  const syncedPrs = new Set<string>();
-
-  try {
-    // Search API: fetch only open PRs authored by user in configured repos.
-    // Deployed versions are scraped over HTTP, so they're fetched concurrently.
-    const query = `is:pr is:open author:${config.username} ${repoFilters}`;
-
-    const collectOpenPrs = async () => {
-      const found: Array<{ repo: typeof repos[number]; number: number }> = [];
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const { data } = await client.request("GET /search/issues", { q: query, per_page: 100, page });
-        for (const item of data.items) {
-          const match = (item.repository_url || "").match(/repos\/([^/]+)\/([^/]+)$/);
-          if (!match) continue;
-          const repo = reposByKey.get(`${match[1]}/${match[2]}`);
-          if (repo) found.push({ repo, number: item.number });
-        }
-        hasMore = data.items.length === 100;
-        page++;
-      }
-      return found;
-    };
-
-    const collectDeployedVersions = async () => {
-      const byRepo = new Map<number, Map<string, string>>();
-      await Promise.all(
-        repos
-          .filter((r) => r.deploymentUrls)
-          .map(async (r) => {
-            const urls = JSON.parse(r.deploymentUrls!) as Record<string, string>;
-            const versions = await fetchDeployedVersions(urls);
-            if (versions.size > 0) byRepo.set(r.id, versions);
-          })
-      );
-      return byRepo;
-    };
-
-    const [openPrs, deployedVersionsByRepo] = await Promise.all([
-      collectOpenPrs(),
-      collectDeployedVersions(),
-    ]);
-
-    for (const { repo, number } of openPrs) {
-      syncedPrs.add(`${repo.id}:${number}`);
-    }
-
-    // Orphans: tasks whose PR is no longer open, so the search didn't return it.
-    // They're fetched in the same batch as the open PRs — just extra numbers.
-    const orphans = (
-      await db
-        .select({ prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
-        .from(tasks)
-        .where(
-          and(
-            isNotNull(tasks.prNumber),
-            isNotNull(tasks.repositoryId),
-            or(eq(tasks.prState, "open"), isNull(tasks.prState))
-          )
-        )
-    )
-      .filter((r) => r.prNumber && r.repositoryId && !syncedPrs.has(`${r.repositoryId}:${r.prNumber}`))
-      .map((r) => {
-        const repo = reposById.get(r.repositoryId!);
-        return repo ? { repo, number: r.prNumber! } : null;
-      })
-      .filter((x): x is { repo: typeof repos[number]; number: number } => x !== null);
-
-    const allPrs = [...openPrs, ...orphans];
-    if (allPrs.length === 0) {
-      return { synced: 0, new: 0, updated: 0, unchanged: 0 };
-    }
-
-    const prTargets: PrTarget[] = allPrs.map(({ repo, number }) => ({
-      owner: repo.owner,
-      repo: repo.repo,
-      number,
-    }));
-
-    // Containment needs only `headRefName`, which comes from the cheap core
-    // query — so it runs concurrently with the much slower check-suite fetch
-    // rather than after it.
-    const prData = await fetchPullRequestCore(client, prTargets);
-
-    // Containment only applies to open PRs — a merged or closed PR has its
-    // deployment badges cleared.
-    const containmentRequests: ContainmentRequest[] = [];
-    for (const { repo, number } of allPrs) {
-      const pr = prData.get(prKey(repo.owner, repo.repo, number));
-      if (!pr || pr.state !== "OPEN" || !pr.headRefName) continue;
-
-      const deployedVersions = deployedVersionsByRepo.get(repo.id) ?? new Map<string, string>();
-      const containmentTargets: ContainmentTarget[] = [
-        ...deploymentBranchesOf(repo).map((b) => ({ label: b, ref: b, kind: "branch" as const })),
-        ...[...deployedVersions.entries()].map(([label, sha]) => ({ label, ref: sha, kind: "deployed" as const })),
-      ];
-      if (containmentTargets.length === 0) continue;
-
-      containmentRequests.push({
-        owner: repo.owner,
-        repo: repo.repo,
-        number,
-        headRefName: pr.headRefName,
-        targets: containmentTargets,
-      });
-    }
-
-    const [checksData, containment] = await Promise.all([
-      fetchPullRequestChecks(client, prTargets),
-      fetchContainment(client, containmentRequests),
-    ]);
-
-    for (const { repo, number } of allPrs) {
-      const key = prKey(repo.owner, repo.repo, number);
-      const pr = prData.get(key);
-      // PR may have been deleted or become inaccessible — skip, as before.
-      if (!pr) continue;
-
-      const isOpen = pr.state === "OPEN";
-      const deploymentBranches = deploymentBranchesOf(repo);
-      const merged = containment.get(key);
-
-      const taskData = mapGqlPrToTaskData(
-        pr,
-        repo.id,
-        mapChecks(checksData.get(key)),
-        merged?.onBranches ?? [],
-        merged?.deployedOn ?? [],
-        isOpen ? labelDetectedBranches(pr, deploymentBranches) : []
-      );
-
-      const result = await upsertPrTask(taskData);
-      if (result === "new") newCount++;
-      else if (result === "updated") updatedCount++;
-      else unchangedCount++;
-      synced++;
-    }
-  } catch (err: unknown) {
-    if (err instanceof GitHubConfigError) {
-      throw err;
-    }
-
-    if (isApiError(err)) {
-      if (err.status === 401) {
-        throw new GitHubApiError(
-          "GitHub authentication failed. Check your GITHUB_TOKEN.",
-          "GITHUB_AUTH_FAILED"
-        );
-      }
-      if (err.status === 403) {
-        throw new GitHubApiError(
-          "GitHub rate limit exceeded or insufficient permissions.",
-          "GITHUB_FORBIDDEN"
-        );
-      }
-      if (err.status === 422) {
-        throw new GitHubApiError(
-          "Invalid search query. Check github_username setting.",
-          "GITHUB_INVALID_QUERY"
-        );
-      }
-
-      throw new GitHubApiError(
-        err.message || "Failed to fetch PRs from GitHub",
-        "GITHUB_API_ERROR"
-      );
-    }
-
-    throw new GitHubApiError("Failed to fetch PRs from GitHub", "GITHUB_API_ERROR");
-  }
-
-  return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
+/**
+ * What an open PR's branch is tested against: its repository's deployment
+ * branches and deployed SHAs. A merged or closed PR gets none, which clears
+ * its deployment badges.
+ */
+function containmentRequest(pr: GqlPrCore, { repo, number }: PrRef, deployed: Map<string, string> = new Map()) {
+  if (pr.state !== "OPEN" || !pr.headRefName) return null;
+  const targets = [
+    ...parseDeploymentBranches(repo.deploymentBranches).map((b) => ({ label: b, ref: b, kind: "branch" as const })),
+    ...[...deployed].map(([label, sha]) => ({ label, ref: sha, kind: "deployed" as const })),
+  ];
+  if (targets.length === 0) return null;
+  return { owner: repo.owner, repo: repo.repo, number, headRefName: pr.headRefName, targets } satisfies ContainmentRequest;
 }
 
-export async function fetchPrTaskData(
-  owner: string,
-  repo: string,
-  prNumber: number
-) {
+/**
+ * PRs as task data, batched: the core fields first, then the checks alongside
+ * the containment test (it needs only the core's `headRefName`, so it doesn't
+ * wait on the much slower check-suite fetch). PRs GitHub didn't return
+ * (deleted, inaccessible) are left out.
+ */
+async function fetchPrs(client: GitHubClient, prs: PrRef[]): Promise<Map<string, PrTaskData>> {
+  const targets = prs.map(({ repo, number }) => ({ owner: repo.owner, repo: repo.repo, number }));
+  const repos = [...new Map(prs.map(({ repo }) => [repo.id, repo])).values()];
+  const [core, deployed] = await Promise.all([fetchPullRequestCore(client, targets), deployedVersionsByRepo(repos)]);
+  const requests = prs.flatMap((ref) => {
+    const pr = core.get(keyOf(ref));
+    const request = pr && containmentRequest(pr, ref, deployed.get(ref.repo.id));
+    return request ? [request] : [];
+  });
+  const [checks, containment] = await Promise.all([
+    fetchPullRequestChecks(client, targets),
+    fetchContainment(client, requests),
+  ]);
+
+  const result = new Map<string, PrTaskData>();
+  for (const ref of prs) {
+    const key = keyOf(ref);
+    const pr = core.get(key);
+    if (!pr) continue;
+    const contained = containment.get(key);
+    const labelled = pr.state === "OPEN" ? labelDetectedBranches(pr, parseDeploymentBranches(ref.repo.deploymentBranches)) : [];
+    result.set(
+      key,
+      mapGqlPrToTaskData(pr, ref.repo.id, mapChecks(checks.get(key)), contained?.onBranches ?? [], contained?.deployedOn ?? [], labelled)
+    );
+  }
+  return result;
+}
+
+/** The user's open PRs in these repositories, from the search API. */
+async function searchOpenPrs(client: GitHubClient, username: string, repos: RepoRow[]): Promise<PrRef[]> {
+  const byName = new Map(repos.map((r) => [`${r.owner}/${r.repo}`, r]));
+  const q = `is:pr is:open author:${username} ${repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ")}`;
+  const found: PrRef[] = [];
+  for (let page = 1; ; page++) {
+    const { data } = await client.request("GET /search/issues", { q, per_page: 100, page });
+    for (const item of data.items) {
+      const match = (item.repository_url || "").match(/repos\/([^/]+)\/([^/]+)$/);
+      const repo = match ? byName.get(`${match[1]}/${match[2]}`) : undefined;
+      if (repo) found.push({ repo, number: item.number });
+    }
+    if (data.items.length < 100) return found;
+  }
+}
+
+/** The PRs of tasks still open here, in these repositories: the search misses them once merged or closed, and someone else's. */
+async function trackedOpenPrs(repos: RepoRow[]): Promise<PrRef[]> {
+  const byId = new Map(repos.map((r) => [r.id, r]));
+  const rows = await db
+    .select({ prNumber: tasks.prNumber, repositoryId: tasks.repositoryId })
+    .from(tasks)
+    .where(and(isNotNull(tasks.prNumber), or(eq(tasks.prState, "open"), isNull(tasks.prState))));
+  return rows.flatMap(({ prNumber, repositoryId }) => {
+    const repo = repositoryId === null ? undefined : byId.get(repositoryId);
+    return repo && prNumber ? [{ repo, number: prNumber }] : [];
+  });
+}
+
+export async function syncGitHubPullRequests(): Promise<SyncResult> {
+  const { username } = await getGitHubConfig();
   const client = getGitHubClient();
+  const repos = await db.select().from(repositories).where(eq(repositories.enabled, 1));
+  const result: SyncResult = { synced: 0, new: 0, updated: 0, unchanged: 0 };
+  if (repos.length === 0) return result;
 
-  const repoResult = await db
-    .select()
-    .from(repositories)
-    .where(and(eq(repositories.owner, owner), eq(repositories.repo, repo)));
-
-  if (repoResult.length === 0) {
-    throw new GitHubApiError(
-      `Repository ${owner}/${repo} not configured`,
-      "GITHUB_REPO_NOT_CONFIGURED"
-    );
-  }
-
-  const repository = repoResult[0];
-
+  let prs: Map<string, PrTaskData>;
   try {
-    const [prData, deployedVersions] = await Promise.all([
-      fetchPullRequests(client, [{ owner, repo, number: prNumber }]),
-      repository.deploymentUrls
-        ? fetchDeployedVersions(JSON.parse(repository.deploymentUrls) as Record<string, string>)
-        : Promise.resolve(new Map<string, string>()),
-    ]);
-
-    const pr = prData.get(prKey(owner, repo, prNumber));
-    if (!pr) {
-      throw new GitHubApiError(`PR #${prNumber} not found in ${owner}/${repo}`, "GITHUB_PR_NOT_FOUND");
+    const refs = [...(await searchOpenPrs(client, username, repos)), ...(await trackedOpenPrs(repos))];
+    // A PR several tasks hold (one per ticket) is fetched once.
+    prs = await fetchPrs(client, [...new Map(refs.map((ref) => [keyOf(ref), ref])).values()]);
+  } catch (err) {
+    // The search answers 422 when github_username names no GitHub user.
+    if (httpStatusOf(err) === 422) {
+      throw new GitHubError("Invalid search query. Check the github_username setting.", 400, "GITHUB_INVALID_QUERY");
     }
-
-    const isOpen = pr.state === "OPEN";
-    const deploymentBranches = deploymentBranchesOf(repository);
-
-    const containmentTargets: ContainmentTarget[] = isOpen
-      ? [
-          ...deploymentBranches.map((b) => ({ label: b, ref: b, kind: "branch" as const })),
-          ...[...deployedVersions.entries()].map(([label, sha]) => ({ label, ref: sha, kind: "deployed" as const })),
-        ]
-      : [];
-
-    const containment =
-      containmentTargets.length > 0 && pr.headRefName
-        ? (
-            await fetchContainment(client, [
-              { owner, repo, number: prNumber, headRefName: pr.headRefName, targets: containmentTargets },
-            ])
-          ).get(prKey(owner, repo, prNumber))
-        : undefined;
-
-    return mapGqlPrToTaskData(
-      pr,
-      repository.id,
-      mapChecks(pr),
-      containment?.onBranches ?? [],
-      containment?.deployedOn ?? [],
-      isOpen ? labelDetectedBranches(pr, deploymentBranches) : []
-    );
-  } catch (err: unknown) {
-    if (err instanceof GitHubConfigError) {
-      throw err;
-    }
-
-    // Already classified (e.g. the not-found thrown above). GraphQL returns a
-    // null node rather than a 404, so that case never reaches isApiError.
-    if (err instanceof GitHubApiError) {
-      throw err;
-    }
-
-    if (isApiError(err)) {
-      if (err.status === 401) {
-        throw new GitHubApiError(
-          "GitHub authentication failed. Check your GITHUB_TOKEN.",
-          "GITHUB_AUTH_FAILED"
-        );
-      }
-      if (err.status === 404) {
-        throw new GitHubApiError(
-          `PR #${prNumber} not found in ${owner}/${repo}`,
-          "GITHUB_PR_NOT_FOUND"
-        );
-      }
-
-      throw new GitHubApiError(
-        err.message || `Failed to fetch PR #${prNumber} from GitHub`,
-        "GITHUB_API_ERROR"
-      );
-    }
-
-    throw new GitHubApiError(`Failed to fetch PR #${prNumber} from GitHub`, "GITHUB_API_ERROR");
+    throw toGitHubError(err, "Failed to fetch PRs from GitHub");
   }
+
+  for (const data of prs.values()) {
+    if ((await upsertPrTask(data)) === "new") result.new++;
+    else result.updated++;
+    result.synced++;
+  }
+  return result;
+}
+
+/** One PR as task data, fetched like the sync's. Its repository must be configured. */
+export async function fetchPrTaskData(owner: string, repo: string, prNumber: number): Promise<PrTaskData> {
+  const repository = await findRepository(owner, repo);
+  if (!repository) {
+    throw new GitHubError(`Repository ${owner}/${repo} not configured`, 400, "GITHUB_REPO_NOT_CONFIGURED");
+  }
+  const notFound = `PR #${prNumber} not found in ${owner}/${repo}`;
+  const ref = { repo: repository, number: prNumber };
+  let data: PrTaskData | undefined;
+  try {
+    data = (await fetchPrs(getGitHubClient(), [ref])).get(keyOf(ref));
+  } catch (err) {
+    throw toGitHubError(err, `Failed to fetch PR #${prNumber} from GitHub`, notFound);
+  }
+  // GraphQL answers a missing PR with a null node, not a 404.
+  if (!data) throw new GitHubError(notFound, 404, "GITHUB_PR_NOT_FOUND");
+  return data;
 }
 
 /** Newest PR (any state) opened from `branch` in owner/repo, or null when there is none. */
@@ -351,21 +226,7 @@ export async function findPrNumberByBranch(owner: string, repo: string, branch: 
       per_page: 1,
     });
     return data[0]?.number ?? null;
-  } catch (err: unknown) {
-    if (err instanceof GitHubConfigError || !isApiError(err)) throw err;
-    if (err.status === 401) {
-      throw new GitHubApiError("GitHub authentication failed. Check your GITHUB_TOKEN.", "GITHUB_AUTH_FAILED");
-    }
-    throw new GitHubApiError(err.message || `Failed to look up the PR for ${branch}`, "GITHUB_API_ERROR");
+  } catch (err) {
+    throw toGitHubError(err, `Failed to look up the PR for ${branch}`);
   }
-}
-
-export async function syncGitHubPullRequestByNumber(
-  owner: string,
-  repo: string,
-  prNumber: number
-): Promise<{ status: "new" | "updated" | "unchanged" }> {
-  const taskData = await fetchPrTaskData(owner, repo, prNumber);
-  const status = await upsertPrTask(taskData);
-  return { status };
 }

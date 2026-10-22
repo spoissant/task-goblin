@@ -1,21 +1,11 @@
 import { eq, isNotNull } from "drizzle-orm";
 import type { SearchAndReconcileResults } from "jira.js/out/version3/models";
 import { db } from "../../db";
-import { tasks, settings } from "../../db/schema";
-import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
+import { tasks } from "../../db/schema";
+import { getJiraClient, getJiraConfig, toJiraError, type JiraConfig } from "../lib/jira-client";
+import { getSetting, setSetting } from "../lib/settings";
 import { now } from "../lib/timestamp";
-import { isApiError } from "../lib/errors";
 import type { SyncResult } from "@/shared/types";
-
-export class JiraApiError extends Error {
-  constructor(
-    message: string,
-    public code: string
-  ) {
-    super(message);
-    this.name = "JiraApiError";
-  }
-}
 
 function extractParent(issue: { fields: Record<string, unknown> }): { key: string; isEpic: boolean } | null {
   const parent = issue.fields.parent as { key?: string; fields?: { issuetype?: { name?: string } } } | undefined;
@@ -78,22 +68,10 @@ const RECONCILE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Slack added to the delta window for clock skew and JQL minute granularity.
 const DELTA_BUFFER_MINUTES = 5;
 
-async function getSetting(key: string): Promise<string | null> {
-  const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, key));
-  return rows[0]?.value ?? null;
-}
-
-async function setSetting(key: string, value: string): Promise<void> {
-  await db
-    .insert(settings)
-    .values({ key, value })
-    .onConflictDoUpdate({ target: settings.key, set: { value } });
-}
-
-// Fields upsertTask writes from Jira. Used for change detection so an
-// unchanged issue costs zero writes — most issues are unchanged on any
-// given sync, and there are hundreds of them.
-const SYNCED_FIELDS = [
+// Fields upsertTask writes from Jira (and a task merge copies with the key).
+// Used for change detection so an unchanged issue costs zero writes — most
+// issues are unchanged on any given sync, and there are hundreds of them.
+export const JIRA_FIELDS = [
   "title",
   "status",
   "type",
@@ -113,25 +91,12 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
   if (existing.length > 0) {
     const oldTask = existing[0];
 
-    if (SYNCED_FIELDS.every((field) => oldTask[field] === taskData[field])) {
+    if (JIRA_FIELDS.every((field) => oldTask[field] === taskData[field])) {
       return "unchanged";
     }
 
-    // Update existing task, preserve PR fields if already merged
-    await db
-      .update(tasks)
-      .set({
-        title: taskData.title,
-        status: taskData.status,
-        type: taskData.type,
-        assignee: taskData.assignee,
-        priority: taskData.priority,
-        sprint: taskData.sprint,
-        epicKey: taskData.epicKey,
-        parentKey: taskData.parentKey,
-        updatedAt: taskData.updatedAt,
-      })
-      .where(eq(tasks.jiraKey, taskData.jiraKey));
+    // Only the Jira fields: a linked PR's stay as they are
+    await db.update(tasks).set(taskData).where(eq(tasks.id, oldTask.id));
 
     return "updated";
   } else {
@@ -146,6 +111,12 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
 
     return "new";
   }
+}
+
+/** The issue fields a sync asks Jira for: the ones mapIssueToTaskData reads. */
+function issueFields(config: JiraConfig): string[] {
+  const fields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
+  return config.sprintField ? [...fields, config.sprintField] : fields;
 }
 
 /** Page through a JQL search, returning every issue. */
@@ -191,9 +162,7 @@ export async function syncJiraItems(): Promise<SyncResult> {
   let unchangedCount = 0;
   const syncedKeys = new Set<string>();
 
-  // Build fields array, optionally including sprint field
-  const baseFields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
-  const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
+  const fields = issueFields(config);
 
   // Keys already tracked locally. The delta and reconcile passes only ever
   // *update* these — they must never insert. Both deliberately ignore the
@@ -292,73 +261,22 @@ export async function syncJiraItems(): Promise<SyncResult> {
     // Only advance the delta watermark on a fully successful sync, so a
     // mid-sync failure re-examines that window next time instead of skipping it.
     await setSetting(JIRA_DELTA_SYNCED_AT, startedAt.toISOString());
-  } catch (err: unknown) {
-    if (err instanceof JiraConfigError) {
-      throw err;
-    }
-
-    if (isApiError(err)) {
-      if (err.status === 401 || err.status === 403) {
-        throw new JiraApiError(
-          "Jira authentication failed. Check your API token and email.",
-          "JIRA_AUTH_FAILED"
-        );
-      }
-
-      throw new JiraApiError(
-        err.message || "Failed to fetch issues from Jira",
-        "JIRA_API_ERROR"
-      );
-    }
-
-    throw new JiraApiError("Failed to fetch issues from Jira", "JIRA_API_ERROR");
+  } catch (err) {
+    throw toJiraError(err, "Failed to fetch issues from Jira");
   }
 
   return { synced, new: newCount, updated: updatedCount, unchanged: unchangedCount };
 }
 
-export async function syncJiraItemByKey(key: string): Promise<{ status: "new" | "updated" | "unchanged" }> {
+/** Pull one issue into its task, creating the task when it's new. */
+export async function syncJiraItemByKey(key: string): Promise<"new" | "updated" | "unchanged"> {
   const config = await getJiraConfig();
   const client = getJiraClient(config);
 
-  // Build fields array, optionally including sprint field
-  const baseFields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
-  const fields = config.sprintField ? [...baseFields, config.sprintField] : baseFields;
-
   try {
-    const issue = await client.issues.getIssue({
-      issueIdOrKey: key,
-      fields,
-    });
-
-    const taskData = mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField);
-    const status = await upsertTask(taskData);
-    return { status };
-  } catch (err: unknown) {
-    if (err instanceof JiraConfigError) {
-      throw err;
-    }
-
-    if (isApiError(err)) {
-      if (err.status === 401 || err.status === 403) {
-        throw new JiraApiError(
-          "Jira authentication failed. Check your API token and email.",
-          "JIRA_AUTH_FAILED"
-        );
-      }
-      if (err.status === 404) {
-        throw new JiraApiError(
-          `Issue ${key} not found in Jira`,
-          "JIRA_ISSUE_NOT_FOUND"
-        );
-      }
-
-      throw new JiraApiError(
-        err.message || `Failed to fetch issue ${key} from Jira`,
-        "JIRA_API_ERROR"
-      );
-    }
-
-    throw new JiraApiError(`Failed to fetch issue ${key} from Jira`, "JIRA_API_ERROR");
+    const issue = await client.issues.getIssue({ issueIdOrKey: key, fields: issueFields(config) });
+    return await upsertTask(mapIssueToTaskData(issue as { key?: string; fields: IssueFields }, config.sprintField));
+  } catch (err) {
+    throw toJiraError(err, `Failed to fetch issue ${key} from Jira`, `Issue ${key} not found in Jira`);
   }
 }

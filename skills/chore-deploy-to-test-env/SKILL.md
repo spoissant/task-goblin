@@ -1,7 +1,7 @@
 ---
 name: chore-deploy-to-test-env
 description: Deploy one or more Task Goblin tasks' PR branches to a test environment by merging them into the env branch from a throwaway worktree and pushing once. Use for /chore-deploy-to-test-env <taskId> [<taskId>…] <env> [--skip-tests] [--monitor] or "deploy task to test env".
-allowed-tools: "mcp__task-goblin__get_task,mcp__task-goblin__sync_task,Bash,Read,Edit,Skill(hivebrite-engineering:staging-deploy)"
+allowed-tools: "mcp__task-goblin__get_task,Bash,Read,Edit,Skill(hivebrite-engineering:staging-deploy)"
 ---
 
 # Deploy to Test Environment
@@ -41,7 +41,7 @@ Sibling checkouts are usually busy (other sessions, a running `bin/dev` stack). 
 
    Push rejected as non-fast-forward: redo step 3 from a fresh fetch and worktree. Never rebase, force-push or reset the env branch: it is shared, and a rebase flattens the merge-parent chain. A second failure is reported and stops.
 
-4. `gh pr edit <prNumber> --add-label "merged in $ENV_BRANCH"` per PR, then `git worktree remove --force "$WT"` on every path including failures, and check `git worktree list` is clean. After a successful push, `sync_task(id)` per task.
+4. `gh pr edit <prNumber> --add-label "merged in $ENV_BRANCH"` per PR, then `git worktree remove --force "$WT"` on every path including failures, and check `git worktree list` is clean.
 
 5. Report: one row per task (branch, PR, merge SHA and parents), every conflict resolution, anything skipped and why, and the links `https://buildkite.com/hivebrite/alumni-connect/builds?branch=<env>` and `https://<env>.hvbrt.com/backoffice/admins/sign_in`. Mention tests only if `--skip-tests` was used.
 

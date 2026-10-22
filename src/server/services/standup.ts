@@ -7,19 +7,17 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { standups } from "../../db/schema";
 import { AppError } from "../lib/errors";
-import { runCommand, type CommandResult } from "../lib/process";
+import type { CommandResult } from "../lib/process";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
+import { runPrint } from "./claude-cli";
 import type { Standup, StandupState } from "../../shared/types";
 
 type StandupRow = typeof standups.$inferSelect;
 
 const REPO_DIR = `${import.meta.dir}/../../..`;
-const SETTINGS = `${import.meta.dir}/chore-session-settings.json`;
 const TIMEOUT_MS = 10 * 60_000;
 const HISTORY = 30;
-
-export const STANDUP_ARGS = ["-p", "/standup", "--output-format", "json", "--model", "sonnet", "--settings", SETTINGS];
 
 export function toApi(row: StandupRow): Standup {
   return { ...row, state: row.state as StandupState };
@@ -41,7 +39,7 @@ export async function startStandup(): Promise<StandupRow> {
 }
 
 async function generate(id: number): Promise<void> {
-  const res = await runCommand("claude", STANDUP_ARGS, { cwd: REPO_DIR, timeoutMs: TIMEOUT_MS });
+  const res = await runPrint({ cwd: REPO_DIR, prompt: "/standup", model: "sonnet", timeoutMs: TIMEOUT_MS });
   await db.update(standups).set({ ...parseOutput(res), updatedAt: now() }).where(eq(standups.id, id));
   broadcast("standup");
 }

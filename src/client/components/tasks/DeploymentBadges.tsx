@@ -1,5 +1,6 @@
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { Badge } from "@/client/components/ui/badge";
+import { parseStringList } from "@/shared/json";
 
 interface DeploymentBadgesProps {
   branches: string | null; // onDeploymentBranches (commit-detected)
@@ -8,12 +9,12 @@ interface DeploymentBadgesProps {
 }
 
 export function DeploymentBadges({ branches, labelOnlyBranches, deployedBranches }: DeploymentBadgesProps) {
-  const commitBranches = parseBranches(branches);
-  const labelBranches = parseBranches(labelOnlyBranches);
-  const deployed = parseBranches(deployedBranches);
+  const commitBranches = parseStringList(branches);
+  const labelBranches = parseStringList(labelOnlyBranches);
+  const deployed = parseStringList(deployedBranches);
 
-  const allBranches = [...new Set([...commitBranches, ...labelBranches, ...deployed])];
-  const visibleBranches = allBranches.filter((b) => commitBranches.includes(b) || labelBranches.includes(b));
+  // A branch shows once its PR is merged in or labelled for it; deployed only adds the check mark.
+  const visibleBranches = [...new Set([...commitBranches, ...labelBranches])];
 
   if (visibleBranches.length === 0) {
     return <span className="text-muted-foreground">—</span>;
@@ -49,13 +50,4 @@ export function DeploymentBadges({ branches, labelOnlyBranches, deployedBranches
       })}
     </div>
   );
-}
-
-function parseBranches(value: string | null | undefined): string[] {
-  if (!value) return [];
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [];
-  }
 }

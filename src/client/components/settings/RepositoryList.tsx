@@ -3,9 +3,10 @@ import {
   useRepositoriesQuery,
   useUpdateRepository,
   useDeleteRepository,
-  useCreateWorktree,
-  useDeleteWorktree,
-} from "@/client/lib/queries";
+  type RepositoryUpdate,
+} from "@/client/lib/queries/repositories";
+import type { Repository } from "@/shared/types";
+import { parseJson, parseStringList } from "@/shared/json";
 import { Card, CardContent } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -22,179 +23,15 @@ import {
 import { Badge } from "@/client/components/ui/badge";
 import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { BadgeColorSelect } from "./BadgeColorSelect";
+import { ColorSelect, BADGE_COLOR_OPTIONS } from "./ColorSelect";
+import { SaveOnBlurInput } from "./SaveOnBlurInput";
 import { AddRepositoryDialog } from "./AddRepositoryDialog";
+
+type TextField = "alias" | "localPath" | "slackChannel" | "setupCommand" | "teardownCommand" | "defaultBaseBranch";
 
 export function RepositoryList() {
   const { data, isLoading } = useRepositoriesQuery();
-  const updateRepo = useUpdateRepository();
-  const deleteRepo = useDeleteRepository();
-  const createWorktree = useCreateWorktree();
-  const deleteWorktree = useDeleteWorktree();
-
   const [isAddingRepo, setIsAddingRepo] = useState(false);
-  const [branchInputs, setBranchInputs] = useState<Record<number, string>>({});
-  const [worktreeInputs, setWorktreeInputs] = useState<Record<number, string>>({});
-  const [slackChannelInputs, setSlackChannelInputs] = useState<Record<number, string>>({});
-  const [aliasInputs, setAliasInputs] = useState<Record<number, string>>({});
-  // URL inputs keyed by `${repoId}-${branch}`
-  const [deploymentUrlInputs, setDeploymentUrlInputs] = useState<Record<string, string>>({});
-  // Task worktree fields keyed by `${repoId}-${field}`
-  const [worktreeFieldInputs, setWorktreeFieldInputs] = useState<Record<string, string>>({});
-
-  type WorktreeField = "setupCommand" | "teardownCommand" | "defaultBaseBranch";
-  const renderWorktreeField = (
-    repo: { id: number } & Record<WorktreeField, string | null>,
-    field: WorktreeField,
-    placeholder: string,
-    width: string,
-  ) => {
-    const key = `${repo.id}-${field}`;
-    return (
-      <Input
-        className={`h-6 ${width} text-xs font-mono`}
-        placeholder={placeholder}
-        value={worktreeFieldInputs[key] ?? (repo[field] || "")}
-        onChange={(e) => setWorktreeFieldInputs((prev) => ({ ...prev, [key]: e.target.value }))}
-        onBlur={() => {
-          const val = worktreeFieldInputs[key];
-          if (val === undefined) return;
-          updateRepo.mutate(
-            { id: repo.id, [field]: val.trim() || null },
-            { onError: () => toast.error(`Failed to update ${field}`) }
-          );
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-      />
-    );
-  };
-
-  const handleBadgeColorChange = (id: number, color: string) => {
-    updateRepo.mutate(
-      { id, badgeColor: color || null },
-      {
-        onError: () => {
-          toast.error("Failed to update badge color");
-        },
-      }
-    );
-  };
-
-  const handleToggleEnabled = (id: number, enabled: boolean) => {
-    updateRepo.mutate(
-      { id, enabled: !enabled },
-      {
-        onError: () => {
-          toast.error("Failed to update repository");
-        },
-      }
-    );
-  };
-
-  const parseDeploymentBranches = (json: string | null): string[] => {
-    if (!json) return [];
-    try {
-      return JSON.parse(json);
-    } catch {
-      return [];
-    }
-  };
-
-  const parseDeploymentUrls = (json: string | null): Record<string, string> => {
-    if (!json) return {};
-    try {
-      return JSON.parse(json);
-    } catch {
-      return {};
-    }
-  };
-
-  const handleDeploymentUrlBlur = (id: number, branch: string, currentUrls: Record<string, string>) => {
-    const key = `${id}-${branch}`;
-    const val = deploymentUrlInputs[key];
-    if (val === undefined) return;
-    const trimmed = val.trim();
-    const updated = { ...currentUrls };
-    if (trimmed) {
-      updated[branch] = trimmed;
-    } else {
-      delete updated[branch];
-    }
-    updateRepo.mutate(
-      { id, deploymentUrls: Object.keys(updated).length > 0 ? updated : null },
-      { onError: () => toast.error("Failed to update deployment URL") }
-    );
-  };
-
-  const handleAddDeploymentBranch = (id: number, currentBranches: string[]) => {
-    const newBranch = branchInputs[id]?.trim();
-    if (!newBranch) return;
-    if (currentBranches.includes(newBranch)) {
-      toast.error("Branch already exists");
-      return;
-    }
-    updateRepo.mutate(
-      { id, deploymentBranches: [...currentBranches, newBranch] },
-      {
-        onSuccess: () => {
-          setBranchInputs((prev) => ({ ...prev, [id]: "" }));
-        },
-        onError: () => {
-          toast.error("Failed to add deployment branch");
-        },
-      }
-    );
-  };
-
-  const handleRemoveDeploymentBranch = (id: number, currentBranches: string[], branchToRemove: string) => {
-    updateRepo.mutate(
-      { id, deploymentBranches: currentBranches.filter((b) => b !== branchToRemove) },
-      {
-        onError: () => {
-          toast.error("Failed to remove deployment branch");
-        },
-      }
-    );
-  };
-
-  const handleAddWorktree = (repositoryId: number) => {
-    const path = worktreeInputs[repositoryId]?.trim();
-    if (!path) return;
-    createWorktree.mutate(
-      { repositoryId, path },
-      {
-        onSuccess: () => {
-          setWorktreeInputs((prev) => ({ ...prev, [repositoryId]: "" }));
-        },
-        onError: () => {
-          toast.error("Failed to add worktree path");
-        },
-      }
-    );
-  };
-
-  const handleRemoveWorktree = (worktreeId: number) => {
-    deleteWorktree.mutate(worktreeId, {
-      onError: () => {
-        toast.error("Failed to remove worktree path");
-      },
-    });
-  };
-
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this repository?")) {
-      deleteRepo.mutate(id, {
-        onSuccess: () => {
-          toast.success("Repository deleted");
-        },
-        onError: () => {
-          toast.error("Failed to delete repository");
-        },
-      });
-    }
-  };
 
   if (isLoading) {
     return <Skeleton className="h-48 w-full" />;
@@ -222,7 +59,7 @@ export function RepositoryList() {
                   <TableHead>Repository</TableHead>
                   <TableHead>Alias</TableHead>
                   <TableHead>Badge Color</TableHead>
-                  <TableHead>Worktrees</TableHead>
+                  <TableHead>Local Checkout Path</TableHead>
                   <TableHead>Deployment Branches</TableHead>
                   <TableHead>Slack Channel</TableHead>
                   <TableHead>Task Worktrees</TableHead>
@@ -232,170 +69,7 @@ export function RepositoryList() {
               </TableHeader>
               <TableBody>
                 {data.items.map((repo) => (
-                  <TableRow key={repo.id}>
-                    <TableCell className="font-mono">
-                      {repo.owner}/{repo.repo}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        className="h-6 w-24 text-xs font-mono"
-                        placeholder="short name"
-                        value={aliasInputs[repo.id] ?? (repo.alias || "")}
-                        onChange={(e) => setAliasInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
-                        onBlur={() => {
-                          const val = aliasInputs[repo.id];
-                          if (val === undefined) return;
-                          updateRepo.mutate(
-                            { id: repo.id, alias: val.trim() || null },
-                            { onError: () => toast.error("Failed to update alias") }
-                          );
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <BadgeColorSelect
-                        value={repo.badgeColor || "gray"}
-                        onValueChange={(value) => handleBadgeColorChange(repo.id, value)}
-                        triggerClassName="w-28"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1.5">
-                        {(repo.worktrees || []).map((wt) => (
-                          <div key={wt.id}>
-                            <Badge
-                              variant="secondary"
-                              className="gap-1 pr-1 font-mono text-xs"
-                            >
-                              {wt.path}
-                              <button
-                                type="button"
-                                className="rounded-full hover:bg-muted-foreground/20 p-0.5"
-                                onClick={() => handleRemoveWorktree(wt.id)}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          </div>
-                        ))}
-                        <Input
-                          className="h-6 w-40 text-xs font-mono"
-                          placeholder="/path/to/repo"
-                          value={worktreeInputs[repo.id] || ""}
-                          onChange={(e) => setWorktreeInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddWorktree(repo.id);
-                            }
-                          }}
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        const branches = parseDeploymentBranches(repo.deploymentBranches);
-                        const urls = parseDeploymentUrls(repo.deploymentUrls);
-                        return (
-                          <div className="space-y-1.5">
-                            {branches.map((branch) => {
-                              const urlKey = `${repo.id}-${branch}`;
-                              const urlValue = deploymentUrlInputs[urlKey] ?? (urls[branch] || "");
-                              return (
-                                <div key={branch} className="flex items-center gap-1.5">
-                                  <Badge variant="secondary" className="gap-1 pr-1 shrink-0">
-                                    {branch}
-                                    <button
-                                      type="button"
-                                      className="rounded-full hover:bg-muted-foreground/20 p-0.5"
-                                      onClick={() => handleRemoveDeploymentBranch(repo.id, branches, branch)}
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </Badge>
-                                  <Input
-                                    className="h-6 w-48 text-xs font-mono"
-                                    placeholder="https://..."
-                                    value={urlValue}
-                                    onChange={(e) => setDeploymentUrlInputs((prev) => ({ ...prev, [urlKey]: e.target.value }))}
-                                    onBlur={() => handleDeploymentUrlBlur(repo.id, branch, urls)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                            <Input
-                              className="h-6 w-20 text-xs"
-                              placeholder="staging"
-                              value={branchInputs[repo.id] || ""}
-                              onChange={(e) => setBranchInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleAddDeploymentBranch(repo.id, branches);
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        className="h-6 w-36 text-xs font-mono"
-                        placeholder="#channel-name"
-                        value={slackChannelInputs[repo.id] ?? (repo.slackChannel || "")}
-                        onChange={(e) => setSlackChannelInputs((prev) => ({ ...prev, [repo.id]: e.target.value }))}
-                        onBlur={() => {
-                          const val = slackChannelInputs[repo.id];
-                          if (val === undefined) return;
-                          updateRepo.mutate(
-                            { id: repo.id, slackChannel: val.trim() || null },
-                            { onError: () => toast.error("Failed to update Slack channel") }
-                          );
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground w-14 shrink-0">Base</span>
-                          {renderWorktreeField(repo, "defaultBaseBranch", "main", "w-24")}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground w-14 shrink-0">Setup</span>
-                          {renderWorktreeField(repo, "setupCommand", "yarn install", "w-64")}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground w-14 shrink-0">Teardown</span>
-                          {renderWorktreeField(repo, "teardownCommand", "bin/dev worktree-cleanup {{composeProject}}", "w-64")}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Checkbox
-                        checked={repo.enabled === 1}
-                        onCheckedChange={() => handleToggleEnabled(repo.id, repo.enabled === 1)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleDelete(repo.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <RepositoryRow key={repo.id} repo={repo} />
                 ))}
               </TableBody>
             </Table>
@@ -408,5 +82,149 @@ export function RepositoryList() {
         onOpenChange={setIsAddingRepo}
       />
     </>
+  );
+}
+
+/** Saves one change to a repository, with a toast when it fails. */
+function useSaveRepository(id: number) {
+  const updateRepo = useUpdateRepository();
+  return (data: RepositoryUpdate, onSuccess?: () => void) =>
+    updateRepo.mutate({ id, ...data }, { onSuccess, onError: () => toast.error("Failed to update repository") });
+}
+
+function RepositoryRow({ repo }: { repo: Repository }) {
+  const save = useSaveRepository(repo.id);
+  const deleteRepo = useDeleteRepository();
+
+  // An emptied field clears the column.
+  const textField = (field: TextField, placeholder: string, width: string) => (
+    <SaveOnBlurInput
+      className={`h-6 ${width} text-xs font-mono`}
+      placeholder={placeholder}
+      value={repo[field] ?? ""}
+      onSave={(value) => save({ [field]: value || null })}
+    />
+  );
+
+  const handleDelete = () => {
+    if (!confirm("Are you sure you want to delete this repository?")) return;
+    deleteRepo.mutate(repo.id, {
+      onSuccess: () => toast.success("Repository deleted"),
+      onError: () => toast.error("Failed to delete repository"),
+    });
+  };
+
+  return (
+    <TableRow>
+      <TableCell className="font-mono">
+        {repo.owner}/{repo.repo}
+      </TableCell>
+      <TableCell>{textField("alias", "short name", "w-24")}</TableCell>
+      <TableCell>
+        <ColorSelect
+          options={BADGE_COLOR_OPTIONS}
+          value={repo.badgeColor || "gray"}
+          onValueChange={(value) => save({ badgeColor: value || null })}
+          triggerClassName="w-28"
+        />
+      </TableCell>
+      <TableCell>{textField("localPath", `~/Code/${repo.repo}`, "w-56")}</TableCell>
+      <TableCell>
+        <DeploymentBranches repo={repo} />
+      </TableCell>
+      <TableCell>{textField("slackChannel", "#channel-name", "w-36")}</TableCell>
+      <TableCell>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground w-14 shrink-0">Base</span>
+            {textField("defaultBaseBranch", "main", "w-24")}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground w-14 shrink-0">Setup</span>
+            {textField("setupCommand", "yarn install", "w-64")}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground w-14 shrink-0">Teardown</span>
+            {textField("teardownCommand", "bin/dev worktree-cleanup {{composeProject}}", "w-64")}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Checkbox
+          checked={repo.enabled === 1}
+          onCheckedChange={() => save({ enabled: repo.enabled !== 1 })}
+        />
+      </TableCell>
+      <TableCell>
+        <Button size="icon" variant="ghost" onClick={handleDelete}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** The repository's deployment branches, each with its environment URL, and an input to add one. */
+function DeploymentBranches({ repo }: { repo: Repository }) {
+  const save = useSaveRepository(repo.id);
+  const [newBranch, setNewBranch] = useState("");
+  const branches = parseStringList(repo.deploymentBranches);
+  const urls = parseJson<Record<string, string>>(repo.deploymentUrls, {});
+
+  const saveUrl = (branch: string, url: string) => {
+    const updated = { ...urls };
+    if (url) {
+      updated[branch] = url;
+    } else {
+      delete updated[branch];
+    }
+    save({ deploymentUrls: updated });
+  };
+
+  const addBranch = () => {
+    const branch = newBranch.trim();
+    if (!branch) return;
+    if (branches.includes(branch)) {
+      toast.error("Branch already exists");
+      return;
+    }
+    save({ deploymentBranches: [...branches, branch] }, () => setNewBranch(""));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {branches.map((branch) => (
+        <div key={branch} className="flex items-center gap-1.5">
+          <Badge variant="secondary" className="gap-1 pr-1 shrink-0">
+            {branch}
+            <button
+              type="button"
+              className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+              onClick={() => save({ deploymentBranches: branches.filter((b) => b !== branch) })}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+          <SaveOnBlurInput
+            className="h-6 w-48 text-xs font-mono"
+            placeholder="https://..."
+            value={urls[branch] ?? ""}
+            onSave={(url) => saveUrl(branch, url)}
+          />
+        </div>
+      ))}
+      <Input
+        className="h-6 w-20 text-xs"
+        placeholder="staging"
+        value={newBranch}
+        onChange={(e) => setNewBranch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            addBranch();
+          }
+        }}
+      />
+    </div>
   );
 }

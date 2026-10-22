@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
 import { tasks, statusCategories, repositories } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
-import { autoPromptFor, fingerprintFor, getChoreDefinition, getChoreDefinitions, getChores, isAutoChore } from "./chores";
+import { fingerprintFor, getChoreDefinition, getChoreDefinitions, getChores } from "./chores";
 import { invalidateStatusConfigCache } from "./task-status";
 import type { RepoPair } from "@/shared/chore-pairs";
 
@@ -118,6 +118,13 @@ describe("getChores — chore 14 validate-issue (manual only, main checkout)", (
   it("lists validate-issue for the AI menu and runs it without a worktree", () => {
     expect(getChoreDefinitions().find((d) => d.key === "validate-issue")?.number).toBe(14);
     expect(getChoreDefinition("validate-issue")?.cwd).toBe("main");
+    expect(getChoreDefinition("explain-me-why")?.cwd).toBe("task");
+  });
+
+  it("looks up real chores only, never the custom or review pseudo-chores", () => {
+    expect(getChoreDefinition("custom")).toBeNull();
+    expect(getChoreDefinition("review-pr")).toBeNull();
+    expect(getChoreDefinition("nope")).toBeNull();
   });
 });
 
@@ -241,13 +248,43 @@ describe("getChores — chores 4 and 5 on a merged PR", () => {
   });
 });
 
+describe("getChores — order", () => {
+  it("lists tasks closest to done first, then high priority, then by id, each task's chores by number", async () => {
+    await db.insert(statusCategories).values([
+      { name: "Code Review", color: "purple", done: 0, displayOrder: 1, jiraMappings: '["Review"]' },
+      { name: "In Progress", color: "blue", done: 0, displayOrder: 2, jiraMappings: "[]" },
+      { name: "Done", color: "green", done: 1, displayOrder: 3, jiraMappings: "[]" },
+    ]);
+    const base = { createdAt: NOW, updatedAt: NOW, prState: "open", isDraft: 0, unresolvedCommentCount: 0 };
+    await db.insert(tasks).values([
+      { ...base, id: 1, title: "a", status: "In Progress", checksStatus: "failing" },
+      { ...base, id: 2, title: "b", status: "In Progress", highPriority: 1 },
+      { ...base, id: 3, title: "c", status: "review", hasConflicts: 1 },
+    ]);
+
+    const entries = (await getChores()).map((e) => [e.task.id, e.key]);
+
+    expect(entries).toEqual([
+      [3, "fix-merge-conflicts"],
+      [2, "continue-work"],
+      [1, "fix-pr-checks"],
+      [1, "continue-work"],
+    ]);
+  });
+});
+
 describe("auto chores", () => {
   it("marks the chores the scheduler may start, never start-task or manual ones", () => {
-    expect(isAutoChore("fix-pr-checks")).toBe(true);
-    expect(isAutoChore("deploy-test-env")).toBe(true);
-    expect(isAutoChore("start-task")).toBe(false);
-    expect(isAutoChore("request-reviews")).toBe(false);
-    expect(isAutoChore("nope")).toBe(false);
+    const auto = getChoreDefinitions().filter((d) => d.auto).map((d) => d.key);
+    expect(auto).toEqual([
+      "fix-merge-conflicts",
+      "address-pr-comments",
+      "fix-pr-checks",
+      "continue-work",
+      "ai-qa",
+      "code-review-pr",
+      "deploy-test-env",
+    ]);
   });
 
   it("fingerprints a chore by its trigger fields, stable until they change", async () => {
@@ -274,14 +311,5 @@ describe("auto chores", () => {
     expect(fingerprintFor("fix-pr-checks", { ...row, checksDetails: failedAt("2026-10-22T18:10:00Z") })).toBe(
       JSON.stringify(["abc123", "2026-10-22T18:10:00Z"]),
     );
-  });
-
-  it("deploys to staging by default and keeps the usual prompt elsewhere", async () => {
-    const task = await seedTask();
-
-    expect(autoPromptFor("deploy-test-env", task)).toBe(`/chore-deploy-to-test-env ${task.id} staging`);
-    expect(autoPromptFor("deploy-test-env", task, [task.id, 9])).toBe(`/chore-deploy-to-test-env ${task.id} 9 staging`);
-    expect(autoPromptFor("fix-pr-checks", task)).toBe(`/chore-fix-pr-checks ${task.id}`);
-    expect(autoPromptFor("start-task", task)).toBeNull();
   });
 });

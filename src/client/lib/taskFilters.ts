@@ -32,10 +32,21 @@ export function readFilters(params: URLSearchParams): TaskFilters {
   };
 }
 
+// Turning one filter of a pair on turns the other off.
+const EXCLUSIVE_PAIRS: [BoolFilter, BoolFilter][] = [
+  ["sprint", "backlog"],
+  ["hideIdle", "idleOnly"],
+];
+
 /** Only non-default values are written, so a default view is a bare /tasks. */
 export function writeFilters(params: URLSearchParams, patch: Partial<TaskFilters>): URLSearchParams {
   const next = new URLSearchParams(params);
-  for (const [key, value] of Object.entries(patch)) {
+  const changes = { ...patch };
+  for (const [a, b] of EXCLUSIVE_PAIRS) {
+    if (patch[a]) changes[b] = false;
+    if (patch[b]) changes[a] = false;
+  }
+  for (const [key, value] of Object.entries(changes)) {
     if (key in BOOL_DEFAULTS) {
       if (value === BOOL_DEFAULTS[key as BoolFilter]) next.delete(key);
       else next.set(key, value ? "1" : "0");

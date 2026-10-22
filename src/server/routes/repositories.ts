@@ -1,71 +1,59 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { repositories, tasks, worktrees } from "../../db/schema";
+import { repositories, tasks } from "../../db/schema";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError, AppError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import type { Routes } from "../router";
 
-// Trim a free-text input; empty or non-string becomes null.
-function normalizeText(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
+type RepositoryFields = Partial<typeof repositories.$inferInsert>;
+
+// Optional text columns (localPath may start with ~): trimmed, and null or "" clears them.
+const TEXT_FIELDS = ["alias", "localPath", "badgeColor", "slackChannel", "setupCommand", "teardownCommand", "defaultBaseBranch"] as const;
+
+/** The columns a POST or PATCH body sets, normalized; fields the body leaves out stay unset. */
+function repositoryFields(body: Record<string, unknown>): RepositoryFields {
+  const fields: RepositoryFields = {};
+  for (const key of ["owner", "repo"] as const) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || !value.trim()) throw new ValidationError(`${key} is required`);
+    fields[key] = value.trim();
+  }
+  for (const key of TEXT_FIELDS) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== "string") throw new ValidationError(`${key} must be a string or null`);
+    fields[key] = value?.trim() || null;
+  }
+  if (body.enabled !== undefined) fields.enabled = body.enabled ? 1 : 0;
+  if (body.deploymentBranches !== undefined) {
+    const branches = body.deploymentBranches;
+    fields.deploymentBranches = Array.isArray(branches) && branches.length > 0 ? JSON.stringify(branches) : null;
+  }
+  if (body.deploymentUrls !== undefined) {
+    const urls = body.deploymentUrls;
+    fields.deploymentUrls = urls && typeof urls === "object" && Object.keys(urls).length > 0 ? JSON.stringify(urls) : null;
+  }
+  return fields;
 }
 
 export const repositoryRoutes: Routes = {
   "/api/v1/repositories": {
     async GET() {
-      const repos = await db.select().from(repositories);
-      const allWorktrees = await db.select().from(worktrees);
-
-      const worktreesByRepo = new Map<number, typeof allWorktrees>();
-      for (const wt of allWorktrees) {
-        const list = worktreesByRepo.get(wt.repositoryId) || [];
-        list.push(wt);
-        worktreesByRepo.set(wt.repositoryId, list);
-      }
-
-      const items = repos.map((repo) => ({
-        ...repo,
-        worktrees: worktreesByRepo.get(repo.id) || [],
-      }));
-
+      const items = await db.select().from(repositories);
       return json({ items, total: items.length });
     },
 
     async POST(req) {
-      const body = await getBody(req);
-
-      if (!body.owner || typeof body.owner !== "string") {
-        throw new ValidationError("owner is required");
-      }
-      if (!body.repo || typeof body.repo !== "string") {
-        throw new ValidationError("repo is required");
-      }
-
-      // Convert deploymentBranches array to JSON string (null if empty)
-      let deploymentBranches: string | null = null;
-      if (Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0) {
-        deploymentBranches = JSON.stringify(body.deploymentBranches);
-      }
-
-      // Convert deploymentUrls object to JSON string (null if empty)
-      let deploymentUrls: string | null = null;
-      if (body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0) {
-        deploymentUrls = JSON.stringify(body.deploymentUrls);
-      }
+      const fields = repositoryFields(await getBody(req));
+      if (!fields.owner) throw new ValidationError("owner is required");
+      if (!fields.repo) throw new ValidationError("repo is required");
 
       const result = await db
         .insert(repositories)
-        .values({
-          owner: body.owner,
-          repo: body.repo,
-          alias: typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null,
-          enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
-          badgeColor: body.badgeColor ?? null,
-          deploymentBranches,
-          deploymentUrls,
-        })
+        .values({ ...fields, owner: fields.owner, repo: fields.repo })
         .returning();
 
       return created(result[0]);
@@ -85,28 +73,7 @@ export const repositoryRoutes: Routes = {
         throw new NotFoundError("Repository", id);
       }
 
-      const updates: Record<string, unknown> = {};
-      if (body.owner !== undefined) updates.owner = body.owner;
-      if (body.repo !== undefined) updates.repo = body.repo;
-      if (body.alias !== undefined) {
-        updates.alias = typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null;
-      }
-      if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
-      if (body.badgeColor !== undefined) updates.badgeColor = body.badgeColor;
-      if (body.slackChannel !== undefined) updates.slackChannel = body.slackChannel || null;
-      if (body.setupCommand !== undefined) updates.setupCommand = normalizeText(body.setupCommand);
-      if (body.teardownCommand !== undefined) updates.teardownCommand = normalizeText(body.teardownCommand);
-      if (body.defaultBaseBranch !== undefined) updates.defaultBaseBranch = normalizeText(body.defaultBaseBranch);
-      if (body.deploymentBranches !== undefined) {
-        updates.deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
-          ? JSON.stringify(body.deploymentBranches)
-          : null;
-      }
-      if (body.deploymentUrls !== undefined) {
-        updates.deploymentUrls = body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0
-          ? JSON.stringify(body.deploymentUrls)
-          : null;
-      }
+      const updates = repositoryFields(body);
       if (Object.keys(updates).length === 0) {
         return json(existing[0]);
       }

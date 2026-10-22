@@ -4,11 +4,12 @@
  * on, so the scheduler won't run the chore on them again. A linked task counts
  * as having the session, for busy checks and in the task's session list.
  */
-import { eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessions, claudeSessionTasks } from "../../db/schema";
+import { ACTIVE_SESSION_STATES } from "../../shared/types";
 
-export type SessionTaskLink = { taskId: number; triggerFingerprint: string | null };
+type SessionTaskLink = { taskId: number; triggerFingerprint: string | null };
 
 /** Where-clause for the sessions on any of these tasks, their own or a batch they are linked into. */
 export function coversTasks(taskIds: number[]) {
@@ -17,6 +18,28 @@ export function coversTasks(taskIds: number[]) {
     .from(claudeSessionTasks)
     .where(inArray(claudeSessionTasks.taskId, taskIds));
   return or(inArray(claudeSessions.taskId, taskIds), inArray(claudeSessions.id, linked));
+}
+
+/** Where-clause for the sessions that haven't finished: waiting to start, or running. */
+export function isActive() {
+  return inArray(claudeSessions.state, [...ACTIVE_SESSION_STATES]);
+}
+
+/** The session keeping the task busy, its own or a bulk run's it is linked into; null when it has none. */
+export async function findActiveSession(taskId: number): Promise<{ id: number; state: string } | null> {
+  const [row] = await db
+    .select({ id: claudeSessions.id, state: claudeSessions.state })
+    .from(claudeSessions)
+    .where(and(coversTasks([taskId]), isActive()))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Tasks with an active session, their own or a bulk run's they are linked into. */
+export async function activeTaskIds(): Promise<Set<number>> {
+  const rows = await db.select({ id: claudeSessions.id, taskId: claudeSessions.taskId }).from(claudeSessions).where(isActive());
+  const links = await sessionLinks(rows.map((r) => r.id));
+  return new Set(rows.flatMap((r) => [r.taskId, ...(links.get(r.id) ?? []).map((l) => l.taskId)]).filter((id) => id !== null));
 }
 
 export async function linkSessionTasks(sessionId: number, links: SessionTaskLink[]): Promise<void> {

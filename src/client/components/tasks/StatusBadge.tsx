@@ -1,7 +1,6 @@
 import { Badge } from "@/client/components/ui/badge";
-import { cn, normalizeStatus } from "@/client/lib/utils";
+import { cn, findStatusCategory } from "@/client/lib/utils";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
-import type { StatusCategory } from "@/client/lib/types";
 
 // Fallback config for when query is loading or unknown status
 const FALLBACK_COLOR = "bg-slate-500";
@@ -11,57 +10,14 @@ interface StatusBadgeProps {
   className?: string;
 }
 
+/** The status as it reads (e.g. "Ready for Test", not "QA"), in its category's color. */
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const { data } = useStatusSettingsQuery();
-
-  const getStatusConfig = (status: string): { label: string; color: string } => {
-    const normalized = normalizeStatus(status);
-
-    if (data?.categories) {
-      // Build a lookup function that checks both name and jiraMappings
-      const findMatchingCategory = (): StatusCategory | undefined => {
-        for (const category of data.categories) {
-          // Check category name
-          if (normalizeStatus(category.name) === normalized) {
-            return category;
-          }
-          // Check jiraMappings array
-          for (const jiraStatus of category.jiraMappings) {
-            if (normalizeStatus(jiraStatus) === normalized) {
-              return category;
-            }
-          }
-        }
-        return undefined;
-      };
-
-      const matchedCategory = findMatchingCategory();
-      if (matchedCategory) {
-        return {
-          label: status, // Keep original label (e.g., show "Ready for Test" not "QA")
-          color: matchedCategory.color,
-        };
-      }
-
-      // Fallback for unknown status - use default color
-      return {
-        label: status,
-        color: data.defaultColor || FALLBACK_COLOR,
-      };
-    }
-
-    // Final fallback - use default color or hardcoded fallback
-    return {
-      label: status,
-      color: data?.defaultColor || FALLBACK_COLOR,
-    };
-  };
-
-  const config = getStatusConfig(status);
+  const color = findStatusCategory(status, data?.categories ?? [])?.color || data?.defaultColor || FALLBACK_COLOR;
 
   return (
-    <Badge className={cn(config.color, "text-white whitespace-nowrap", className)}>
-      {config.label}
+    <Badge className={cn(color, "text-white whitespace-nowrap", className)}>
+      {status}
     </Badge>
   );
 }

@@ -4,7 +4,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/client/components/ui/tooltip";
-import type { CheckDetail } from "@/client/lib/types";
+import type { CheckDetail } from "@/shared/types";
+import { parseJson } from "@/shared/json";
 
 interface ChecksStatusCellProps {
   checksStatus: string | null;
@@ -40,15 +41,6 @@ function getStatusIcon(status: string | null) {
   }
 }
 
-function parseChecksDetails(checksDetails: string | null): CheckDetail[] {
-  if (!checksDetails) return [];
-  try {
-    return JSON.parse(checksDetails) as CheckDetail[];
-  } catch {
-    return [];
-  }
-}
-
 function countChecks(details: CheckDetail[]): { passed: number; total: number } {
   const total = details.length;
   const passed = details.filter(
@@ -65,7 +57,7 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
     return <span className="text-muted-foreground">-</span>;
   }
 
-  const details = parseChecksDetails(checksDetails);
+  const details = parseJson<CheckDetail[]>(checksDetails, []);
   const { passed, total } = countChecks(details);
   const countText = total > 0 ? `${passed}/${total}` : null;
   // The status icon only counts required checks when the repo has any; mark the rest.

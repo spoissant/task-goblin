@@ -64,6 +64,7 @@ export const repositories = sqliteTable("repositories", {
   owner: text("owner").notNull(), // GitHub org/user
   repo: text("repo").notNull(), // repo name
   alias: text("alias"), // optional short label used in UI instead of full repo name
+  localPath: text("local_path"), // main checkout on this machine; may start with ~ (e.g. "~/Code/hivebrite/front-monorepo")
   enabled: integer("enabled").notNull().default(1), // SQLite bool
   badgeColor: text("badge_color"), // Tailwind color name for badge display (e.g., "blue", "green", "purple")
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
@@ -74,21 +75,12 @@ export const repositories = sqliteTable("repositories", {
   defaultBaseBranch: text("default_base_branch"), // base for tasks without a branch yet (e.g. "sprint", "main")
 });
 
-// 2b. Worktree - Local filesystem paths per repository
-export const worktrees = sqliteTable("worktrees", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  repositoryId: integer("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
-  path: text("path").notNull(),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-// 2c. Task worktree - one git worktree per task, created on first AI session start
+// 2b. Task worktree - one git worktree per task, created on first AI session start
 export const taskWorktrees = sqliteTable("task_worktrees", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: integer("task_id").notNull().unique().references(() => tasks.id, { onDelete: "cascade" }),
   repositoryId: integer("repository_id").notNull().references(() => repositories.id),
-  path: text("path").notNull(), // may start with ~ like worktrees.path
+  path: text("path").notNull(), // may start with ~ like repositories.local_path
   branch: text("branch"), // null only for worktrees created detached before wt managed them
   state: text("state").notNull(), // preparing | ready | failed | dirty | removing
   setupLog: text("setup_log"), // tail of setup/teardown output
@@ -97,7 +89,7 @@ export const taskWorktrees = sqliteTable("task_worktrees", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// 2d. Claude sessions - background Claude Code sessions, one row per chore run
+// 2c. Claude sessions - background Claude Code sessions, one row per chore run
 export const claudeSessions = sqliteTable("claude_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }), // null for PR reviews started from the Reviews page
@@ -137,7 +129,7 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   index("idx_claude_sessions_state").on(table.state),
 ]);
 
-// 2e. Claude session tasks - the other tasks a bulk chore session covers; the session row keeps the first
+// 2d. Claude session tasks - the other tasks a bulk chore session covers; the session row keeps the first
 export const claudeSessionTasks = sqliteTable("claude_session_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),
@@ -148,7 +140,7 @@ export const claudeSessionTasks = sqliteTable("claude_session_tasks", {
   index("idx_claude_session_tasks_task_id").on(table.taskId),
 ]);
 
-// 2f. Claude session requests - one row per API request in a session's transcript, subagents included
+// 2e. Claude session requests - one row per API request in a session's transcript, subagents included
 export const claudeSessionRequests = sqliteTable("claude_session_requests", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),

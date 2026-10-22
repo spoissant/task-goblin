@@ -2,12 +2,12 @@ import { existsSync } from "fs";
 import { basename, dirname } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { taskWorktrees, claudeSessions, tasks, type repositories } from "../../db/schema";
-import { coversTasks } from "./session-tasks";
+import { taskWorktrees, tasks, type repositories } from "../../db/schema";
+import { findActiveSession } from "./session-tasks";
 import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { now } from "../lib/timestamp";
-import { getTaskWithRepository, getWorktreePath } from "../lib/queries";
+import { getTaskWithRepository } from "../lib/queries";
 import { getCompletedCondition } from "../lib/task-status";
 import { runShell, tailOutput } from "../lib/process";
 import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit, unpushedCommitCount, worktreePrune } from "../lib/git";
@@ -17,24 +17,23 @@ import { listProjectVolumes } from "./docker-stacks";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
-export type TaskWorktreeRow = typeof taskWorktrees.$inferSelect;
+type TaskWorktreeRow = typeof taskWorktrees.$inferSelect;
 
 const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
 const TEARDOWN_TIMEOUT_MS = 5 * 60 * 1000;
-export const ACTIVE_SESSION_STATES = ["queued", "preparing", "working", "blocked"] as const;
 
 /**
  * Where wt puts the worktree of `branch`: a sibling of the main checkout,
  * `<main>.<branch>` with `/` sanitized, keeping the `~` form. Only a
  * placeholder until wt reports the real path.
  */
-export function worktreePathFor(mainPath: string, branch: string): string {
+function worktreePathFor(mainPath: string, branch: string): string {
   const trimmed = mainPath.replace(/\/+$/, "");
   return `${dirname(trimmed)}/${basename(trimmed)}.${branch.replaceAll("/", "-")}`;
 }
 
 /** Docker Compose project name the repo tooling derives from a worktree directory. */
-export async function composeProjectFor(worktreePath: string): Promise<string> {
+async function composeProjectFor(worktreePath: string): Promise<string> {
   const expanded = expandPath(worktreePath);
   try {
     const env = await Bun.file(`${expanded}/.env.worktree`).text();
@@ -73,7 +72,7 @@ export function branchNameFor(task: Pick<TaskRow, "id" | "jiraKey" | "type" | "h
  * name: alumni_connect's build runs the hivetests branch named like its own,
  * and the two PRs then merge together.
  */
-export async function branchForTask(task: TaskRow, repository: RepoRow): Promise<string> {
+async function branchForTask(task: TaskRow, repository: RepoRow): Promise<string> {
   if (!task.headBranch && repository.repo === "hivetests" && task.parentKey) {
     const [parent] = await db.select().from(tasks).where(eq(tasks.jiraKey, task.parentKey)).limit(1);
     if (parent) return branchNameFor(parent);
@@ -81,9 +80,9 @@ export async function branchForTask(task: TaskRow, repository: RepoRow): Promise
   return branchNameFor(task);
 }
 
-/** Resolve the repository's main checkout path or throw the usual guard errors. */
-export async function resolveMainPath(repository: RepoRow): Promise<string> {
-  const mainPath = await getWorktreePath(repository.id);
+/** The repository's main checkout path, or the usual guard errors when it is unset or missing. */
+export function resolveMainPath(repository: RepoRow): string {
+  const mainPath = repository.localPath;
   if (!mainPath) {
     throw new AppError("Repository local path not configured", 400, "REPO_PATH_NOT_CONFIGURED");
   }
@@ -117,15 +116,6 @@ async function updateRow(id: number, updates: Partial<TaskWorktreeRow>): Promise
   return row;
 }
 
-async function hasActiveSession(taskId: number): Promise<boolean> {
-  const rows = await db
-    .select({ id: claudeSessions.id })
-    .from(claudeSessions)
-    .where(and(coversTasks([taskId]), inArray(claudeSessions.state, [...ACTIVE_SESSION_STATES])))
-    .limit(1);
-  return rows.length > 0;
-}
-
 // In-flight preparations, so concurrent callers share one run per task.
 const inFlight = new Map<number, Promise<TaskWorktreeRow>>();
 
@@ -150,7 +140,7 @@ export function ensureTaskWorktree(taskId: number): Promise<TaskWorktreeRow> {
  */
 export async function startTaskWorktreePreparation(taskId: number): Promise<TaskWorktreeRow> {
   const { task, repository } = await loadTaskAndRepo(taskId);
-  const mainPath = await resolveMainPath(repository);
+  const mainPath = resolveMainPath(repository);
   const row = await upsertPreparing(task, repository, mainPath);
   void ensureTaskWorktree(taskId);
   return row;
@@ -194,7 +184,7 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
 
 async function prepare(taskId: number): Promise<TaskWorktreeRow> {
   const { task, repository } = await loadTaskAndRepo(taskId);
-  const mainPath = await resolveMainPath(repository);
+  const mainPath = resolveMainPath(repository);
   let row = await upsertPreparing(task, repository, mainPath);
 
   if (row.state === "ready" && existsSync(expandPath(row.path)) && !(await dockerVolumesGone(row.path))) {
@@ -264,7 +254,7 @@ export async function getTaskWorktreeStatus(taskId: number) {
 export async function removeTaskWorktree(taskId: number, opts: { force: boolean }): Promise<TaskWorktreeRow> {
   const row = await getTaskWorktreeRow(taskId);
   if (!row) throw new NotFoundError("Worktree for task", taskId);
-  if (await hasActiveSession(taskId)) {
+  if (await findActiveSession(taskId)) {
     throw new AppError("A session is still active on this task", 409, "SESSION_ACTIVE");
   }
   const expanded = expandPath(row.path);
@@ -281,9 +271,8 @@ export async function removeTaskWorktree(taskId: number, opts: { force: boolean 
 
 async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void> {
   try {
-    const result = await getTaskWithRepository(row.taskId);
-    const repository = result?.repository ?? null;
-    const mainPath = repository ? await getWorktreePath(repository.id) : null;
+    const repository = (await getTaskWithRepository(row.taskId))?.repository ?? null;
+    const mainPath = repository?.localPath ?? null;
     const expanded = expandPath(row.path);
 
     // Teardown only needs the compose project name, so run it from the main
@@ -340,7 +329,7 @@ export async function reapCompletedWorktrees(): Promise<void> {
     .innerJoin(tasks, eq(tasks.id, taskWorktrees.taskId))
     .where(and(eq(taskWorktrees.state, "ready"), completed));
   for (const { worktree } of rows) {
-    if (await hasActiveSession(worktree.taskId)) continue;
+    if (await findActiveSession(worktree.taskId)) continue;
     try {
       await removeTaskWorktree(worktree.taskId, { force: false });
     } catch (err) {

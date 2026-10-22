@@ -2,16 +2,9 @@
  * Timers for the AI session feature. Started once from the server entry point;
  * never imported by tests. Set TASK_GOBLIN_SCHEDULERS=0 to disable.
  */
-import {
-  pollActiveSessions,
-  reapIdleProcesses,
-  reconcileOnStartup,
-  setCapacityCheck,
-  setOnSessionFinished,
-  startQueued,
-  syncProcessLiveness,
-} from "./claude-sessions";
-import { ensureStackCapacity, sweepIdleStacks } from "./docker-stacks";
+import { reconcileOnStartup, startQueued } from "./claude-sessions";
+import { pollActiveSessions, reapIdleProcesses, setOnSessionFinished, syncProcessLiveness } from "./session-poller";
+import { sweepIdleStacks } from "./docker-stacks";
 import { reapCompletedWorktrees } from "./task-worktrees";
 import { reconcileDevStack } from "./dev-stack";
 import { collectSessionUsage } from "./session-usage";
@@ -20,9 +13,20 @@ import { syncTask } from "./task-sync";
 import { startSyncScheduler } from "./sync-scheduler";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
+import { runSteps, type Step } from "../lib/steps";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
+
+/** The minute sweep; each step runs on its own, so one that throws doesn't hold back the rest. */
+const SWEEP_STEPS: Step[] = [
+  ["idle-stacks", sweepIdleStacks],
+  ["worktree-reap", reapCompletedWorktrees],
+  ["process-reap", reapIdleProcesses],
+  ["liveness", syncProcessLiveness],
+  ["queued", startQueued],
+  ["usage", collectSessionUsage],
+];
 
 let polling = false;
 let sweeping = false;
@@ -30,7 +34,6 @@ let sweeping = false;
 export function startClaudeRuntime(): void {
   if (process.env.TASK_GOBLIN_SCHEDULERS === "0") return;
 
-  setCapacityCheck(ensureStackCapacity);
   // Pull the task's new Jira status, PR state and git status once its session
   // finishes, then let the next chore start without waiting for the periodic sync.
   setOnSessionFinished((taskId) => {
@@ -63,14 +66,7 @@ export function startClaudeRuntime(): void {
     if (sweeping) return;
     sweeping = true;
     try {
-      await sweepIdleStacks();
-      await reapCompletedWorktrees();
-      await reapIdleProcesses();
-      await syncProcessLiveness();
-      await startQueued();
-      await collectSessionUsage();
-    } catch (err) {
-      console.error("[claude] sweep failed", err);
+      await runSteps("runtime", SWEEP_STEPS);
     } finally {
       sweeping = false;
     }

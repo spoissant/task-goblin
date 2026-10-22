@@ -1,7 +1,7 @@
 ---
 name: chore-fix-pr-checks
 description: Investigate failed PR checks, classify each failure as caused by this PR or external/flaky, and produce a structured report; fixes and pushes failures this PR caused, and merges the base branch or re-triggers CI when they are not ours. Use for "investigate checks", "why are checks failing", "fix pr checks", or /chore-fix-pr-checks <taskId>.
-allowed-tools: "Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(yarn test*),Bash(yarn typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__task-goblin__sync_task,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
+allowed-tools: "Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(yarn test*),Bash(yarn typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
 ---
 
 # Fix PR Checks
@@ -41,13 +41,13 @@ Group checks that share a root cause. A timeout with no logs is External unless 
 
 ## Fix our failures
 
-Our Fault or Likely Ours with a clear fix: make it, run the failing test (or typecheck) locally, commit with `Skill(hivebrite-engineering:github-commit)`, and push together with any pending base merge, then `sync_task(id)`. Ask first only when the fix changes product behaviour rather than a test, type, fixture or mock.
+Our Fault or Likely Ours with a clear fix: make it, run the failing test (or typecheck) locally, commit with `Skill(hivebrite-engineering:github-commit)`, and push together with any pending base merge. Ask first only when the fix changes product behaviour rather than a test, type, fixture or mock.
 
 ## Merge the base branch
 
 When not every failure is Our Fault: `git fetch origin <base>` then `git merge origin/<base> --no-ff --no-edit`.
 
-- Merge brings in commits and every failure is External or Flaky (no code change needed anywhere): `git push`, so CI re-runs without waiting on the user, then `sync_task(id)` when there is a task. Exception: on a repeat (step 6) where the failing specs differ from the previous run's, and the merge brings nothing that touches them, leave the merge unpushed and `retry_job` the failed jobs instead. A push restarts the whole build.
+- Merge brings in commits and every failure is External or Flaky (no code change needed anywhere): `git push`, so CI re-runs without waiting on the user. Exception: on a repeat (step 6) where the failing specs differ from the previous run's, and the merge brings nothing that touches them, leave the merge unpushed and `retry_job` the failed jobs instead. A push restarts the whole build.
 - Merge succeeds but some failure needs a code fix: push after the fix (see Fix our failures), so one CI run covers both.
 - Conflict: `git merge --abort` and report that the user must resolve it first.
 - Already up to date: there is nothing to push, so a re-run has to be triggered on the check itself. See below.

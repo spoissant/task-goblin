@@ -1,18 +1,11 @@
 // The GitHub calls the merge gate and the merge watch make, behind a port so
 // tests stub them. Mutations go through Octokit without retries (github-client.ts).
 import { getGitHubClient, getGitHubConfig } from "../lib/github-client";
-
-export interface PrTarget {
-  owner: string;
-  repo: string;
-  number: number;
-}
+import type { PrTarget } from "./github-graphql";
 
 export interface ActionsRun {
-  name: string;
   status: string;
   conclusion: string | null;
-  headSha: string;
 }
 
 export interface PullFile {
@@ -38,18 +31,11 @@ export interface MergeGitHub {
 }
 
 interface RunJson {
-  name?: string | null;
   status?: string | null;
   conclusion?: string | null;
-  head_sha: string;
 }
 
-const toRun = (r: RunJson): ActionsRun => ({
-  name: r.name ?? "",
-  status: r.status ?? "",
-  conclusion: r.conclusion ?? null,
-  headSha: r.head_sha,
-});
+const toRun = (r: RunJson): ActionsRun => ({ status: r.status ?? "", conclusion: r.conclusion ?? null });
 
 function createDefault(): MergeGitHub {
   const client = () => getGitHubClient();

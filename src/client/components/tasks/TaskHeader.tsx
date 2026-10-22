@@ -1,8 +1,5 @@
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useUpdateTask } from "@/client/lib/queries";
-import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import {
   Card,
   CardContent,
@@ -11,32 +8,25 @@ import {
 } from "@/client/components/ui/card";
 import { Input } from "@/client/components/ui/input";
 import { Textarea } from "@/client/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
 import { Button } from "@/client/components/ui/button";
+import { Markdown } from "@/client/components/ui/markdown";
+import { InteractiveStatusBadge } from "./InteractiveStatusBadge";
 import { Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import type { TaskDetail } from "@/client/lib/types";
 
 interface TaskHeaderProps {
   task: TaskDetail;
-  onStatusChange: (status: string) => void;
+  /** Off when the page's summary bar already shows the status picker. */
+  showStatus: boolean;
 }
 
-export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
+export function TaskHeader({ task, showStatus }: TaskHeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
 
   const updateTask = useUpdateTask();
-  const { data: statusSettings } = useStatusSettingsQuery();
-
-  const statuses = statusSettings?.categories || [];
 
   const handleSave = () => {
     updateTask.mutate(
@@ -80,22 +70,7 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Select
-              value={task.status}
-              onValueChange={onStatusChange}
-              disabled={!!task.jiraKey}
-            >
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statuses.map((s) => (
-                  <SelectItem key={s.name} value={s.name}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {showStatus && <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />}
             {isEditing ? (
               <>
                 <Button size="icon" variant="ghost" onClick={handleSave}>
@@ -127,25 +102,7 @@ export function TaskHeader({ task, onStatusChange }: TaskHeaderProps) {
               rows={3}
             />
           ) : task.description ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  a: ({ href, children }) => (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                      {children}
-                    </a>
-                  ),
-                }}
-              >
-                {task.description}
-              </ReactMarkdown>
-            </div>
+            <Markdown className="text-muted-foreground">{task.description}</Markdown>
           ) : (
             <p className="text-muted-foreground">No description</p>
           )}

@@ -1,7 +1,7 @@
 ---
 name: chore-code-review-my-pr
-description: Harsh, comprehensive code review of your own GitHub PR against Hivebrite project standards, then interactive triage, fixes pushed to the branch, and the PR marked ready for review. For colleagues' PRs use /chore-code-review-pr. Use when self-reviewing a PR or running /chore-code-review-my-pr <task ID or PR url>.
-allowed-tools: "Agent,Bash(gh:*),Bash(git:*),Bash(lavish-axi:*),Read,Grep,Glob,Edit,Write,ToolSearch,AskUserQuestion,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__sync_task"
+description: Harsh review of the user's own PR against Hivebrite standards, then triage, fixes pushed and the PR marked ready (for colleagues' PRs use /chore-code-review-pr). Use when self-reviewing a PR or for /chore-code-review-my-pr <task ID or PR url>.
+allowed-tools: "Agent,Bash(gh:*),Bash(git:*),Bash(lavish-axi:*),Read,Grep,Glob,Edit,Write,ToolSearch,AskUserQuestion,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task"
 ---
 
 # Harsh Review (my PR)
@@ -34,16 +34,14 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
 9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, bold summary, `file:line`, and the fix. Defaults: every finding → Fix, except those step 7 default-skips as already resolved. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
 
-   Prefer a Lavish artifact at `.lavish/review-<prNumber>.html`: one card per finding with a Fix/Skip choice and a single submit, plain inline CSS. Skip `lavish-axi --help`, `design` and the playbooks; open it, then `lavish-axi poll` in the background; annotations on a card are directives for that number). Without `lavish-axi`, use a single AskUserQuestion with the same content and grammar.
+   Prefer a Lavish artifact at `.lavish/review-<prNumber>.html` (`~/.claude/skills/chore-start-task/references/lavish.md`, skipping the playbooks, `--help` and `design`): one card per finding with a Fix/Skip choice and a single submit, plain inline CSS; annotations on a card are directives for that number. Without `lavish-axi`, use a single AskUserQuestion with the same content and grammar.
 
-10. **Fix.** Apply the accepted fixes and run the tests for touched files (plus typecheck for TS). Leave lint and formatting to the lefthook commit hook; `yarn format` rewrites the whole tree. Update the artifact, `--agent-reply` a summary, `lavish-axi end`, and print what was applied and skipped.
+10. **Fix.** Apply the accepted fixes and run the tests for touched files (plus typecheck for TS). Leave lint and formatting to the lefthook commit hook; `yarn format` rewrites the whole tree. Close the Lavish session with a summary, and print what was applied and skipped.
 
-11. **Ready for review.** Commit applied fixes with `Skill(hivebrite-engineering:github-commit)`. If the PR is a draft, `gh pr ready <pr>` before `git push` (the other order makes Buildkite skip the new head), unless the user skipped a CRITICAL: then ask first. Then `git push`. With a task ID, `sync_task(id)`.
+11. **Ready for review.** Commit applied fixes with `Skill(hivebrite-engineering:github-commit)`. If the PR is a draft, `gh pr ready <pr>` before `git push` (the other order makes Buildkite skip the new head), unless the user skipped a CRITICAL: then ask first. Then `git push`.
 
 ## Tone
 
 Direct, not diplomatic: "this will break when two requests race", not "consider a lock". Every finding states the consequence. Credit what the PR does well in the summary.
 
 Don't flag what RuboCop, ESLint, or TypeScript catch, generated files (`yarn.lock`, `schema.rb`), or naming preferences with no real-world impact.
-
-Lavish: use the globally installed `lavish-axi` binary, never `npx -y`; only open HTML you generated; keep `.lavish/` in `.git/info/exclude`.
