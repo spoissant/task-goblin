@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useCreateTask } from "@/client/lib/queries";
-import { useSelectableStatusesQuery } from "@/client/lib/queries/settings";
+import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -26,9 +26,9 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
   const [status, setStatus] = useState("");
 
   const createTask = useCreateTask();
-  const { data: statusesData } = useSelectableStatusesQuery();
+  const { data: statusSettings } = useStatusSettingsQuery();
 
-  const statuses = statusesData?.items || [];
+  const statuses = statusSettings?.categories || [];
 
   // Set default status when statuses are loaded
   useEffect(() => {

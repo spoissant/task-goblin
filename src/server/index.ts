@@ -1,7 +1,6 @@
 import { createRouter } from "./router";
 import { routes } from "./routes";
 import { withCors, handleCors, withErrorBoundary } from "./middleware";
-import { migrateTaskStatuses } from "./lib/status-migration";
 import { addClient, removeClient, autoBroadcast } from "./lib/sse";
 import { startClaudeRuntime } from "./services/claude-runtime";
 
@@ -9,10 +8,7 @@ const port = Number(process.env.PORT) || 3456;
 const router = createRouter(routes);
 
 // Run startup tasks
-async function startup() {
-  // Run migrations
-  await migrateTaskStatuses();
-
+function startup() {
   // Start server
   Bun.serve({
     port,

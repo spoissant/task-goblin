@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SESSION_EFFORTS, SESSION_MODELS, type ClaudeSession, type ListResponse } from "@/shared/types";
+import {
+  SESSION_EFFORTS,
+  SESSION_MODELS,
+  type ClaudeSession,
+  type ListResponse,
+  type RecentClaudeSession,
+} from "@/shared/types";
 import { get, post } from "../client.js";
 
 function result(data: unknown) {
@@ -18,10 +24,11 @@ export function registerSessionTools(server: McpServer) {
     "start_session",
     {
       description:
-        "Start a background Claude Code session (claude --bg --rc) in the task's worktree, tracked in Task Goblin's AI column. " +
+        "Start a background Claude Code session (claude --bg --rc) in the task's worktree (or the repository's main checkout, " +
+        "for the chores that run there), tracked in Task Goblin's AI column. " +
         "Pass choreKey to run a chore (any key from chore_definitions), optionally with " +
         "prompt replacing the chore's command; or pass prompt alone for a custom session. model and effort default to the " +
-        "chore's settings. Returns the session row (state starts as spawning).",
+        "chore's settings. Returns the session row (state starts as preparing).",
       inputSchema: {
         taskId: z.number().int().describe("Task ID"),
         choreKey: z.string().optional().describe("Chore key, e.g. ai-qa, fix-merge-conflicts, deploy-test-env"),
@@ -61,7 +68,7 @@ export function registerSessionTools(server: McpServer) {
       try {
         const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
         if (since) params.set("since", since);
-        const data = await get<ListResponse<ClaudeSession & { taskTitle: string | null }>>(`/api/v1/sessions/recent?${params}`);
+        const data = await get<ListResponse<RecentClaudeSession>>(`/api/v1/sessions/recent?${params}`);
         return result({ ...data, items: data.items.map(({ prompt: _prompt, ...rest }) => rest) });
       } catch (err) {
         return errorResult(err);

@@ -3,7 +3,6 @@ import { RootLayout } from "./components/layout/RootLayout";
 import { TasksPage } from "./pages/TasksPage";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { CompletedPage } from "./pages/CompletedPage";
-
 import { ReviewsPage } from "./pages/ReviewsPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -27,7 +26,7 @@ export const router = createBrowserRouter([
         path: "tasks/:id",
         element: <TaskDetailPage />,
       },
-{
+      {
         path: "completed",
         element: <CompletedPage />,
       },

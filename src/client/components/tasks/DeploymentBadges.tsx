@@ -4,28 +4,13 @@ import { Badge } from "@/client/components/ui/badge";
 interface DeploymentBadgesProps {
   branches: string | null; // onDeploymentBranches (commit-detected)
   labelOnlyBranches?: string | null; // labelOnlyDeploymentBranches (label-detected)
-  deployedBranches?: string | null; // deployedOnBranches (URL-confirmed)
+  deployedBranches: string | null; // deployedOnBranches (URL-confirmed)
 }
 
 export function DeploymentBadges({ branches, labelOnlyBranches, deployedBranches }: DeploymentBadgesProps) {
   const commitBranches = parseBranches(branches);
   const labelBranches = parseBranches(labelOnlyBranches);
   const deployed = parseBranches(deployedBranches);
-
-  // Legacy mode: no URL tracking configured
-  if (deployedBranches === undefined) {
-    const allBranches = [...new Set([...commitBranches, ...labelBranches])];
-    if (!allBranches.length) return <span className="text-muted-foreground">—</span>;
-    return (
-      <div className="flex flex-wrap gap-1">
-        {allBranches.map((branch) => (
-          <Badge key={branch} variant="secondary" className="text-xs">
-            {branch}
-          </Badge>
-        ))}
-      </div>
-    );
-  }
 
   const allBranches = [...new Set([...commitBranches, ...labelBranches, ...deployed])];
   const visibleBranches = allBranches.filter((b) => commitBranches.includes(b) || labelBranches.includes(b));

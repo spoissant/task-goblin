@@ -2,6 +2,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/
 import { Flame, ListTree, MessageSquare, Snowflake } from "lucide-react";
 import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
 import type { ChoreEntry } from "@/client/lib/queries/chores";
+import { parseChangesByCategory } from "@/shared/file-categories";
+import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
+import { ChecksStatusCell } from "../ChecksStatusCell";
+import { UnresolvedCommentsIcon } from "../StatusIcons";
+import { DeploymentBadges } from "../DeploymentBadges";
+import { ChangesSummary } from "../ChangesSummary";
 import { AiCell } from "./AiCell";
 import { SyncCell } from "./SyncCell";
 import {
@@ -13,41 +19,11 @@ import {
   RepoCell,
   BranchCell,
   PrCell,
-  ChangesCell,
-  StatusCell,
-  MergedInCell,
-  ChecksCell,
   ReviewsCell,
-  CommentsCell,
   HighPriorityCell,
   OnIceCell,
   IsParentCell,
-  getJiraUrl,
-  getPrUrl,
 } from "./cells";
-
-// Re-export utilities and cells
-export {
-  TypeCell,
-  SprintCell,
-  ParentCell,
-  KeyCell,
-  TitleCell,
-  RepoCell,
-  BranchCell,
-  PrCell,
-  ChangesCell,
-  StatusCell,
-  MergedInCell,
-  ChecksCell,
-  ReviewsCell,
-  CommentsCell,
-  HighPriorityCell,
-  OnIceCell,
-  IsParentCell,
-  getJiraUrl,
-  getPrUrl,
-};
 
 // Column definition type
 export interface ColumnDef<T extends Task = Task> {
@@ -165,25 +141,38 @@ export const COLUMNS = {
     key: "changes",
     header: "Changes",
     width: "100px",
-    render: (task) => <ChangesCell task={task} />,
+    render: (task) => (
+      <ChangesSummary
+        changedFiles={task.changedFiles}
+        additions={task.additions}
+        deletions={task.deletions}
+        changesByCategory={parseChangesByCategory(task.changesByCategory)}
+      />
+    ),
   },
   status: {
     key: "status",
     header: "Status",
     width: "100px",
-    render: (task) => <StatusCell task={task} />,
+    render: (task) => <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />,
   },
   mergedIn: {
     key: "mergedIn",
     header: "Merged in",
     width: "100px",
-    render: (task) => <MergedInCell task={task} />,
+    render: (task) => (
+      <DeploymentBadges
+        branches={task.onDeploymentBranches}
+        labelOnlyBranches={task.labelOnlyDeploymentBranches}
+        deployedBranches={task.deployedOnBranches}
+      />
+    ),
   },
   checks: {
     key: "checks",
     header: "Checks",
     width: "50px",
-    render: (task, ctx) => <ChecksCell task={task} prUrl={ctx.prUrl} />,
+    render: (task, ctx) => <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={ctx.prUrl} />,
   },
   reviews: {
     key: "reviews",
@@ -202,7 +191,7 @@ export const COLUMNS = {
       </Tooltip>
     ),
     width: "50px",
-    render: (task, ctx) => <CommentsCell task={task} prUrl={ctx.prUrl} />,
+    render: (task, ctx) => <UnresolvedCommentsIcon count={task.unresolvedCommentCount} prUrl={ctx.prUrl} />,
   },
   ai: {
     key: "ai",

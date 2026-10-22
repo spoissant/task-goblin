@@ -43,7 +43,6 @@ export const choreKeys = {
   all: ["chores"] as const,
   definitions: () => [...choreKeys.all, "definitions"] as const,
   list: () => [...choreKeys.all, "list"] as const,
-  next: () => [...choreKeys.all, "next"] as const,
 };
 
 export function useChoresQuery() {
@@ -59,17 +58,5 @@ export function useChoreDefinitionsQuery() {
     queryKey: choreKeys.definitions(),
     queryFn: () => api.get<{ items: ChoreDefinition[] }>("/chores/definitions"),
     staleTime: Infinity,
-  });
-}
-
-export function useNextChoreQuery(sprintView?: boolean) {
-  return useQuery({
-    queryKey: [...choreKeys.next(), { sprintView }],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (sprintView !== undefined) params.set("sprintView", String(sprintView));
-      const query = params.toString();
-      return api.get<ChoreEntry | null>(`/chores/next${query ? `?${query}` : ""}`);
-    },
   });
 }

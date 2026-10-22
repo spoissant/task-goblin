@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
   task: [["tasks"], ["chores"]],
-  setting: [["settings"], ["statusCategories"]],
+  setting: [["settings"]],
   session: [["sessions"], ["tasks"], ["chores"]],
   worktree: [["worktree"]],
   "dev-stack": [["dev-stack"]],

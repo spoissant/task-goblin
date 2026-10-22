@@ -1,7 +1,6 @@
 // Chores the scheduler starts on its own (mirrors the `auto` entries in
 // src/server/lib/chores.ts; the definitions endpoint does not expose them).
 export const AUTO_CHORE_KEYS: ReadonlySet<string> = new Set([
-  "assign-jira-ticket",
   "fix-merge-conflicts",
   "address-pr-comments",
   "fix-pr-checks",

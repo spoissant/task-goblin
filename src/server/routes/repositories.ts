@@ -73,77 +73,6 @@ export const repositoryRoutes: Routes = {
   },
 
   "/api/v1/repositories/:id": {
-    async GET(req, params) {
-      const id = parseId(params.id);
-      const result = await db
-        .select()
-        .from(repositories)
-        .where(eq(repositories.id, id));
-
-      if (result.length === 0) {
-        throw new NotFoundError("Repository", id);
-      }
-
-      return json(result[0]);
-    },
-
-    async PUT(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-
-      if (!body.owner || typeof body.owner !== "string") {
-        throw new ValidationError("owner is required");
-      }
-      if (!body.repo || typeof body.repo !== "string") {
-        throw new ValidationError("repo is required");
-      }
-
-      const existing = await db
-        .select()
-        .from(repositories)
-        .where(eq(repositories.id, id));
-      if (existing.length === 0) {
-        throw new NotFoundError("Repository", id);
-      }
-
-      // Convert deploymentBranches array to JSON string (null if empty)
-      let deploymentBranches: string | null = existing[0].deploymentBranches;
-      if (body.deploymentBranches !== undefined) {
-        deploymentBranches = Array.isArray(body.deploymentBranches) && body.deploymentBranches.length > 0
-          ? JSON.stringify(body.deploymentBranches)
-          : null;
-      }
-
-      // Convert deploymentUrls object to JSON string (null if empty)
-      let deploymentUrls: string | null = existing[0].deploymentUrls;
-      if (body.deploymentUrls !== undefined) {
-        deploymentUrls = body.deploymentUrls && typeof body.deploymentUrls === "object" && Object.keys(body.deploymentUrls).length > 0
-          ? JSON.stringify(body.deploymentUrls)
-          : null;
-      }
-
-      const result = await db
-        .update(repositories)
-        .set({
-          owner: body.owner,
-          repo: body.repo,
-          alias: body.alias !== undefined
-            ? (typeof body.alias === "string" && body.alias.trim() ? body.alias.trim() : null)
-            : existing[0].alias,
-          enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing[0].enabled,
-          badgeColor: body.badgeColor !== undefined ? body.badgeColor : existing[0].badgeColor,
-          deploymentBranches,
-          deploymentUrls,
-          setupCommand: body.setupCommand !== undefined ? normalizeText(body.setupCommand) : existing[0].setupCommand,
-          teardownCommand: body.teardownCommand !== undefined ? normalizeText(body.teardownCommand) : existing[0].teardownCommand,
-          defaultBaseBranch: body.defaultBaseBranch !== undefined ? normalizeText(body.defaultBaseBranch) : existing[0].defaultBaseBranch,
-        })
-        .where(eq(repositories.id, id))
-        .returning();
-
-      return json(result[0]);
-    },
-
     async PATCH(req, params) {
       const id = parseId(params.id);
       const body = await getBody(req);
@@ -191,7 +120,7 @@ export const repositoryRoutes: Routes = {
       return json(result[0]);
     },
 
-    async DELETE(req, params) {
+    async DELETE(_req, params) {
       const id = parseId(params.id);
 
       const existing = await db

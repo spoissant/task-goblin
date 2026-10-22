@@ -3,7 +3,7 @@
  * repo tooling (`bin/dev dcx`); Task Goblin only stops idle ones and caps how
  * many run at once so the Docker VM keeps headroom for the main dev stack.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { claudeSessions, tasks, taskWorktrees } from "../../db/schema";
 import { expandPath } from "../lib/path";
@@ -155,14 +155,4 @@ export async function ensureStackCapacity(cwd: string): Promise<"ok" | "queued">
   if (evictable.length === 0) return "queued";
   await stopStack(evictable[0].project);
   return "ok";
-}
-
-/** Whether any session of the task is currently working (used by tests and the UI). */
-export async function hasWorkingSession(taskId: number): Promise<boolean> {
-  const rows = await db
-    .select({ id: claudeSessions.id })
-    .from(claudeSessions)
-    .where(and(eq(claudeSessions.taskId, taskId), eq(claudeSessions.state, "working")))
-    .limit(1);
-  return rows.length > 0;
 }

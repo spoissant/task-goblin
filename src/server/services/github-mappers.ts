@@ -12,7 +12,6 @@ export interface PrTaskData {
   repositoryId: number;
   title: string;
   prState: string;
-  prAuthor: string | null;
   headBranch: string;
   baseBranch: string | null;
   headSha: string | null;
@@ -20,7 +19,6 @@ export interface PrTaskData {
   isDraft: number;
   checksStatus: string | null;
   checksDetails: string | null;
-  approvedReviewCount: number;
   reviewStatus: string; // JSON ReviewStatus
   unresolvedCommentCount: number;
   hasConflicts: number;
@@ -47,12 +45,10 @@ export interface GqlPrLike {
   deletions: number | null;
   changedFiles: number | null;
   changesByCategory: ChangesByCategory | null;
-  author: { login?: string } | null;
   headRefName: string | null;
   headRefOid?: string | null;
   mergeCommitOid?: string | null;
   baseRefName: string | null;
-  approvedReviewCount: number;
   unresolvedCommentCount: number;
   reviewStatus: ReviewStatus;
 }
@@ -73,7 +69,6 @@ export function mapGqlPrToTaskData(
     title: pr.title,
     // GraphQL reports MERGED directly, where REST needed state + merged flag.
     prState: pr.state.toLowerCase(),
-    prAuthor: pr.author?.login || null,
     headBranch: pr.headRefName || "",
     baseBranch: pr.baseRefName || null,
     headSha: pr.headRefOid ?? null,
@@ -81,7 +76,6 @@ export function mapGqlPrToTaskData(
     isDraft: pr.isDraft ? 1 : 0,
     checksStatus: checksResult.checksStatus,
     checksDetails: checksResult.checksDetails,
-    approvedReviewCount: pr.approvedReviewCount,
     reviewStatus: JSON.stringify(pr.reviewStatus),
     unresolvedCommentCount: pr.unresolvedCommentCount,
     // UNKNOWN means GitHub is still computing the merge; treated as no conflict,
@@ -99,10 +93,10 @@ export function mapGqlPrToTaskData(
   };
 }
 
-// Map PR state to task status
+// Map PR state to a PR-only task's status (a status category name)
 export function mapPrStateToTaskStatus(prState: string, isDraft: number): string {
-  if (prState === "merged") return "done";
-  if (prState === "closed") return "done";
-  if (isDraft) return "in_progress";
-  return "code_review"; // Open PR = code review
+  if (prState === "merged") return "Done";
+  if (prState === "closed") return "Done";
+  if (isDraft) return "In Progress";
+  return "Code Review"; // Open PR = code review
 }

@@ -26,8 +26,7 @@ export function AutoChoresForm() {
         </Label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Also toggled by the play/stop button on the Tasks page. Start New Task always stays manual. Set <code>BUILDKITE_API_TOKEN</code> in{" "}
-        <code>.env</code> to follow the sprint build of merged PRs.
+        Also toggled by the play/stop button on the Tasks page. Start New Task always stays manual.
       </p>
     </div>
   );

@@ -81,7 +81,7 @@ interface AiCellProps {
 /**
  * AI column: state of the task's latest background Claude session with a
  * link to claude.ai, and a menu to start a chore, stop, or copy the attach
- * command. Mirrors the Chores cell layout.
+ * command.
  */
 export function AiCell({ task, session, nextChore }: AiCellProps) {
   const { data: defsData } = useChoreDefinitionsQuery();

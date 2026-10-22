@@ -113,7 +113,7 @@ async function updateRow(id: number, updates: Partial<TaskWorktreeRow>): Promise
     .where(eq(taskWorktrees.id, id))
     .returning();
   const row = rows[0];
-  broadcast("worktree", { taskId: row.taskId, state: row.state });
+  broadcast("worktree");
   return row;
 }
 
@@ -169,7 +169,6 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
         state: "preparing",
         error: null,
         setupLog: null,
-        readyAt: null,
       });
     }
     if (existing.state === "ready") return existing;
@@ -189,7 +188,7 @@ async function upsertPreparing(task: TaskRow, repository: RepoRow, mainPath: str
       updatedAt: timestamp,
     })
     .returning();
-  broadcast("worktree", { taskId: task.id, state: "preparing" });
+  broadcast("worktree");
   return rows[0];
 }
 
@@ -243,7 +242,7 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
     }
   }
 
-  return updateRow(row.id, { state: "ready", setupLog: log || null, error: null, readyAt: now() });
+  return updateRow(row.id, { state: "ready", setupLog: log || null, error: null });
 }
 
 export async function getTaskWorktreeStatus(taskId: number) {
@@ -313,7 +312,7 @@ async function finishRemoval(row: TaskWorktreeRow, force: boolean): Promise<void
 
     await db.delete(taskWorktrees).where(eq(taskWorktrees.id, row.id));
     await db.update(tasks).set({ uncommittedFiles: null, unpushedCommits: null }).where(eq(tasks.id, row.taskId));
-    broadcast("worktree", { taskId: row.taskId, state: null });
+    broadcast("worktree");
   } catch (err) {
     await updateRow(row.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
   }

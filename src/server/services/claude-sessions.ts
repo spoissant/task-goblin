@@ -5,7 +5,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessions, repositories, tasks } from "../../db/schema";
+import { claudeSessions, tasks } from "../../db/schema";
 import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
@@ -85,12 +85,12 @@ async function updateRow(id: number, updates: Partial<SessionRow>): Promise<Sess
     .where(eq(claudeSessions.id, id))
     .returning();
   const row = rows[0];
-  broadcast("session", { taskId: row.taskId, id: row.id, state: row.state });
-  if (TERMINAL_STATES.includes(row.state as ClaudeSessionState)) broadcast("task", { taskId: row.taskId });
+  broadcast("session");
+  if (TERMINAL_STATES.includes(row.state as ClaudeSessionState)) broadcast("task");
   return row;
 }
 
-export async function getSession(id: number): Promise<SessionRow> {
+async function getSession(id: number): Promise<SessionRow> {
   const row = await getRow(id);
   if (!row) throw new NotFoundError("Session", id);
   return row;
@@ -294,7 +294,7 @@ export async function startReviewSession(
     })
     .returning();
   const row = rows[0];
-  broadcast("session", { taskId: null, id: row.id, state: row.state });
+  broadcast("session");
   void runStart(row.id);
   return row;
 }
@@ -360,7 +360,7 @@ async function createSession(
     .returning();
   const row = rows[0];
   await linkSessionTasks(row.id, links);
-  broadcast("session", { taskId, id: row.id, state: row.state });
+  broadcast("session");
   void runStart(row.id);
   return row;
 }
@@ -480,10 +480,7 @@ export async function respawnSession(id: number): Promise<SessionRow> {
  * clear it when it was respawned from a terminal.
  */
 export async function syncProcessLiveness(): Promise<void> {
-  const rows = await db
-    .select()
-    .from(claudeSessions)
-    .where(and(isNotNull(claudeSessions.shortId), inArray(claudeSessions.state, [...POLLED_STATES, ...TERMINAL_STATES])));
+  const rows = await db.select().from(claudeSessions).where(isNotNull(claudeSessions.shortId));
   if (rows.length === 0) return;
   // `--all` lists dead sessions too, so an empty list means the CLI failed: do not guess.
   const agents = await listAgents();

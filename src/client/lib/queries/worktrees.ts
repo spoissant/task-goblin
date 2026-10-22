@@ -44,6 +44,5 @@ export function useRepositoryGuessQuery(taskId: number, enabled: boolean) {
     queryKey: worktreeKeys.guess(taskId),
     queryFn: () => api.get<RepositoryGuess>(`/tasks/${taskId}/repository-guess`),
     enabled: enabled && taskId > 0,
-    staleTime: 60_000,
   });
 }

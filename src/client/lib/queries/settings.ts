@@ -6,7 +6,6 @@ import type {
   StatusSettings,
   StatusCategory,
   ListResponse,
-  StatusConfig,
 } from "../types";
 
 export const settingsKeys = {
@@ -14,8 +13,6 @@ export const settingsKeys = {
   jiraConfig: () => [...settingsKeys.all, "jira-config"] as const,
   statusSettings: () => [...settingsKeys.all, "status-settings"] as const,
   statusCategories: () => [...settingsKeys.all, "status-categories"] as const,
-
-  selectableStatuses: () => [...settingsKeys.all, "selectable-statuses"] as const,
 };
 
 export function useSettingsQuery() {
@@ -82,7 +79,6 @@ export function useUpdateStatusCategories() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusCategories() });
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
-      queryClient.invalidateQueries({ queryKey: settingsKeys.selectableStatuses() });
     },
   });
 }
@@ -97,13 +93,5 @@ export function useUpdateDefaultColor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.statusSettings() });
     },
-  });
-}
-
-// Selectable statuses for dropdowns
-export function useSelectableStatusesQuery() {
-  return useQuery({
-    queryKey: settingsKeys.selectableStatuses(),
-    queryFn: () => api.get<ListResponse<StatusConfig>>("/settings/statuses/selectable"),
   });
 }

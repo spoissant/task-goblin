@@ -11,4 +11,4 @@ if (dbPath !== ":memory:") {
 }
 
 export const db = drizzle(sqlite, { schema: { ...schema, ...relations } });
-export { schema, sqlite };
+export { sqlite };

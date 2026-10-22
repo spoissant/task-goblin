@@ -278,6 +278,7 @@ describe("dev stack", () => {
     sqlite.exec(
       `UPDATE settings SET value = '${JSON.stringify({
         taskId: 1,
+        prUrl: null,
         branch: "fix/EV-1",
         state: "failed",
         pid: 4001,

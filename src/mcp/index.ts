@@ -5,7 +5,6 @@ import { registerChoreTools } from "./tools/chores.js";
 import { registerReviewTools } from "./tools/reviews.js";
 import { registerDevStackTools } from "./tools/dev-stack.js";
 import { registerSessionTools } from "./tools/sessions.js";
-import { registerTaskPrompts } from "./prompts/tasks.js";
 
 const server = new McpServer({
   name: "task-goblin",
@@ -18,9 +17,6 @@ registerChoreTools(server);
 registerReviewTools(server);
 registerDevStackTools(server);
 registerSessionTools(server);
-
-// Register prompts
-registerTaskPrompts(server);
 
 // Connect via stdio transport
 const transport = new StdioServerTransport();

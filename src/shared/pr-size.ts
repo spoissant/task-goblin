@@ -1,7 +1,6 @@
 import type { PrSize } from "./types";
 
-// Classify a PR by review effort. Mirrors task-goblin's Reviews page badge.
-// Kept in shared/ so server route + client UI use the same thresholds.
+// Classify a PR by review effort, for the Reviews page's size badge.
 //
 // Only lines changed matter. File count used to gate this, but it punished the
 // cheapest reviews: a rename, an import sweep or a CODEOWNERS touch spread over

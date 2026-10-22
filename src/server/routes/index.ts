@@ -4,9 +4,6 @@ import { taskMergeRoutes } from "../services/task-merge";
 import { repositoryRoutes } from "./repositories";
 import { settingsRoutes } from "./settings";
 import { githubRoutes } from "./github";
-
-import { deployRoutes } from "./deploy";
-import { syncBranchRoutes } from "./sync-branch";
 import { worktreeRoutes } from "./worktrees";
 import { taskWorktreeRoutes } from "./task-worktrees";
 import { devStackRoutes } from "./dev-stack";
@@ -15,26 +12,13 @@ import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
 import { standupRoutes } from "./standups";
 import { mergeGateRoutes } from "./merge-gate";
-import { json } from "../response";
-
-const healthRoute: Routes = {
-  "/api/v1/health": {
-    GET() {
-      return json({ status: "ok", timestamp: new Date().toISOString() });
-    },
-  },
-};
 
 export const routes: Routes = {
-  ...healthRoute,
   ...taskRoutes,
   ...taskMergeRoutes,
   ...repositoryRoutes,
   ...settingsRoutes,
   ...githubRoutes,
-
-  ...deployRoutes,
-  ...syncBranchRoutes,
   ...worktreeRoutes,
   ...taskWorktreeRoutes,
   ...devStackRoutes,

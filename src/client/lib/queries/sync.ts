@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import type { SyncResult, MatchResult, Task, Repository, SyncBranchResult } from "../types";
+import type { SyncResult, MatchResult, Task, Repository } from "../types";
 import { taskKeys } from "./tasks";
 import { choreKeys } from "./chores";
 
@@ -22,67 +22,6 @@ export function useNextSyncQuery() {
     refetchInterval: (query) => {
       const at = query.state.data?.nextSyncAt;
       return at ? Math.max(Date.parse(at) - Date.now() + 1000, 5000) : 60_000;
-    },
-  });
-}
-
-export function useSyncMatch() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: () => api.post<MatchResult>("/sync/match"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
-      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
-    },
-  });
-}
-
-export function useSyncJira(options?: SyncOptions) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async () => {
-      options?.onStepChange?.("jira");
-      const jiraResult = await api.post<SyncResult>("/sync/jira");
-
-      options?.onStepChange?.("matching");
-      const matchResult = await api.post<MatchResult>("/sync/match");
-
-      return { ...jiraResult, merged: matchResult.merged };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
-      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
-    },
-    onSettled: () => {
-      options?.onStepChange?.(null);
-    },
-  });
-}
-
-export function useSyncGitHub(options?: SyncOptions) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async () => {
-      options?.onStepChange?.("github");
-      const githubResult = await api.post<SyncResult>("/sync/github");
-
-      options?.onStepChange?.("matching");
-      const matchResult = await api.post<MatchResult>("/sync/match");
-
-      return { ...githubResult, merged: matchResult.merged };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
-      queryClient.invalidateQueries({ queryKey: choreKeys.list() });
-    },
-    onSettled: () => {
-      options?.onStepChange?.(null);
     },
   });
 }
@@ -144,7 +83,6 @@ export function useSyncAll(options?: SyncOptions) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
       queryClient.invalidateQueries({ queryKey: choreKeys.list() });
     },
     onSettled: () => {
@@ -197,7 +135,6 @@ export function useSyncTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.list() });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
     },
   });
 }
@@ -238,61 +175,6 @@ export function useSyncVisibleTasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       queryClient.invalidateQueries({ queryKey: choreKeys.list() });
-      queryClient.invalidateQueries({ queryKey: choreKeys.next() });
-    },
-  });
-}
-
-// Sync branch types
-interface SyncBranchConflictResponse {
-  error: {
-    code: "MERGE_CONFLICT";
-    message: string;
-    details: {
-      conflictedFiles: string[];
-    };
-  };
-}
-
-export type SyncBranchMutationResult =
-  | { success: true; data: SyncBranchResult }
-  | { success: false; conflict: true; conflictedFiles: string[] };
-
-/**
- * Sync a task's feature branch with the latest changes from the main branch.
- * This merges the base branch (e.g., main) into the task's head branch.
- */
-export function useSyncBranch() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      taskId,
-    }: {
-      taskId: number;
-    }): Promise<SyncBranchMutationResult> => {
-      try {
-        const data = await api.post<SyncBranchResult>(`/sync-branch/${taskId}`);
-        return { success: true, data };
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 409 && err.code === "MERGE_CONFLICT") {
-          // Fetch the full error response to get conflict details
-          const response = await fetch(`/api/v1/sync-branch/${taskId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
-          const body = await response.json() as SyncBranchConflictResponse;
-          return {
-            success: false,
-            conflict: true,
-            conflictedFiles: body.error.details.conflictedFiles,
-          };
-        }
-        throw err;
-      }
-    },
-    onSuccess: (_, { taskId }) => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
     },
   });
 }

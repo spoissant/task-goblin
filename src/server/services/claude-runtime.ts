@@ -17,19 +17,17 @@ import { reconcileDevStack } from "./dev-stack";
 import { collectSessionUsage } from "./session-usage";
 import { reconcileStandups } from "./standup";
 import { syncTask } from "./task-sync";
-import { startSyncScheduler, stopSyncScheduler } from "./sync-scheduler";
+import { startSyncScheduler } from "./sync-scheduler";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
 
 const POLL_INTERVAL_MS = 5_000;
 const SWEEP_INTERVAL_MS = 60_000;
 
-let timers: ReturnType<typeof setInterval>[] | null = null;
 let polling = false;
 let sweeping = false;
 
 export function startClaudeRuntime(): void {
-  if (timers) return;
   if (process.env.TASK_GOBLIN_SCHEDULERS === "0") return;
 
   setCapacityCheck(ensureStackCapacity);
@@ -39,7 +37,7 @@ export function startClaudeRuntime(): void {
     syncTask(taskId)
       .then((errors) => {
         if (errors.length > 0) console.error(`[claude] post-session sync of task ${taskId}:`, errors.join("; "));
-        broadcast("task", { taskId });
+        broadcast("task");
         return runChoreScheduler({ taskId });
       })
       .catch((err) => console.error(`[claude] post-session sync of task ${taskId} failed`, err));
@@ -80,11 +78,4 @@ export function startClaudeRuntime(): void {
 
   poll.unref();
   sweep.unref();
-  timers = [poll, sweep];
-}
-
-export function stopClaudeRuntime(): void {
-  for (const t of timers ?? []) clearInterval(t);
-  timers = null;
-  stopSyncScheduler();
 }

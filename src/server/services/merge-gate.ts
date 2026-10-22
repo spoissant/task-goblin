@@ -1,12 +1,11 @@
-// Records which Ready to Merge PRs pass every gate (an empty hold: the task's
-// Merge button shows) and why the others are held. Runs at the end of every
-// sync, so it reads the task row rather than GitHub for the PR state. Nothing
-// merges on its own: the Merge button squash-merges via mergeTaskPr.
+// Records which Ready to Merge PRs pass every gate (tasks.merge_ready: the
+// task's Merge button shows). Runs at the end of every sync, so it reads the
+// task row rather than GitHub for the PR state. Nothing merges on its own: the
+// Merge button squash-merges via mergeTaskPr, which names the holds when it refuses.
 import { and, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, tasks } from "../../db/schema";
-import type { HoldReason, MergeHold } from "@/shared/merge";
-import { parseMergeHold } from "@/shared/merge";
+import type { HoldReason } from "@/shared/merge";
 import { parseReviewStatus } from "@/shared/review-status";
 import { getStatusCategories } from "../lib/task-status";
 import { AppError, NotFoundError } from "../lib/errors";
@@ -19,7 +18,7 @@ type RepoRow = typeof repositories.$inferSelect;
 
 export const READY_TO_MERGE_CATEGORY = "Ready to Merge";
 
-export const normalize = (status: string | null | undefined) => (status ?? "").toLowerCase().replace(/_/g, " ");
+export const normalize = (status: string | null | undefined) => (status ?? "").toLowerCase();
 
 /** Lower-cased status names (category name + Jira mappings) of the Ready to Merge category. */
 export async function readyToMergeStatuses(): Promise<Set<string>> {
@@ -69,20 +68,17 @@ export function findPrereleasePins(files: PullFile[]): string[] {
   return pins;
 }
 
-type TaskPatch = Partial<Pick<TaskRow, "mergeHold" | "prState" | "mergeCommitSha">>;
+type TaskPatch = Partial<Pick<TaskRow, "mergeReady" | "prState" | "mergeCommitSha">>;
 
 async function writeTask(taskId: number, patch: TaskPatch): Promise<void> {
   await db.update(tasks).set({ ...patch, updatedAt: now() }).where(eq(tasks.id, taskId));
-  broadcast("task", { taskId });
+  broadcast("task");
 }
 
-const sameReasons = (a: HoldReason[], b: HoldReason[] | undefined) =>
-  b !== undefined && a.length === b.length && a.every((r, i) => r === b[i]);
-
-async function writeHoldIfChanged(task: TaskRow, reasons: HoldReason[]): Promise<void> {
-  if (sameReasons(reasons, parseMergeHold(task.mergeHold)?.reasons)) return;
-  const hold: MergeHold = { reasons, at: now() };
-  await writeTask(task.id, { mergeHold: JSON.stringify(hold) });
+async function writeVerdictIfChanged(task: TaskRow, reasons: HoldReason[]): Promise<void> {
+  const mergeReady = reasons.length === 0 ? 1 : 0;
+  if (task.mergeReady === mergeReady) return;
+  await writeTask(task.id, { mergeReady });
 }
 
 interface GateContext {
@@ -114,21 +110,21 @@ async function holdReasons(task: TaskRow, repo: RepoRow, ctx: GateContext): Prom
   return reasons;
 }
 
-/** A Ready to Merge PR: record its holds; none means its Merge button shows. */
+/** A Ready to Merge PR: record whether it passes every gate, so its Merge button shows. */
 async function gateTask(task: TaskRow, repo: RepoRow, ctx: GateContext): Promise<void> {
-  await writeHoldIfChanged(task, await holdReasons(task, repo, ctx));
+  await writeVerdictIfChanged(task, await holdReasons(task, repo, ctx));
 }
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };
 
-/** Open PRs that are or might be gated, plus rows carrying a hold to clear. */
+/** Open PRs that are or might be gated, plus rows carrying a ready mark to clear. */
 async function loadGateRows(): Promise<TaskWithRepo[]> {
   const openPr = and(eq(tasks.prState, "open"), isNotNull(tasks.prNumber), isNotNull(tasks.repositoryId));
   const rows = await db
     .select({ task: tasks, repo: repositories })
     .from(tasks)
     .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-    .where(or(openPr, isNotNull(tasks.mergeHold)));
+    .where(or(openPr, eq(tasks.mergeReady, 1)));
   return rows;
 }
 
@@ -146,12 +142,12 @@ async function processRow({ task, repo }: TaskWithRepo, ctx: GateContext): Promi
   const candidate = isCandidate(task, ctx.ready);
   if (candidate && repo) {
     await gateTask(task, repo, ctx);
-  } else if (!candidate && task.mergeHold) {
-    await writeTask(task.id, { mergeHold: null });
+  } else if (!candidate && task.mergeReady === 1) {
+    await writeTask(task.id, { mergeReady: 0 });
   }
 }
 
-/** Record which Ready to Merge PRs pass every gate and why the others are held. */
+/** Record which Ready to Merge PRs pass every gate. */
 export async function runMergeGate(): Promise<void> {
   const ready = await readyToMergeStatuses();
   if (ready.size === 0) return;
@@ -180,12 +176,12 @@ export async function mergeTaskPr(taskId: number): Promise<TaskRow> {
   const ctx: GateContext = { gh: getMergeGitHub(), ready: await readyToMergeStatuses() };
   const reasons = await holdReasons(task, repo, ctx);
   if (reasons.length > 0) {
-    await writeHoldIfChanged(task, reasons);
+    await writeVerdictIfChanged(task, reasons);
     throw new AppError(`Not ready to merge: ${reasons.join(", ")}`, 409, "MERGE_HELD");
   }
   const { sha } = await ctx.gh.mergePr(targetOf(task, repo));
-  // The merge watch follows the merge commit's build; the next sync fills in the rest.
-  const patch: TaskPatch = { prState: "merged", mergeCommitSha: sha, mergeHold: null };
+  // The merge watch follows a front-monorepo merge commit's runs; the next sync fills in the rest.
+  const patch: TaskPatch = { prState: "merged", mergeCommitSha: sha, mergeReady: 0 };
   await writeTask(task.id, patch);
   return { ...task, ...patch };
 }

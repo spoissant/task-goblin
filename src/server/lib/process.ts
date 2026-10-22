@@ -9,7 +9,6 @@ export interface CommandResult {
 export interface CommandOptions {
   cwd: string;
   timeoutMs?: number;
-  env?: Record<string, string>;
 }
 
 export type CommandRunner = (
@@ -24,7 +23,6 @@ async function spawnRunner(cmd: string, args: string[], opts: CommandOptions): P
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-    env: opts.env ? { ...process.env, ...opts.env } : undefined,
   });
 
   let timedOut = false;

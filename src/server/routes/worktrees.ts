@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { worktrees, repositories } from "../../db/schema";
-import { json, created, noContent } from "../response";
+import { created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
@@ -10,25 +10,6 @@ import type { Routes } from "../router";
 
 export const worktreeRoutes: Routes = {
   "/api/v1/repositories/:repositoryId/worktrees": {
-    async GET(req, params) {
-      const repositoryId = parseId(params.repositoryId, "repositoryId");
-
-      const repo = await db
-        .select()
-        .from(repositories)
-        .where(eq(repositories.id, repositoryId));
-      if (repo.length === 0) {
-        throw new NotFoundError("Repository", repositoryId);
-      }
-
-      const items = await db
-        .select()
-        .from(worktrees)
-        .where(eq(worktrees.repositoryId, repositoryId));
-
-      return json({ items, total: items.length });
-    },
-
     async POST(req, params) {
       const repositoryId = parseId(params.repositoryId, "repositoryId");
       const body = await getBody(req);
@@ -61,7 +42,7 @@ export const worktreeRoutes: Routes = {
   },
 
   "/api/v1/worktrees/:id": {
-    async DELETE(req, params) {
+    async DELETE(_req, params) {
       const id = parseId(params.id);
 
       const existing = await db

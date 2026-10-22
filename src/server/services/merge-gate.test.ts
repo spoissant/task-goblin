@@ -4,7 +4,7 @@ import { db, sqlite } from "../../db";
 import { repositories, statusCategories, tasks } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { invalidateStatusConfigCache } from "../lib/task-status";
-import { isMergeReady, parseMergeHold, type HoldReason } from "@/shared/merge";
+import type { HoldReason } from "@/shared/merge";
 import { evaluateTaskGate, findPrereleasePins, mergeTaskPr, runMergeGate } from "./merge-gate";
 import { resetMergeGitHub, setMergeGitHub, type MergeGitHub, type PullFile } from "./merge-github";
 
@@ -29,7 +29,6 @@ function greenTask(over: Partial<TaskRow> = {}): TaskRow {
     sprint: null,
     epicKey: null,
     parentKey: null,
-    jiraSyncedAt: null,
     highPriority: 0,
     onIce: 0,
     onIceReason: null,
@@ -38,11 +37,9 @@ function greenTask(over: Partial<TaskRow> = {}): TaskRow {
     headBranch: "fix/EV-1",
     baseBranch: "sprint",
     prState: "open",
-    prAuthor: null,
     isDraft: 0,
     checksStatus: "passing",
     checksDetails: null,
-    approvedReviewCount: 1,
     reviewStatus: APPROVED,
     prSyncedAt: NOW,
     onDeploymentBranches: null,
@@ -57,12 +54,9 @@ function greenTask(over: Partial<TaskRow> = {}): TaskRow {
     uncommittedFiles: null,
     unpushedCommits: null,
     choreSkips: null,
-    workingOn: null,
     headSha: "head1",
     mergeCommitSha: null,
-    mergeHold: null,
-    baseBuildState: null,
-    baseBuildUrl: null,
+    mergeReady: 0,
     mergeVerifiedAt: null,
     ...over,
   } as TaskRow;
@@ -91,8 +85,8 @@ describe("evaluateTaskGate", () => {
     });
   }
 
-  it("matches the status case-insensitively and with underscores", () => {
-    expect(evaluateTaskGate(greenTask({ status: "ready_to_merge" }), READY)).toEqual([]);
+  it("matches the status case-insensitively", () => {
+    expect(evaluateTaskGate(greenTask({ status: "READY TO MERGE" }), READY)).toEqual([]);
   });
 
   it("lists every hold at once", () => {
@@ -204,38 +198,36 @@ describe("runMergeGate", () => {
 
   const load = async (id: number) => (await db.select().from(tasks).where(eq(tasks.id, id)))[0];
 
-  it("marks a PR that passes every gate as ready without merging it", async () => {
+  it("marks a PR that passes every gate as ready without merging it, and rewrites nothing on the next pass", async () => {
     const id = await insert();
 
     await runMergeGate();
 
     expect(calls).toEqual(["files"]);
     const row = await load(id);
-    expect(parseMergeHold(row.mergeHold)?.reasons).toEqual([]);
+    expect(row.mergeReady).toBe(1);
     expect(row.prState).toBe("open");
-    expect(isMergeReady(row)).toBe(true);
+
+    await runMergeGate();
+    expect((await load(id)).updatedAt).toBe(row.updatedAt);
   });
 
-  it("records a hold, updates it when the reasons change, and empties it once green", async () => {
+  it("keeps a held PR unready, then marks it ready once green", async () => {
     const id = await insert({ checksStatus: "pending" });
 
     await runMergeGate();
     expect(calls).toEqual([]);
-    const first = parseMergeHold((await load(id)).mergeHold);
-    expect(first?.reasons).toEqual(["checks-pending"]);
-    expect(isMergeReady(await load(id))).toBe(false);
-
-    await runMergeGate();
-    expect((await load(id)).mergeHold).toBe(JSON.stringify(first)); // unchanged reasons: no rewrite
+    const held = await load(id);
+    expect(held.mergeReady).toBe(0);
+    expect(held.updatedAt).toBe(NOW); // the verdict didn't change: no write
 
     await db.update(tasks).set({ checksStatus: "failing", hasConflicts: 1 }).where(eq(tasks.id, id));
     await runMergeGate();
-    expect(parseMergeHold((await load(id)).mergeHold)?.reasons).toEqual(["checks-failing", "conflicts"]);
+    expect((await load(id)).mergeReady).toBe(0);
 
     await db.update(tasks).set({ checksStatus: "passing", hasConflicts: 0 }).where(eq(tasks.id, id));
     await runMergeGate();
-    const done = await load(id);
-    expect(parseMergeHold(done.mergeHold)?.reasons).toEqual([]);
+    expect((await load(id)).mergeReady).toBe(1);
     expect(calls).not.toContain("merge alumni_connect#10");
   });
 
@@ -245,7 +237,7 @@ describe("runMergeGate", () => {
 
     await runMergeGate();
 
-    expect(parseMergeHold((await load(id)).mergeHold)?.reasons).toEqual(["prerelease-pin"]);
+    expect((await load(id)).mergeReady).toBe(0);
     expect(calls).not.toContain("merge alumni_connect#10");
   });
 
@@ -257,9 +249,9 @@ describe("runMergeGate", () => {
 
     await runMergeGate();
 
-    expect(parseMergeHold((await load(paired)).mergeHold)?.reasons).toEqual(["alumni-connect-branch"]);
-    expect(parseMergeHold((await load(alone)).mergeHold)?.reasons).toEqual([]);
-    await expect(mergeTaskPr(paired)).rejects.toMatchObject({ code: "MERGE_HELD" });
+    expect((await load(paired)).mergeReady).toBe(0);
+    expect((await load(alone)).mergeReady).toBe(1);
+    await expect(mergeTaskPr(paired)).rejects.toMatchObject({ code: "MERGE_HELD", message: "Not ready to merge: alumni-connect-branch" });
     expect(calls).not.toContain("merge hivetests#30");
   });
 
@@ -272,18 +264,21 @@ describe("runMergeGate", () => {
 
     expect(calls).toEqual([]);
     for (const id of [review, ice, noPr]) {
-      expect((await load(id)).mergeHold).toBeNull();
+      const row = await load(id);
+      expect(row.mergeReady).toBe(0);
+      expect(row.updatedAt).toBe(NOW);
     }
   });
 
-  it("clears a stale hold or ready mark when the task leaves Ready to Merge", async () => {
-    const held = await insert({ status: "Code Review", mergeHold: JSON.stringify({ reasons: ["checks-pending"], at: NOW }) });
-    const ready = await insert({ status: "Code Review", jiraKey: "EV-2", mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
+  it("clears a stale ready mark when the task leaves Ready to Merge or its PR closes", async () => {
+    const review = await insert({ status: "Code Review", mergeReady: 1 });
+    const closed = await insert({ prState: "closed", jiraKey: "EV-2", mergeReady: 1 });
 
     await runMergeGate();
 
-    expect((await load(held)).mergeHold).toBeNull();
-    expect((await load(ready)).mergeHold).toBeNull();
+    expect(calls).toEqual([]);
+    expect((await load(review)).mergeReady).toBe(0);
+    expect((await load(closed)).mergeReady).toBe(0);
   });
 
   it("keeps going when one task's GitHub call fails", async () => {
@@ -299,13 +294,13 @@ describe("runMergeGate", () => {
 
     await runMergeGate();
 
-    expect((await load(failing)).mergeHold).toBeNull();
-    expect(parseMergeHold((await load(fine)).mergeHold)?.reasons).toEqual([]);
+    expect((await load(failing)).mergeReady).toBe(0);
+    expect((await load(fine)).mergeReady).toBe(1);
   });
 
   describe("mergeTaskPr", () => {
     it("squash-merges a PR that passes every gate and marks the task merged for the watch", async () => {
-      const id = await insert({ mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
+      const id = await insert({ mergeReady: 1 });
 
       const task = await mergeTaskPr(id);
 
@@ -313,34 +308,40 @@ describe("runMergeGate", () => {
       const row = await load(id);
       expect(row.prState).toBe("merged");
       expect(row.mergeCommitSha).toBe("squash-sha");
-      expect(row.mergeHold).toBeNull();
-      expect(task).toMatchObject({ prState: "merged", mergeCommitSha: "squash-sha", mergeHold: null });
-      expect(isMergeReady(row)).toBe(false);
+      expect(row.mergeReady).toBe(0);
+      expect(task).toMatchObject({ prState: "merged", mergeCommitSha: "squash-sha", mergeReady: 0 });
     });
 
-    it("refuses with the holds when the task no longer passes, and records them", async () => {
-      const id = await insert({ checksStatus: "failing", mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
+    it("refuses with the holds when the task no longer passes, and clears its ready mark", async () => {
+      const id = await insert({ checksStatus: "failing", hasConflicts: 1, mergeReady: 1 });
 
-      await expect(mergeTaskPr(id)).rejects.toMatchObject({ statusCode: 409, code: "MERGE_HELD" });
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "MERGE_HELD",
+        message: "Not ready to merge: checks-failing, conflicts",
+      });
 
       expect(calls).toEqual([]);
-      expect(parseMergeHold((await load(id)).mergeHold)?.reasons).toEqual(["checks-failing"]);
+      expect((await load(id)).mergeReady).toBe(0);
     });
 
     it("refuses a prerelease pin", async () => {
       files = [{ filename: "package.json", patch: '+    "@hivebrite/ui": "github:Hivebrite/ui#feat"' }];
-      const id = await insert();
+      const id = await insert({ mergeReady: 1 });
 
       await expect(mergeTaskPr(id)).rejects.toMatchObject({ code: "MERGE_HELD" });
       expect(calls).not.toContain("merge alumni_connect#10");
+      expect((await load(id)).mergeReady).toBe(0);
     });
 
     it("leaves the task open when GitHub refuses the merge", async () => {
       setMergeGitHub({ ...stub, mergePr: async () => { throw new Error("Required status check is expected"); } });
-      const id = await insert();
+      const id = await insert({ mergeReady: 1 });
 
       await expect(mergeTaskPr(id)).rejects.toThrow(/Required status check/);
-      expect((await load(id)).prState).toBe("open");
+      const row = await load(id);
+      expect(row.prState).toBe("open");
+      expect(row.mergeReady).toBe(1);
     });
 
     it("refuses a task without an open PR and an unknown task", async () => {

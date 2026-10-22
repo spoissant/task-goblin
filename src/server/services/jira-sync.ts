@@ -5,9 +5,7 @@ import { tasks, settings } from "../../db/schema";
 import { getJiraClient, getJiraConfig, JiraConfigError } from "../lib/jira-client";
 import { now } from "../lib/timestamp";
 import { isApiError } from "../lib/errors";
-import type { SyncResult } from "../lib/types";
-
-export type { SyncResult };
+import type { SyncResult } from "@/shared/types";
 
 export class JiraApiError extends Error {
   constructor(
@@ -59,14 +57,13 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
   return {
     jiraKey: issue.key!,
     title: fields.summary || issue.key!,
-    status: fields.status?.name || "todo",
+    status: fields.status?.name || "To Do",
     type: fields.issuetype?.name || null,
     assignee: fields.assignee?.displayName || null,
     priority: fields.priority?.name || null,
     sprint: sprintName,
     epicKey: parent?.isEpic ? parent.key : null,
     parentKey: parent && !parent.isEpic ? parent.key : null,
-    jiraSyncedAt: timestamp,
     updatedAt: timestamp,
   };
 }
@@ -132,7 +129,6 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
         sprint: taskData.sprint,
         epicKey: taskData.epicKey,
         parentKey: taskData.parentKey,
-        jiraSyncedAt: taskData.jiraSyncedAt,
         updatedAt: taskData.updatedAt,
       })
       .where(eq(tasks.jiraKey, taskData.jiraKey));

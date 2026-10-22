@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Normalize status name for comparison (case-insensitive, handles underscore/space variants) */
+/** Normalize status name for comparison (case-insensitive) */
 export function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
+  return status.toLowerCase();
 }

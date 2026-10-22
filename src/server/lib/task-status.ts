@@ -178,59 +178,6 @@ async function seedDefaultCategories(): Promise<void> {
   );
 }
 
-// Helper to normalize status name (for comparison)
-function normalizeStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
-
-/**
- * Build reverse mapping from status name (normalized) -> category
- */
-export async function buildStatusCategoryMap(): Promise<Map<string, StatusCategory>> {
-  const categories = await getStatusCategories();
-  const map = new Map<string, StatusCategory>();
-
-  for (const category of categories) {
-    // Map category name to itself
-    map.set(normalizeStatus(category.name), category);
-
-    // Map all jiraMappings to this category
-    for (const jiraStatus of category.jiraMappings) {
-      map.set(normalizeStatus(jiraStatus), category);
-    }
-  }
-
-  return map;
-}
-
-/**
- * Resolve a status to its category
- */
-export async function resolveStatusCategory(status: string): Promise<StatusCategory | null> {
-  const map = await buildStatusCategoryMap();
-  const normalized = normalizeStatus(status);
-  return map.get(normalized) || null;
-}
-
-/**
- * Get color for a status (returns defaultColor if not mapped)
- */
-export async function getStatusColor(status: string): Promise<string> {
-  const category = await resolveStatusCategory(status);
-  if (category) {
-    return category.color;
-  }
-  return getDefaultStatusColor();
-}
-
-/**
- * Check if a status is completed (done=true in its category)
- */
-export async function isStatusCompleted(status: string): Promise<boolean> {
-  const category = await resolveStatusCategory(status);
-  return category?.done ?? false;
-}
-
 /**
  * Get all completed status names (for filtering)
  * Returns all status names (category names + jira mappings) where done=true
@@ -255,21 +202,12 @@ export async function getCompletedStatusNames(): Promise<string[]> {
 }
 
 /**
- * Get all status categories (for manual task creation/editing)
- * Returns categories sorted by displayOrder
- */
-export async function getAllStatuses(): Promise<StatusCategory[]> {
-  return getStatusCategories();
-}
-
-
-/**
  * Validate if a status is valid for manual tasks
  */
 export async function isStatusValid(status: string): Promise<boolean> {
   const categories = await getStatusCategories();
-  const s = normalizeStatus(status);
-  return categories.some((c) => normalizeStatus(c.name) === s);
+  const s = status.toLowerCase();
+  return categories.some((c) => c.name.toLowerCase() === s);
 }
 
 
@@ -339,24 +277,13 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
     // Collect all status names to map (category name + jiraMappings)
     const allNames: string[] = [category.name, ...category.jiraMappings];
 
-    // Build list of normalized variants (both space and underscore versions)
-    const variants: string[] = [];
-    for (const name of allNames) {
-      const normalized = normalizeStatus(name);
-      variants.push(normalized);
-      const underscored = normalized.replace(/ /g, "_");
-      if (underscored !== normalized) {
-        variants.push(underscored);
-      }
-    }
+    // Lower-case and deduplicate
+    const uniqueNames = [...new Set(allNames.map((name) => name.toLowerCase()))];
 
-    // Deduplicate
-    const uniqueVariants = [...new Set(variants)];
-
-    if (uniqueVariants.length === 1) {
-      cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueVariants[0]} THEN ${category.displayOrder}`);
+    if (uniqueNames.length === 1) {
+      cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueNames[0]} THEN ${category.displayOrder}`);
     } else {
-      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${sql.join(uniqueVariants.map((v) => sql`${v}`), sql`, `)}) THEN ${category.displayOrder}`);
+      cases.push(sql`WHEN LOWER(${tasks.status}) IN (${sql.join(uniqueNames.map((v) => sql`${v}`), sql`, `)}) THEN ${category.displayOrder}`);
     }
   }
 

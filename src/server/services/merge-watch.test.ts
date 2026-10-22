@@ -3,23 +3,20 @@ import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../db";
 import { tasks } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
-import { resetBuildkiteFetch, setBuildkiteFetch } from "../lib/buildkite-client";
 import { actionsBuildState, approveReleasePrs, publishProject, runMergeWatch } from "./merge-watch";
 import { resetMergeGitHub, setMergeGitHub, type ActionsRun, type MergeGitHub, type ReleasePr } from "./merge-github";
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const SHA = "abc123";
-const run = (conclusion: string | null, status = "completed", htmlUrl = "https://gh/run"): ActionsRun => ({
+const run = (conclusion: string | null, status = "completed"): ActionsRun => ({
   name: "CI",
   status,
   conclusion,
   headSha: SHA,
-  htmlUrl,
 });
 
 describe("merge watch", () => {
   const calls: string[] = [];
-  let buildkiteBuilds: Array<Record<string, unknown>> = [];
   let runs: ActionsRun[] = [];
   let labels: string[] = [];
   let releasePrs: ReleasePr[] = [];
@@ -31,8 +28,8 @@ describe("merge watch", () => {
     async listPullFiles() {
       return [];
     },
-    async runsForSha(_o, _r, sha) {
-      calls.push(`runs ${sha}`);
+    async runsForSha(_o, repo, sha) {
+      calls.push(`runs ${repo} ${sha}`);
       return runs;
     },
     async prLabels(t) {
@@ -54,24 +51,16 @@ describe("merge watch", () => {
 
   beforeEach(() => {
     calls.length = 0;
-    buildkiteBuilds = [];
     runs = [];
     labels = [];
     releasePrs = [];
     for (const t of ["tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'Hivebrite', 'alumni_connect', 1), (2, 'Hivebrite', 'front-monorepo', 1)`);
-    process.env.BUILDKITE_API_TOKEN = "bk";
-    setBuildkiteFetch(async (input) => {
-      calls.push(`buildkite ${new URL(String(input)).searchParams.get("commit")}`);
-      return new Response(JSON.stringify(buildkiteBuilds));
-    });
     setMergeGitHub(stub);
   });
 
   afterEach(() => {
     resetMergeGitHub();
-    resetBuildkiteFetch();
-    delete process.env.BUILDKITE_API_TOKEN;
   });
 
   async function insertMerged(over: Partial<typeof tasks.$inferInsert> = {}): Promise<number> {
@@ -83,8 +72,8 @@ describe("merge watch", () => {
         createdAt: NOW,
         updatedAt: NOW,
         jiraKey: `EV-${Math.floor(Math.random() * 1e6)}`,
-        repositoryId: 1,
-        prNumber: 10,
+        repositoryId: 2,
+        prNumber: 20,
         prState: "merged",
         mergeCommitSha: SHA,
         prSyncedAt: new Date().toISOString(),
@@ -96,74 +85,7 @@ describe("merge watch", () => {
 
   const load = async (id: number) => (await db.select().from(tasks).where(eq(tasks.id, id)))[0];
 
-  it("marks a passed Buildkite build verified with its url", async () => {
-    buildkiteBuilds = [{ number: 5, state: "passed", commit: SHA, web_url: "https://bk/5", finished_at: NOW }];
-    const id = await insertMerged();
-
-    await runMergeWatch();
-
-    const row = await load(id);
-    expect(calls).toEqual([`buildkite ${SHA}`]);
-    expect(row.baseBuildState).toBe("passed");
-    expect(row.baseBuildUrl).toBe("https://bk/5");
-    expect(row.mergeVerifiedAt).not.toBeNull();
-
-    calls.length = 0;
-    await runMergeWatch();
-    expect(calls).toEqual([]); // verified tasks leave the watch
-  });
-
-  it("records a pending build without verifying and skips the write when nothing changed", async () => {
-    buildkiteBuilds = [{ number: 5, state: "running", commit: SHA, web_url: "https://bk/5", finished_at: null }];
-    const id = await insertMerged();
-
-    await runMergeWatch();
-    const first = await load(id);
-    expect(first.baseBuildState).toBe("pending");
-    expect(first.mergeVerifiedAt).toBeNull();
-
-    await runMergeWatch();
-    expect((await load(id)).updatedAt).toBe(first.updatedAt);
-  });
-
-  it("gives up on a build that never appears after the timeout", async () => {
-    const fresh = await insertMerged();
-    const stale = await insertMerged({ prSyncedAt: "2026-10-01T00:00:00.000Z" });
-
-    await runMergeWatch();
-
-    expect((await load(fresh)).mergeVerifiedAt).toBeNull();
-    expect((await load(fresh)).baseBuildState).toBe("missing");
-    const gone = await load(stale);
-    expect(gone.baseBuildState).toBe("missing");
-    expect(gone.mergeVerifiedAt).not.toBeNull();
-  });
-
-  it("records a red build and stops watching it", async () => {
-    buildkiteBuilds = [{ number: 5, state: "failed", commit: SHA, web_url: "https://bk/5", finished_at: NOW }];
-    const id = await insertMerged();
-
-    await runMergeWatch();
-
-    const row = await load(id);
-    expect(row.baseBuildState).toBe("failed");
-    expect(row.baseBuildUrl).toBe("https://bk/5");
-    expect(row.mergeVerifiedAt).not.toBeNull();
-  });
-
-  it("reads Actions runs for repos off Buildkite and links the failed run", async () => {
-    runs = [run("success"), run("failure", "completed", "https://gh/failed")];
-    const id = await insertMerged({ repositoryId: 2, prNumber: 20 });
-
-    await runMergeWatch();
-
-    const row = await load(id);
-    expect(calls[0]).toBe(`runs ${SHA}`);
-    expect(row.baseBuildState).toBe("failed");
-    expect(row.baseBuildUrl).toBe("https://gh/failed");
-  });
-
-  it("approves only the unapproved release PRs of the merged PR's publish labels", async () => {
+  it("approves only the unapproved release PRs of the merged PR's publish labels once its runs pass", async () => {
     runs = [run("success")];
     labels = ["publish-design-system-minor", "publish-icons-patch", "release-notes"];
     releasePrs = [
@@ -171,32 +93,86 @@ describe("merge watch", () => {
       { number: 901, title: "chore: publish icons-1.0.1 [publish-icons-patch]", approvedByMe: true },
       { number: 902, title: "chore: publish utils-2.0.0 [publish-utils-major]", approvedByMe: false },
     ];
-    const id = await insertMerged({ repositoryId: 2, prNumber: 20 });
+    const id = await insertMerged();
 
     await runMergeWatch();
 
-    expect(calls).toEqual([`runs ${SHA}`, "labels #20", "release-prs", "approve #900"]);
+    expect(calls).toEqual([`runs front-monorepo ${SHA}`, "labels #20", "release-prs", "approve #900"]);
+    expect((await load(id)).mergeVerifiedAt).not.toBeNull();
+
+    calls.length = 0;
+    await runMergeWatch();
+    expect(calls).toEqual([]); // verified tasks leave the watch
+  });
+
+  it("does not look for release PRs without publish labels", async () => {
+    runs = [run("success")];
+    labels = ["bug"];
+    const id = await insertMerged();
+
+    await runMergeWatch();
+
+    expect(calls).toEqual([`runs front-monorepo ${SHA}`, "labels #20"]);
     expect((await load(id)).mergeVerifiedAt).not.toBeNull();
   });
 
-  it("does not look for release PRs without publish labels, nor outside front-monorepo", async () => {
-    runs = [run("success")];
-    labels = ["bug"];
-    await insertMerged({ repositoryId: 2, prNumber: 20 });
-    buildkiteBuilds = [{ number: 5, state: "passed", commit: SHA, web_url: "w", finished_at: NOW }];
-    await insertMerged({ repositoryId: 1, prNumber: 10 });
+  it("stops watching red runs without approving anything", async () => {
+    runs = [run("success"), run("failure")];
+    const id = await insertMerged();
 
     await runMergeWatch();
 
-    expect(calls).not.toContain("release-prs");
-    expect(calls.filter((c) => c.startsWith("labels"))).toEqual(["labels #20"]);
+    expect(calls).toEqual([`runs front-monorepo ${SHA}`]);
+    expect((await load(id)).mergeVerifiedAt).not.toBeNull();
   });
 
-  it("keeps going when one task's build lookup fails", async () => {
-    setMergeGitHub({ ...stub, runsForSha: async () => { throw new Error("boom"); } });
-    buildkiteBuilds = [{ number: 5, state: "passed", commit: SHA, web_url: "w", finished_at: NOW }];
-    const broken = await insertMerged({ repositoryId: 2, prNumber: 20 });
-    const fine = await insertMerged();
+  it("writes nothing while the runs are pending or not there yet", async () => {
+    runs = [run("success"), run(null, "in_progress")];
+    const pending = await insertMerged();
+
+    await runMergeWatch();
+    runs = [];
+    await runMergeWatch();
+
+    const row = await load(pending);
+    expect(row.mergeVerifiedAt).toBeNull();
+    expect(row.updatedAt).toBe(NOW);
+    expect(calls.filter((c) => c.startsWith("labels"))).toEqual([]);
+  });
+
+  it("gives up on runs that never finish after the timeout", async () => {
+    runs = [run(null, "queued")];
+    const fresh = await insertMerged();
+    const stale = await insertMerged({ prSyncedAt: "2026-10-01T00:00:00.000Z" });
+
+    await runMergeWatch();
+
+    expect((await load(fresh)).mergeVerifiedAt).toBeNull();
+    expect((await load(stale)).mergeVerifiedAt).not.toBeNull();
+    expect(calls).not.toContain("release-prs");
+  });
+
+  it("watches only front-monorepo", async () => {
+    runs = [run("success")];
+    const other = await insertMerged({ repositoryId: 1, prNumber: 10 });
+
+    await runMergeWatch();
+
+    expect(calls).toEqual([]);
+    expect((await load(other)).mergeVerifiedAt).toBeNull();
+  });
+
+  it("keeps going when one task's runs lookup fails", async () => {
+    runs = [run("success")];
+    setMergeGitHub({
+      ...stub,
+      async runsForSha(_o, _r, sha) {
+        if (sha === "broken") throw new Error("boom");
+        return runs;
+      },
+    });
+    const broken = await insertMerged({ mergeCommitSha: "broken" });
+    const fine = await insertMerged({ prNumber: 21 });
 
     await runMergeWatch();
 
@@ -207,7 +183,7 @@ describe("merge watch", () => {
 
 describe("merge watch helpers", () => {
   it("collapses Actions runs of a commit", () => {
-    expect(actionsBuildState([])).toBe("missing");
+    expect(actionsBuildState([])).toBe("pending");
     expect(actionsBuildState([run("success"), run(null, "in_progress")])).toBe("pending");
     expect(actionsBuildState([run("success"), run("timed_out")])).toBe("failed");
     expect(actionsBuildState([run("success"), run("skipped")])).toBe("passed");

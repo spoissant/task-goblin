@@ -74,7 +74,7 @@ async function moveTicket(task: MergedTicket, ready: Set<string>, jira: MergeJir
     next = toProd.to;
   }
   await db.update(tasks).set({ status: next, updatedAt: now() }).where(eq(tasks.id, task.id));
-  broadcast("task", { taskId: task.id });
+  broadcast("task");
 }
 
 /** Move the ticket of each merged PR still in Ready to Merge to Ready to Prod. */

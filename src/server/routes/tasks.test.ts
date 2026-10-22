@@ -36,16 +36,6 @@ async function request(
   return withErrorBoundary(() => router.route(req));
 }
 
-describe("Health endpoint", () => {
-  it("returns ok status", async () => {
-    const res = await request("GET", "/api/v1/health");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.status).toBe("ok");
-    expect(data.timestamp).toBeDefined();
-  });
-});
-
 describe("Tasks endpoints", () => {
   it("returns list with items and total", async () => {
     const res = await request("GET", "/api/v1/tasks");
@@ -123,22 +113,6 @@ describe("Tasks endpoints", () => {
   it("returns 404 for non-existent task", async () => {
     const res = await request("GET", "/api/v1/tasks/9999");
     expect(res.status).toBe(404);
-  });
-
-  it("updates a task", async () => {
-    const createRes = await request("POST", "/api/v1/tasks", {
-      title: "Original",
-    });
-    const created = await createRes.json();
-
-    const res = await request("PUT", `/api/v1/tasks/${created.id}`, {
-      title: "Updated",
-      status: "In Progress",
-    });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.title).toBe("Updated");
-    expect(data.status).toBe("In Progress");
   });
 
   it("patches a task", async () => {
@@ -238,7 +212,7 @@ describe("Link PR by branch", () => {
   });
 });
 
-describe("Task merge and Jira assignment", () => {
+describe("Jira assignment", () => {
   const ts = "'2026-01-01T00:00:00.000Z'";
 
   beforeEach(() => {
@@ -247,14 +221,6 @@ describe("Task merge and Jira assignment", () => {
       VALUES (1, 'Jira summary', 'In Progress', ${ts}, ${ts}, 'EV-1')`);
     sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
       VALUES (2, 'ev-1-branch', 'open', ${ts}, ${ts}, 1, 20, 'open')`);
-  });
-
-  it("merges a Jira task into a PR task, keeping the PR task", async () => {
-    const res = await request("POST", "/api/v1/tasks/2/merge", { sourceTaskId: 1 });
-    expect(res.status).toBe(200);
-    const task = await res.json();
-    expect(task).toMatchObject({ id: 2, jiraKey: "EV-1", status: "In Progress", title: "Jira summary", prNumber: 20 });
-    expect((await request("GET", "/api/v1/tasks/1")).status).toBe(404);
   });
 
   it("rejects an invalid Jira key", async () => {
@@ -329,21 +295,16 @@ describe("Settings endpoints", () => {
     expect(typeof data).toBe("object");
   });
 
-  it("creates and retrieves a setting", async () => {
-    const uniqueKey = `test_key_${Date.now()}`;
-    await request("POST", "/api/v1/settings", {
-      key: uniqueKey,
-      value: "test_value",
-    });
+  it("creates a setting with PUT, then updates it", async () => {
+    const created = await request("PUT", "/api/v1/settings/test_key", { value: "first" });
+    expect(created.status).toBe(201);
 
-    const res = await request("GET", `/api/v1/settings/${uniqueKey}`);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.key).toBe(uniqueKey);
-    expect(data.value).toBe("test_value");
+    const updated = await request("PUT", "/api/v1/settings/test_key", { value: "second" });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toEqual({ key: "test_key", value: "second" });
 
-    // Cleanup
-    await request("DELETE", `/api/v1/settings/${uniqueKey}`);
+    const res = await request("GET", "/api/v1/settings");
+    expect((await res.json()).test_key).toBe("second");
   });
 });
 
@@ -354,7 +315,7 @@ describe("Router", () => {
   });
 
   it("returns 405 for unsupported methods", async () => {
-    const res = await request("PUT", "/api/v1/health");
+    const res = await request("DELETE", "/api/v1/tasks");
     expect(res.status).toBe(405);
   });
 });

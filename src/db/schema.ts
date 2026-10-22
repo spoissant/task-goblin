@@ -5,7 +5,7 @@ export const tasks = sqliteTable("tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   description: text("description"),
-  status: text("status").notNull().default("todo"), // todo | in_progress | code_review | qa | done | blocked | ready_to_merge
+  status: text("status").notNull().default("To Do"), // Jira status name, or a status category name for PR-only and manual tasks
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 
@@ -17,7 +17,6 @@ export const tasks = sqliteTable("tasks", {
   sprint: text("sprint"), // sprint name
   epicKey: text("epic_key"), // parent epic key
   parentKey: text("parent_key"), // non-epic parent key (e.g. sub-task's parent story/bug)
-  jiraSyncedAt: text("jira_synced_at"),
 
   // Manual flags (not synced from Jira/GitHub)
   highPriority: integer("high_priority").default(0),
@@ -30,11 +29,9 @@ export const tasks = sqliteTable("tasks", {
   headBranch: text("head_branch"),
   baseBranch: text("base_branch"),
   prState: text("pr_state"), // open | closed | merged
-  prAuthor: text("pr_author"),
   isDraft: integer("is_draft").default(0),
   checksStatus: text("checks_status"), // passing | failing | pending
   checksDetails: text("checks_details"), // JSON array of check details
-  approvedReviewCount: integer("approved_review_count"),
   reviewStatus: text("review_status"), // JSON ReviewStatus: GitHub's review verdict and what's still missing
   prSyncedAt: text("pr_synced_at"),
   onDeploymentBranches: text("on_deployment_branches"), // JSON array of deployment branches PR is on (detected via commit history)
@@ -51,20 +48,17 @@ export const tasks = sqliteTable("tasks", {
 
   // Automation flags (not synced from Jira/GitHub)
   choreSkips: text("chore_skips"), // JSON: {"fix-pr-checks": true, "address-pr-comments": true, "auto": true, ...}
-  workingOn: text("working_on"), // JSON: {"choreKey": "request-reviews", "at": "2026-04-20T14:00:00Z"} or null
 
   // Merge gate and post-merge watch (see merge-gate.ts, merge-watch.ts)
   headSha: text("head_sha"), // PR head commit at last sync
   mergeCommitSha: text("merge_commit_sha"), // squash commit on the base branch once merged
-  mergeHold: text("merge_hold"), // JSON MergeHold {reasons, at}: why the gate holds the PR; no reasons = Merge button shows
-  baseBuildState: text("base_build_state"), // pending | passed | failed | missing: the base-branch build of mergeCommitSha
-  baseBuildUrl: text("base_build_url"),
-  mergeVerifiedAt: text("merge_verified_at"), // when the watch finished (passed, failed, or timed out)
+  mergeReady: integer("merge_ready").notNull().default(0), // 1 = the merge gate cleared the PR: its Merge button shows
+  mergeVerifiedAt: text("merge_verified_at"), // when the merge watch was done with the merged PR
 }, (table) => [
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);
 
-// 3. Repository - GitHub repo configs
+// 2. Repository - GitHub repo configs
 export const repositories = sqliteTable("repositories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   owner: text("owner").notNull(), // GitHub org/user
@@ -80,7 +74,7 @@ export const repositories = sqliteTable("repositories", {
   defaultBaseBranch: text("default_base_branch"), // base for tasks without a branch yet (e.g. "sprint", "main")
 });
 
-// 3b. Worktree - Local filesystem paths per repository
+// 2b. Worktree - Local filesystem paths per repository
 export const worktrees = sqliteTable("worktrees", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   repositoryId: integer("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
@@ -89,7 +83,7 @@ export const worktrees = sqliteTable("worktrees", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// 3c. Task worktree - one git worktree per task, created on first AI session start
+// 2c. Task worktree - one git worktree per task, created on first AI session start
 export const taskWorktrees = sqliteTable("task_worktrees", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: integer("task_id").notNull().unique().references(() => tasks.id, { onDelete: "cascade" }),
@@ -101,10 +95,9 @@ export const taskWorktrees = sqliteTable("task_worktrees", {
   error: text("error"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-  readyAt: text("ready_at"),
 });
 
-// 3d. Claude sessions - background Claude Code sessions, one row per chore run
+// 2d. Claude sessions - background Claude Code sessions, one row per chore run
 export const claudeSessions = sqliteTable("claude_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }), // null for PR reviews started from the Reviews page
@@ -144,7 +137,7 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   index("idx_claude_sessions_state").on(table.state),
 ]);
 
-// 3d2. Claude session tasks - the other tasks a bulk chore session covers; the session row keeps the first
+// 2e. Claude session tasks - the other tasks a bulk chore session covers; the session row keeps the first
 export const claudeSessionTasks = sqliteTable("claude_session_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),
@@ -155,7 +148,7 @@ export const claudeSessionTasks = sqliteTable("claude_session_tasks", {
   index("idx_claude_session_tasks_task_id").on(table.taskId),
 ]);
 
-// 3e. Claude session requests - one row per API request in a session's transcript, subagents included
+// 2f. Claude session requests - one row per API request in a session's transcript, subagents included
 export const claudeSessionRequests = sqliteTable("claude_session_requests", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),
@@ -178,20 +171,20 @@ export const claudeSessionRequests = sqliteTable("claude_session_requests", {
   uniqueIndex("idx_claude_session_requests_message").on(table.sessionId, table.messageId),
 ]);
 
-// 4. Team Channels - maps GitHub team slugs to Slack channels for code review routing
+// 3. Team Channels - maps GitHub team slugs to Slack channels for code review routing
 export const teamChannels = sqliteTable("team_channels", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   githubTeamSlug: text("github_team_slug").notNull().unique(), // e.g. "team-backend"
   slackChannel: text("slack_channel").notNull(), // e.g. "#team-backend-prs"
 });
 
-// 5. Settings - Key-value config store
+// 4. Settings - Key-value config store
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value"),
 });
 
-// 7. Status Categories - color + completion state + display order
+// 5. Status Categories - color + completion state + display order
 export const statusCategories = sqliteTable("status_categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -201,9 +194,7 @@ export const statusCategories = sqliteTable("status_categories", {
   jiraMappings: text("jira_mappings"), // JSON array
 });
 
-
-
-// 8. Standups - one row per /standup run started from the Standup page (claude -p)
+// 6. Standups - one row per /standup run started from the Standup page (claude -p)
 export const standups = sqliteTable("standups", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   state: text("state").notNull(), // running | done | failed

@@ -1,27 +1,15 @@
-import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router";
 import { useTaskQuery, useUpdateTask, useDeleteTask } from "@/client/lib/queries";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
-
-import { useDeployBranch } from "@/client/lib/queries/deploy";
-import { useSyncTask, useSyncBranch } from "@/client/lib/queries/sync";
+import { useSyncTask } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";
 import { TaskSummaryBar } from "@/client/components/tasks/TaskSummaryBar";
 import { ChoreSkipsEditor } from "@/client/components/tasks/ChoreSkipsEditor";
 import { SessionsSection } from "@/client/components/tasks/SessionsSection";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Button } from "@/client/components/ui/button";
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/client/components/ui/select";
-import { ModalDialog } from "@/client/components/ui/modal-dialog";
-import { ArrowLeft, RefreshCw, Trash2, Upload, GitMerge } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function TaskDetailPage() {
@@ -32,15 +20,9 @@ export function TaskDetailPage() {
   const { data: task, isLoading, error } = useTaskQuery(taskId);
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
-  const deployBranch = useDeployBranch();
-  const syncBranch = useSyncBranch();
   const syncTask = useSyncTask();
   const { data: settings } = useSettingsQuery();
   const { data: repos } = useRepositoriesQuery();
-  const [deployTargetBranch, setDeployTargetBranch] = useState<string>("");
-  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
-  const [conflictedFiles, setConflictedFiles] = useState<string[]>([]);
-  const [conflictSource, setConflictSource] = useState<"deploy" | "sync">("deploy");
   const jiraHost = settings?.jira_host || undefined;
   const repoMap = new Map(repos?.items.map((r) => [r.id, r]) || []);
 
@@ -90,58 +72,7 @@ export function TaskDetailPage() {
     }
   };
 
-  // Get deployment branches from repository
   const repo = task?.repository || (task?.repositoryId ? repoMap.get(task.repositoryId) : undefined);
-  const deploymentBranches: string[] = repo?.deploymentBranches
-    ? JSON.parse(repo.deploymentBranches)
-    : [];
-  const canDeploy = task?.headBranch && (repo?.worktrees?.length ?? 0) > 0 && deploymentBranches.length > 0;
-  const canSyncBranch = task?.headBranch && task?.baseBranch && (repo?.worktrees?.length ?? 0) > 0;
-
-  const handleDeploy = () => {
-    if (!deployTargetBranch) {
-      toast.error("Please select a target branch");
-      return;
-    }
-
-    deployBranch.mutate(
-      { taskId, targetBranch: deployTargetBranch },
-      {
-        onSuccess: (result) => {
-          if (result.success) {
-            toast.success(`Deployed to ${deployTargetBranch}`);
-          } else if (result.conflict) {
-            setConflictSource("deploy");
-            setConflictedFiles(result.conflictedFiles);
-            setConflictDialogOpen(true);
-          }
-        },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : "Deploy failed");
-        },
-      }
-    );
-  };
-
-  const handleSyncBranch = () => {
-    syncBranch.mutate(
-      { taskId },
-      {
-        onSuccess: (result) => {
-          if (result.success) {
-            toast.success(`Synced with ${task?.baseBranch}`);
-          } else if (result.conflict) {
-            setConflictSource("sync");
-            setConflictedFiles(result.conflictedFiles);
-            setConflictDialogOpen(true);
-          }
-        },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : "Sync failed");
-        },
-      }
-    );
-  };
 
   return (
     <div className="space-y-8">
@@ -153,46 +84,6 @@ export function TaskDetailPage() {
           </Link>
         </Button>
         <div className="flex gap-2">
-          {canDeploy && (
-            <>
-              <Select
-                value={deployTargetBranch}
-                onValueChange={setDeployTargetBranch}
-              >
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Deploy to..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {deploymentBranches.map((branch) => (
-                    <SelectItem key={branch} value={branch}>
-                      {branch}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDeploy}
-                disabled={!deployTargetBranch || deployBranch.isPending}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                {deployBranch.isPending ? "Deploying..." : "Deploy"}
-              </Button>
-            </>
-          )}
-          {canSyncBranch && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSyncBranch}
-              disabled={syncBranch.isPending}
-              title={`Merge ${task.baseBranch} into ${task.headBranch}`}
-            >
-              <GitMerge className="h-4 w-4 mr-2" />
-              {syncBranch.isPending ? "Merging..." : `Merge latest ${task.baseBranch}`}
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -222,31 +113,6 @@ export function TaskDetailPage() {
       <SessionsSection task={task} />
 
       <TaskHeader task={task} onStatusChange={handleStatusChange} />
-
-      {/* Merge Conflict Dialog */}
-      <ModalDialog
-        open={conflictDialogOpen}
-        onOpenChange={setConflictDialogOpen}
-        title="Merge Conflict"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {conflictSource === "deploy"
-              ? "Could not deploy due to merge conflicts in the following files:"
-              : `Could not sync from ${task.baseBranch} due to merge conflicts in the following files:`}
-          </p>
-          <ul className="space-y-1">
-            {conflictedFiles.map((file) => (
-              <li key={file} className="text-sm font-mono bg-muted px-2 py-1 rounded">
-                {file}
-              </li>
-            ))}
-          </ul>
-          <p className="text-sm text-muted-foreground">
-            Please resolve the conflicts locally and try again.
-          </p>
-        </div>
-      </ModalDialog>
     </div>
   );
 }

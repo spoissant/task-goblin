@@ -6,7 +6,6 @@ import { getBody } from "../lib/request";
 import { parseId, validatePagination } from "../lib/validation";
 import { getTaskOrThrow } from "../lib/queries";
 import {
-  getSession,
   listLatestReviewSessions,
   listLatestSessions,
   listRecentSessions,
@@ -90,12 +89,6 @@ export const sessionRoutes: Routes = {
       const path = `${dir}/${crypto.randomUUID()}.${ext}`;
       await Bun.write(path, await req.arrayBuffer());
       return json({ path }, 201);
-    },
-  },
-
-  "/api/v1/sessions/:id": {
-    async GET(_req, params) {
-      return json(await toApi(await getSession(parseId(params.id))));
     },
   },
 

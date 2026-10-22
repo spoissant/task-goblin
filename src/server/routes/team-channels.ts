@@ -63,7 +63,7 @@ export const teamChannelRoutes: Routes = {
       return json(result[0]);
     },
 
-    async DELETE(req, params) {
+    async DELETE(_req, params) {
       const id = parseId(params.id);
 
       const existing = await db.select().from(teamChannels).where(eq(teamChannels.id, id));

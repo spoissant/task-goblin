@@ -105,7 +105,7 @@ interface MergedTask {
 
 interface StoredStack {
   taskId: number | null;
-  prUrl?: string | null; // set instead of taskId for a PR; absent on records from before PR boots
+  prUrl: string | null; // set instead of taskId for a PR
   branch: string; // task branch, or "repo#N" for a PR
   merged?: MergedTask[]; // other tasks whose branches are merged on top of the owner's
   state: DevStackState;
@@ -252,7 +252,7 @@ async function saveStack(cfg: StackConfig, stack: StoredStack | null): Promise<v
   } else {
     await db.delete(settings).where(eq(settings.key, cfg.settingKey));
   }
-  broadcast("dev-stack", { taskId: stack?.taskId ?? null, state: stack?.state ?? null });
+  broadcast("dev-stack");
 }
 
 async function readLog(cfg: StackConfig): Promise<string> {
@@ -277,7 +277,6 @@ async function toDevStack(cfg: StackConfig, repositoryId: number, stored: Stored
   const { merged, ...rest } = stored;
   return {
     ...rest,
-    prUrl: stored.prUrl ?? null,
     mergedTaskIds: (merged ?? []).map((m) => m.taskId),
     repositoryId,
     alive: stored.pid !== null && runtime.isAlive(stored.pid),

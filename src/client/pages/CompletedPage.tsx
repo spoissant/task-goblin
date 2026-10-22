@@ -26,7 +26,7 @@ import { RefreshCw, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { getJiraUrl, getPrUrl, ParentCell } from "@/client/components/tasks/columns/cells";
-import type { TaskWithRepository } from "@/client/lib/types";
+import type { TaskDetail } from "@/client/lib/types";
 import { parseReviewStatus } from "@/shared/review-status";
 
 const PAGE_SIZE = 25;
@@ -187,7 +187,7 @@ export function CompletedPage() {
 }
 
 interface CompletedTaskRowProps {
-  task: TaskWithRepository;
+  task: TaskDetail;
   jiraHost: string | null;
 }
 

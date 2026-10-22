@@ -1,4 +1,4 @@
-import { eq, and, sql, ne, isNull, isNotNull, or } from "drizzle-orm";
+import { eq, and, sql, or } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
 import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow } from "../lib/queries";
@@ -13,14 +13,14 @@ import {
   getCompletedCondition,
   getCompletedStatusNames,
   getNotCompletedCondition,
+  getStatusCategories,
   getTaskOrderExprsAsync,
   isStatusValid,
-  getAllStatuses,
 } from "../lib/task-status";
 
 async function validateManualStatus(status: string) {
   if (!(await isStatusValid(status))) {
-    const statuses = await getAllStatuses();
+    const statuses = await getStatusCategories();
     throw new ValidationError(
       `Manual task status must be one of: ${statuses.map((s) => s.name).join(", ")}`
     );
@@ -49,22 +49,14 @@ export const taskRoutes: Routes = {
     async GET(req) {
       const url = new URL(req.url);
       const status = url.searchParams.get("status");
-      const orphanJira = url.searchParams.get("orphanJira");
-      const orphanPr = url.searchParams.get("orphanPr");
-      const linked = url.searchParams.get("linked");
       const title = url.searchParams.get("title");
-      const excludeCompleted = url.searchParams.get("excludeCompleted") !== "false"; // default true
       const { limit, offset } = validatePagination(
         url.searchParams.get("limit"),
         url.searchParams.get("offset")
       );
 
-      const conditions = [];
-
-      // Exclude completed tasks by default
-      if (excludeCompleted) {
-        conditions.push(await getNotCompletedCondition());
-      }
+      // Exclude completed tasks (/tasks/completed lists those)
+      const conditions = [await getNotCompletedCondition()];
 
       if (status) {
         conditions.push(sql`LOWER(${tasks.status}) = ${status.toLowerCase()}`);
@@ -81,18 +73,6 @@ export const taskRoutes: Routes = {
         }
       }
 
-      // Filter for orphan Jira tasks (jiraKey set, no prNumber)
-      if (orphanJira === "true") {
-        conditions.push(isNotNull(tasks.jiraKey));
-        conditions.push(isNull(tasks.prNumber));
-      }
-
-      // Filter for orphan PR tasks (prNumber set, no jiraKey)
-      if (orphanPr === "true") {
-        conditions.push(isNotNull(tasks.prNumber));
-        conditions.push(isNull(tasks.jiraKey));
-      }
-
       if (title) {
         const condition = buildTitleSearchCondition(title);
         if (condition) conditions.push(condition);
@@ -104,15 +84,6 @@ export const taskRoutes: Routes = {
         conditions.push(eq(tasks.checksStatus, checks));
       }
 
-      // Filter by max approved review count (fewer than N)
-      const maxReviews = url.searchParams.get("maxReviews");
-      if (maxReviews !== null) {
-        const n = parseInt(maxReviews, 10);
-        if (!isNaN(n)) {
-          conditions.push(sql`COALESCE(${tasks.approvedReviewCount}, 0) < ${n}`);
-        }
-      }
-
       // Filter by unresolved comments
       const hasComments = url.searchParams.get("hasComments");
       if (hasComments === "true") {
@@ -121,30 +92,15 @@ export const taskRoutes: Routes = {
         conditions.push(sql`COALESCE(${tasks.unresolvedCommentCount}, 0) = 0`);
       }
 
-      // Filter for linked tasks (manual OR both jiraKey and prNumber set)
-      if (linked === "true") {
-        conditions.push(
-          or(
-            // Manual tasks: neither jiraKey nor prNumber
-            and(isNull(tasks.jiraKey), isNull(tasks.prNumber)),
-            // Merged tasks: both jiraKey and prNumber
-            and(isNotNull(tasks.jiraKey), isNotNull(tasks.prNumber))
-          )
-        );
-      }
+      const whereCondition = and(...conditions);
 
-      let query = db.select().from(tasks);
-
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as typeof query;
-      }
-
-      query = query.orderBy(...(await getTaskOrderExprsAsync())) as typeof query;
-
-      // Apply pagination
-      query = query.limit(limit).offset(offset) as typeof query;
-
-      const taskList = await query;
+      const taskList = await db
+        .select()
+        .from(tasks)
+        .where(whereCondition)
+        .orderBy(...(await getTaskOrderExprsAsync()))
+        .limit(limit)
+        .offset(offset);
 
       const repoMap = await buildRepoMap(taskList);
 
@@ -177,11 +133,10 @@ export const taskRoutes: Routes = {
       }));
 
       // Get total count for pagination
-      let totalQuery = db.select({ count: sql<number>`count(*)` }).from(tasks);
-      if (conditions.length > 0) {
-        totalQuery = totalQuery.where(and(...conditions)) as typeof totalQuery;
-      }
-      const totalResult = await totalQuery;
+      const totalResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(tasks)
+        .where(whereCondition);
       const total = totalResult[0]?.count ?? items.length;
 
       return json({ items, total });
@@ -215,7 +170,7 @@ export const taskRoutes: Routes = {
   },
 
   "/api/v1/tasks/:id": {
-    async GET(req, params) {
+    async GET(_req, params) {
       const id = parseId(params.id);
       const task = await getTaskOrThrow(id);
 
@@ -233,34 +188,6 @@ export const taskRoutes: Routes = {
         ...task,
         repository,
       });
-    },
-
-    async PUT(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-
-      if (!body.title || typeof body.title !== "string") {
-        throw new ValidationError("title is required");
-      }
-
-      if (body.status) {
-        await validateManualStatus(body.status);
-      }
-
-      const existing = await getTaskOrThrow(id);
-
-      const result = await db
-        .update(tasks)
-        .set({
-          title: body.title,
-          description: body.description ?? null,
-          status: body.status || existing.status,
-          updatedAt: now(),
-        })
-        .where(eq(tasks.id, id))
-        .returning();
-
-      return json(result[0]);
     },
 
     async PATCH(req, params) {
@@ -285,7 +212,6 @@ export const taskRoutes: Routes = {
       if ("onIce" in body) updates.onIce = body.onIce ? 1 : 0;
       if ("onIceReason" in body) updates.onIceReason = body.onIceReason ?? null;
       if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
-      if ("workingOn" in body) updates.workingOn = body.workingOn;
       if ("repositoryId" in body) {
         // The repository of a PR-backed task is owned by the GitHub sync.
         if (existing.prNumber !== null) {
@@ -312,7 +238,7 @@ export const taskRoutes: Routes = {
       return json(result[0]);
     },
 
-    async DELETE(req, params) {
+    async DELETE(_req, params) {
       const id = parseId(params.id);
 
       await getTaskOrThrow(id);
@@ -321,59 +247,6 @@ export const taskRoutes: Routes = {
       await db.delete(tasks).where(eq(tasks.id, id));
 
       return noContent();
-    },
-  },
-
-  // Reserve a task for a chore (atomic check-and-set, 30-min TTL)
-  "/api/v1/tasks/:id/reserve": {
-    async POST(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-      const choreKey = body.choreKey as string | undefined;
-      if (!choreKey) throw new ValidationError("choreKey is required");
-
-      const TTL_MS = 30 * 60 * 1000;
-      const expiredBefore = new Date(Date.now() - TTL_MS).toISOString();
-
-      const result = await db
-        .update(tasks)
-        .set({ workingOn: JSON.stringify({ choreKey, at: new Date().toISOString() }), updatedAt: now() })
-        .where(
-          and(
-            eq(tasks.id, id),
-            or(
-              isNull(tasks.workingOn),
-              sql`JSON_EXTRACT(${tasks.workingOn}, '$.at') < ${expiredBefore}`
-            )
-          )
-        )
-        .returning();
-
-      if (result.length === 0) {
-        const existing = await getTaskOrThrow(id);
-        return Response.json(
-          { error: { code: "ALREADY_RESERVED", message: "Task is already reserved", workingOn: existing.workingOn } },
-          { status: 409 }
-        );
-      }
-
-      return json(result[0]);
-    },
-  },
-
-  // Release a task reservation
-  "/api/v1/tasks/:id/release": {
-    async POST(_req, params) {
-      const id = parseId(params.id);
-      await getTaskOrThrow(id);
-
-      const result = await db
-        .update(tasks)
-        .set({ workingOn: null, updatedAt: now() })
-        .where(eq(tasks.id, id))
-        .returning();
-
-      return json(result[0]);
     },
   },
 
@@ -480,89 +353,9 @@ export const taskRoutes: Routes = {
     },
   },
 
-  // Get non-completed linked tasks for curation view
-  "/api/v1/tasks/with-relations": {
-    async GET() {
-      // Get all non-completed linked tasks (manual OR merged)
-      const taskList = await db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            await getNotCompletedCondition(),
-            or(
-              // Manual tasks
-              and(isNull(tasks.jiraKey), isNull(tasks.prNumber)),
-              // Merged tasks
-              and(isNotNull(tasks.jiraKey), isNotNull(tasks.prNumber))
-            )
-          )
-        )
-        .orderBy(...(await getTaskOrderExprsAsync()));
-
-      const repoMap = await buildRepoMap(taskList);
-
-      const items = taskList.map((task) => ({
-        ...task,
-        repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
-      }));
-
-      return json({ items, total: items.length });
-    },
-  },
-
-  // Get Jira orphans (jiraKey set, no prNumber, not completed)
-  "/api/v1/tasks/orphan-jira": {
-    async GET() {
-      const items = await db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            isNotNull(tasks.jiraKey),
-            isNull(tasks.prNumber),
-            await getNotCompletedCondition()
-          )
-        )
-        .orderBy(...(await getTaskOrderExprsAsync()));
-
-      return json({ items, total: items.length });
-    },
-  },
-
-  // Get PR orphans (prNumber set, no jiraKey, not merged)
-  "/api/v1/tasks/orphan-pr": {
-    async GET() {
-      const taskList = await db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            isNotNull(tasks.prNumber),
-            isNull(tasks.jiraKey),
-            // Exclude merged and closed PRs
-            or(
-              isNull(tasks.prState),
-              and(ne(tasks.prState, "merged"), ne(tasks.prState, "closed"))
-            )
-          )
-        )
-        .orderBy(...(await getTaskOrderExprsAsync()));
-
-      const repoMap = await buildRepoMap(taskList);
-
-      const items = taskList.map((task) => ({
-        ...task,
-        repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
-      }));
-
-      return json({ items, total: items.length });
-    },
-  },
-
   // Get task by Jira key
   "/api/v1/tasks/by-jira-key/:key": {
-    async GET(req, params) {
+    async GET(_req, params) {
       const { key } = params;
       const result = await db
         .select()
@@ -579,7 +372,7 @@ export const taskRoutes: Routes = {
 
   // Get task by branch name
   "/api/v1/tasks/by-branch/:branch": {
-    async GET(req, params) {
+    async GET(_req, params) {
       const { branch } = params;
       const result = await db
         .select()

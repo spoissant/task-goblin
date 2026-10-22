@@ -1,7 +1,7 @@
 ---
 name: chore-request-reviews
 description: Request code reviews for one or more PRs via Slack. Resolves target channels from the repo default plus requested reviewer teams, composes the message with the PR's size and FE/BE split, sends it after approval. Use for /chore-request-reviews <taskId> [<taskId>…] or "request reviews for task".
-allowed-tools: "ToolSearch,AskUserQuestion,Bash(gh:*),Skill(hivebrite-engineering:request-pr-review),mcp__task-goblin__get_task,mcp__task-goblin__list_team_channels,mcp__task-goblin__get_pr_changes_by_category"
+allowed-tools: "ToolSearch,AskUserQuestion,Bash(gh:*),Skill(hivebrite-engineering:request-pr-review),mcp__task-goblin__get_task,mcp__task-goblin__list_team_channels"
 ---
 
 # Request Reviews
@@ -14,12 +14,12 @@ Accepts one or more numeric task IDs (ask if none). Tasks are independent and to
 
 2. Target channels: the repository's `slackChannel`, plus the channel mapped to each team in `gh api repos/<o>/<r>/pulls/<pr>/requested_reviewers --jq '[.teams[].slug]'`. The slug → channel map comes from `list_team_channels` (fetch once per batch). Deduplicate. No channels: warn, move on. Fetch the PR title with `gh pr view <pr> -R <o>/<r> --json title`; the link uses it, not the task title.
 
-3. Size and split from `get_pr_changes_by_category(owner, repo, prNumber)`. It returns totals, a `size` of small/medium/large, and per-bucket `frontend`/`backend`/`other` counts with `percent`.
+3. Size and split from step 1's `get_task`: `changedFiles`, `additions`, `deletions`, and `changesByCategory`, a JSON string with `frontend`/`backend`/`other` buckets, each counting `files`, `additions` and `deletions`. The size goes by lines changed (`additions` + `deletions`): up to 200 small, up to 800 medium, above that large. A bucket's percent is its share of the buckets' files, which cover at most the PR's first 100.
 
-   Build the PR line as `{emoji} {label}  ·  {suffix}  ·  <{url}|{repo} — {title}>`, separator two spaces, middle dot, two spaces, metadata before the link so the reviewer sees size and scope first. Suffix: `{totalFiles} files ({pct}% FE / {pct}% BE / {pct}% OT) · +{adds} / -{dels}`, omitting buckets at 0%. Size to emoji and label: small `:white_circle:` Small, medium `:large_yellow_circle:` Medium, large `:red_circle:` Large. Green is avoided on purpose because it reads as "approved" in review tools.
+   Build the PR line as `{emoji} {label}  ·  {suffix}  ·  <{url}|{repo} — {title}>`, separator two spaces, middle dot, two spaces, metadata before the link so the reviewer sees size and scope first. Suffix: `{changedFiles} files ({pct}% FE / {pct}% BE / {pct}% OT) · +{additions} / -{deletions}`, omitting buckets at 0%. Size to emoji and label: small `:white_circle:` Small, medium `:large_yellow_circle:` Medium, large `:red_circle:` Large. Green is avoided on purpose because it reads as "approved" in review tools.
 
-   If the call fails or reports zero files, skip the suffix and the colour override and let the sub-skill use its defaults.
+   If `changesByCategory` is null or the PR reports zero files, skip the suffix and the colour override and let the sub-skill use its defaults.
 
-4. After all tasks are resolved, group PR lines by channel: one message per channel, using the sub-skill's multi-PR template ("PRs ready for review:") when it has more than one line, lines ordered small → large. For each channel, `Skill(hivebrite-engineering:request-pr-review)` with the channel, the PR links, and, when step 3 succeeded, the instruction to use these exact emoji and PR lines instead of its score formula.
+4. After all tasks are resolved, group PR lines by channel: one message per channel, using the sub-skill's multi-PR template ("PRs ready for review:") when it has more than one line, lines ordered small → large. For each channel, `Skill(hivebrite-engineering:request-pr-review)` with the channel, the PR links, and, when step 3 had the stats, the instruction to use these exact emoji and PR lines instead of its score formula.
 
    Show every composed message together and get explicit approval through one AskUserQuestion before anything is sent. Never send without that approval: Slack messages cannot be unsent.

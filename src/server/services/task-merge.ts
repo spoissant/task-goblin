@@ -114,11 +114,9 @@ export async function mergeSingleTask(
     mergedFields.headBranch = prTask.headBranch;
     mergedFields.baseBranch = prTask.baseBranch;
     mergedFields.prState = prTask.prState;
-    mergedFields.prAuthor = prTask.prAuthor;
     mergedFields.isDraft = prTask.isDraft;
     mergedFields.checksStatus = prTask.checksStatus;
     mergedFields.checksDetails = prTask.checksDetails;
-    mergedFields.approvedReviewCount = prTask.approvedReviewCount;
     mergedFields.reviewStatus = prTask.reviewStatus;
     mergedFields.unresolvedCommentCount = prTask.unresolvedCommentCount;
     mergedFields.prSyncedAt = prTask.prSyncedAt;
@@ -133,7 +131,6 @@ export async function mergeSingleTask(
     mergedFields.sprint = jiraTask.sprint;
     mergedFields.epicKey = jiraTask.epicKey;
     mergedFields.parentKey = jiraTask.parentKey;
-    mergedFields.jiraSyncedAt = jiraTask.jiraSyncedAt;
     // Use Jira summary as title if target doesn't have a good title
     if (jiraTask.title && jiraTask.title !== prTask.headBranch) {
       mergedFields.title = jiraTask.title;
@@ -187,21 +184,6 @@ export async function autoMatchAndMerge(): Promise<number> {
 }
 
 export const taskMergeRoutes: Routes = {
-  // Merge two orphan tasks (jira + pr) into one
-  "/api/v1/tasks/:id/merge": {
-    async POST(req, params) {
-      const id = parseId(params.id);
-      const body = await getBody(req);
-
-      if (!body.sourceTaskId || typeof body.sourceTaskId !== "number") {
-        throw new ValidationError("sourceTaskId is required");
-      }
-
-      const result = await mergeSingleTask(id, body.sourceTaskId);
-      return json(result);
-    },
-  },
-
   // Manually attach a Jira issue (by key) to a PR task that has none
   "/api/v1/tasks/:id/assign-jira": {
     async POST(req, params) {
@@ -243,70 +225,6 @@ export const taskMergeRoutes: Routes = {
       }
 
       return json(await mergeSingleTask(id, jiraTask.id));
-    },
-  },
-
-  // Split a merged task back into two orphans
-  "/api/v1/tasks/:id/split": {
-    async POST(_req, params) {
-      const id = parseId(params.id);
-
-      const task = await getTaskOrThrow(id);
-
-      // Must be a merged task (both jiraKey and prNumber)
-      if (!task.jiraKey || !task.prNumber) {
-        throw new ValidationError("Task must have both jiraKey and prNumber to split");
-      }
-
-      const timestamp = now();
-
-      // Wrap split operations in a transaction for consistency
-      const { jiraTask, prTask } = await db.transaction(async (tx) => {
-        // Create new PR orphan task with PR fields
-        const newPrTask = await tx
-          .insert(tasks)
-          .values({
-            title: task.headBranch || `PR #${task.prNumber}`,
-            description: null,
-            status: task.status,
-            prNumber: task.prNumber,
-            repositoryId: task.repositoryId,
-            headBranch: task.headBranch,
-            baseBranch: task.baseBranch,
-            prState: task.prState,
-            prAuthor: task.prAuthor,
-            isDraft: task.isDraft,
-            checksStatus: task.checksStatus,
-            unresolvedCommentCount: task.unresolvedCommentCount,
-            prSyncedAt: task.prSyncedAt,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          })
-          .returning();
-
-        // Clear PR fields from original task (keep as Jira orphan)
-        const updatedJiraTask = await tx
-          .update(tasks)
-          .set({
-            prNumber: null,
-            repositoryId: null,
-            headBranch: null,
-            baseBranch: null,
-            prState: null,
-            prAuthor: null,
-            isDraft: null,
-            checksStatus: null,
-            unresolvedCommentCount: null,
-            prSyncedAt: null,
-            updatedAt: timestamp,
-          })
-          .where(eq(tasks.id, id))
-          .returning();
-
-        return { jiraTask: updatedJiraTask[0], prTask: newPrTask[0] };
-      });
-
-      return json({ jiraTask, prTask });
     },
   },
 };

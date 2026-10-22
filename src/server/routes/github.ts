@@ -21,9 +21,8 @@ import { fetchMyTeams, selectCodeownerTeams } from "../services/github-teams";
 import { autoMatchAndMerge } from "../services/task-merge";
 import { getNextSyncAt, restartSyncTimer, runAfterSyncSteps } from "../services/sync-scheduler";
 import type { Routes } from "../router";
-import type { Endpoints } from "@octokit/types";
-import type { ReviewRequest, FileChanges, ChangesByCategory, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
-import { categorizePrSize } from "@/shared/pr-size";
+import type { RestEndpointMethodTypes } from "@octokit/rest";
+import type { ReviewRequest } from "@/shared/types";
 import { bucketFilesByCategory } from "@/shared/file-categories";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
 
@@ -38,34 +37,6 @@ async function orNull<T>(label: string, promise: Promise<T>): Promise<T | null> 
     console.warn(`review-requests: ${label} unavailable — ${(err as Error).message}`);
     return null;
   }
-}
-
-// Largest-remainder rounding so percentages sum to 100 (when totalFiles > 0).
-function computePercents(buckets: ChangesByCategory, totalFiles: number): { frontend: number; backend: number; other: number } {
-  if (totalFiles === 0) return { frontend: 0, backend: 0, other: 0 };
-
-  const raw = {
-    frontend: (buckets.frontend.files / totalFiles) * 100,
-    backend: (buckets.backend.files / totalFiles) * 100,
-    other: (buckets.other.files / totalFiles) * 100,
-  };
-  const floored = {
-    frontend: Math.floor(raw.frontend),
-    backend: Math.floor(raw.backend),
-    other: Math.floor(raw.other),
-  };
-  let remaining = 100 - (floored.frontend + floored.backend + floored.other);
-  // Sort by largest fractional remainder, distribute the remaining 1-percent units.
-  const remainders = (Object.entries(raw) as Array<[keyof typeof raw, number]>)
-    .map(([k, v]) => [k, v - Math.floor(v)] as const)
-    .sort((a, b) => b[1] - a[1]);
-  const result = { ...floored };
-  for (const [key] of remainders) {
-    if (remaining <= 0) break;
-    result[key] += 1;
-    remaining -= 1;
-  }
-  return result;
 }
 
 export const githubRoutes: Routes = {
@@ -215,7 +186,7 @@ export const githubRoutes: Routes = {
           ];
         }
 
-        type SearchItem = Endpoints["GET /search/issues"]["response"]["data"]["items"][number];
+        type SearchItem = RestEndpointMethodTypes["search"]["issuesAndPullRequests"]["response"]["data"]["items"][number];
 
         // `search.issuesAndPullRequests` is deprecated (and logs on every
         // call); the raw route with `advanced_search` is its replacement.
@@ -344,49 +315,6 @@ export const githubRoutes: Routes = {
         });
 
         return json({ items, total: items.length });
-      } catch (err) {
-        if (err instanceof GitHubConfigError) {
-          throw new AppError(err.message, 400, err.code);
-        }
-        throw err;
-      }
-    },
-  },
-
-  "/api/v1/github/pull-requests/:owner/:repo/:number/changes-by-category": {
-    async GET(_req, params) {
-      const { owner, repo, number } = params;
-      const prNumber = parseInt(number, 10);
-      if (Number.isNaN(prNumber)) {
-        throw new AppError("Invalid PR number", 400, "INVALID_PR_NUMBER");
-      }
-
-      try {
-        const client = getGitHubClient();
-        const filesResult = await client.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 });
-
-        const buckets = bucketFilesByCategory(filesResult.data);
-        const sum = (pick: (b: FileChanges) => number) =>
-          pick(buckets.frontend) + pick(buckets.backend) + pick(buckets.other);
-
-        const totalAdditions = sum((b) => b.additions);
-        const totalDeletions = sum((b) => b.deletions);
-        const totalFiles = sum((b) => b.files);
-        const percents = computePercents(buckets, totalFiles);
-
-        const withPercent = (b: FileChanges, percent: number): FileChangesWithPercent => ({ ...b, percent });
-
-        const response: PrChangesByCategory = {
-          totalFiles,
-          totalAdditions,
-          totalDeletions,
-          size: categorizePrSize(totalAdditions, totalDeletions),
-          frontend: withPercent(buckets.frontend, percents.frontend),
-          backend: withPercent(buckets.backend, percents.backend),
-          other: withPercent(buckets.other, percents.other),
-        };
-
-        return json(response);
       } catch (err) {
         if (err instanceof GitHubConfigError) {
           throw new AppError(err.message, 400, err.code);

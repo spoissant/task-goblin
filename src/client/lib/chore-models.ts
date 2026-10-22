@@ -7,7 +7,7 @@ import {
   type ModelEffort,
 } from "@/shared/chore-models";
 
-export { CHORE_MODELS_KEY, FALLBACK_MODEL_EFFORT, type ChoreModelDefaults, type ModelEffort } from "@/shared/chore-models";
+export { CHORE_MODELS_KEY, type ChoreModelDefaults } from "@/shared/chore-models";
 
 export const MODEL_LABELS: Record<SessionModel, string> = {
   opus: "Opus",
@@ -26,10 +26,10 @@ export const EFFORT_LABELS: Record<SessionEffort, string> = {
 
 /** Default model and effort per chore key, stored as JSON in the `chore_models` setting. */
 export function useChoreModelDefaults() {
-  const { data, isLoading } = useSettingsQuery();
+  const { data } = useSettingsQuery();
   const stored = parseChoreModelDefaults(data?.[CHORE_MODELS_KEY]);
 
   const getDefault = (choreKey: string | undefined): ModelEffort => resolveChoreModel(stored, choreKey);
 
-  return { stored, getDefault, isLoading };
+  return { stored, getDefault };
 }

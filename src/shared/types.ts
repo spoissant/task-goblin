@@ -29,7 +29,6 @@ export interface Task {
   sprint: string | null;
   epicKey: string | null;
   parentKey: string | null;
-  jiraSyncedAt: string | null;
 
   // Manual flags
   highPriority: number | null;
@@ -42,11 +41,9 @@ export interface Task {
   headBranch: string | null;
   baseBranch: string | null;
   prState: string | null;
-  prAuthor: string | null;
   isDraft: number | null;
   checksStatus: string | null;
   checksDetails: string | null;
-  approvedReviewCount: number | null;
   reviewStatus: string | null; // JSON ReviewStatus, see shared/review-status
   prSyncedAt: string | null;
   onDeploymentBranches: string | null; // JSON array of deployment branches PR is on (detected via commit history)
@@ -65,19 +62,12 @@ export interface Task {
   // Merge gate and post-merge watch
   headSha: string | null;
   mergeCommitSha: string | null;
-  mergeHold: string | null; // JSON MergeHold, see shared/merge
-  baseBuildState: string | null; // pending | passed | failed | missing
-  baseBuildUrl: string | null;
-  mergeVerifiedAt: string | null;
+  mergeReady: number; // 1 = the merge gate cleared the PR: its Merge button shows
+  mergeVerifiedAt: string | null; // when the merge watch was done with the merged PR
 }
 
 // Task detail with relations
 export interface TaskDetail extends Task {
-  repository: Repository | null;
-}
-
-// Task with repository for curation view
-export interface TaskWithRepository extends Task {
   repository: Repository | null;
 }
 
@@ -117,7 +107,6 @@ export interface TaskWorktree {
   error: string | null;
   createdAt: string;
   updatedAt: string;
-  readyAt: string | null;
 }
 
 export interface TaskWorktreeStatus extends TaskWorktree {
@@ -287,39 +276,6 @@ export interface Worktree {
   updatedAt: string;
 }
 
-// Deploy types
-export interface DeployResult {
-  status: "success";
-  targetBranch: string;
-  sourceBranch: string;
-  commitSha: string;
-}
-
-export interface BulkDeployTaskResult {
-  taskId: number;
-  status: "success" | "conflict" | "skipped";
-  commitSha?: string;
-  conflictedFiles?: string[];
-  reason?: string;
-}
-
-export interface BulkDeployResult {
-  results: BulkDeployTaskResult[];
-  summary: {
-    success: number;
-    conflict: number;
-    skipped: number;
-  };
-}
-
-// Sync branch types (merge main into feature branch)
-export interface SyncBranchResult {
-  status: "success";
-  taskBranch: string;
-  mainBranch: string;
-  commitSha: string;
-}
-
 export interface Settings {
   [key: string]: string | null;
 }
@@ -346,22 +302,6 @@ export interface StatusSettings {
   defaultColor: string;
 }
 
-// Legacy types (for backwards compatibility)
-export interface StatusConfig {
-  name: string;
-  color: string | null;
-  order: number;
-  isCompleted: boolean;
-  isDefault?: boolean;
-  filter?: string | null;
-  jiraMapping?: string[];
-}
-
-export interface StatusConfigResponse {
-  statuses: StatusConfig[];
-  defaultColor: string;
-}
-
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -381,11 +321,6 @@ export interface SyncResult {
 
 export interface MatchResult {
   merged: number;
-}
-
-export interface SplitResult {
-  jiraTask: Task;
-  prTask: Task;
 }
 
 // Review request - PR where user is requested as reviewer
@@ -432,23 +367,4 @@ export interface ReviewRequest {
   taskJiraKey: string | null;
 }
 
-export interface FileChangesWithPercent extends FileChanges {
-  percent: number;
-}
-
 export type PrSize = "small" | "medium" | "large";
-
-export interface PrChangesByCategory {
-  totalFiles: number;
-  totalAdditions: number;
-  totalDeletions: number;
-  size: PrSize;
-  frontend: FileChangesWithPercent;
-  backend: FileChangesWithPercent;
-  other: FileChangesWithPercent;
-}
-
-// Helper type guard
-export function isMergedTask(task: Task): boolean {
-  return task.jiraKey !== null && task.prNumber !== null;
-}

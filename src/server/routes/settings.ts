@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { settings } from "../../db/schema";
-import { json, created, noContent } from "../response";
-import { NotFoundError, ValidationError } from "../lib/errors";
+import { json, created } from "../response";
+import { ValidationError } from "../lib/errors";
 import { getBody } from "../lib/request";
 import {
   getStatusCategories,
@@ -25,56 +25,9 @@ export const settingsRoutes: Routes = {
       }
       return json(result);
     },
-
-    async POST(req) {
-      const body = await getBody(req);
-
-      if (!body.key || typeof body.key !== "string") {
-        throw new ValidationError("key is required");
-      }
-
-      // Upsert: insert or update
-      const existing = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, body.key));
-
-      if (existing.length > 0) {
-        const result = await db
-          .update(settings)
-          .set({ value: body.value ?? null })
-          .where(eq(settings.key, body.key))
-          .returning();
-        return json(result[0]);
-      }
-
-      const result = await db
-        .insert(settings)
-        .values({
-          key: body.key,
-          value: body.value ?? null,
-        })
-        .returning();
-
-      return created(result[0]);
-    },
   },
 
   "/api/v1/settings/:key": {
-    async GET(_req, params) {
-      const { key } = params;
-      const result = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, key));
-
-      if (result.length === 0) {
-        throw new NotFoundError("Setting", key);
-      }
-
-      return json(result[0]);
-    },
-
     async PUT(req, params) {
       const { key } = params;
       const body = await getBody(req);
@@ -100,22 +53,6 @@ export const settingsRoutes: Routes = {
         .returning();
 
       return json(result[0]);
-    },
-
-    async DELETE(_req, params) {
-      const { key } = params;
-
-      const existing = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, key));
-      if (existing.length === 0) {
-        throw new NotFoundError("Setting", key);
-      }
-
-      await db.delete(settings).where(eq(settings.key, key));
-
-      return noContent();
     },
   },
 
@@ -173,11 +110,7 @@ export const settingsRoutes: Routes = {
     },
   },
 
-  // ============================================
-  // NEW Status Settings Endpoints
-  // ============================================
-
-  // Combined status settings (categories + filters + defaultColor)
+  // Combined status settings (categories + defaultColor)
   "/api/v1/settings/status-settings": {
     async GET() {
       const settings = await getStatusSettings();
@@ -241,11 +174,6 @@ export const settingsRoutes: Routes = {
 
   // Default Color
   "/api/v1/settings/status-default-color": {
-    async GET() {
-      const color = await getDefaultStatusColor();
-      return json({ defaultColor: color });
-    },
-
     async PUT(req) {
       const body = await getBody(req);
 
@@ -257,88 +185,6 @@ export const settingsRoutes: Routes = {
 
       const color = await getDefaultStatusColor();
       return json({ defaultColor: color });
-    },
-  },
-
-  // ============================================
-  // Legacy Status Configuration endpoints (for backwards compatibility)
-  // ============================================
-
-  "/api/v1/settings/statuses": {
-    async GET() {
-      // Return in legacy format
-      const settings = await getStatusSettings();
-      // Convert to old format
-      const statuses = settings.categories.map((cat, index) => ({
-        name: cat.name,
-        color: cat.color,
-        order: settings.categories.length - cat.displayOrder,
-        isCompleted: cat.done,
-        isDefault: index === 0,
-        filter: null, // Legacy format doesn't have filter at category level
-        jiraMapping: cat.jiraMappings,
-      }));
-      return json({ statuses, defaultColor: settings.defaultColor });
-    },
-
-    async PUT(req) {
-      const body = await getBody(req);
-
-      if (!body.statuses || !Array.isArray(body.statuses)) {
-        throw new ValidationError("statuses array is required");
-      }
-
-      // Convert from legacy format to new categories
-      const categories: Omit<StatusCategory, "id">[] = body.statuses.map((s: {
-        name: string;
-        color: string | null;
-        order: number;
-        isCompleted: boolean;
-        jiraMapping?: string[];
-      }, index: number) => ({
-        name: s.name,
-        color: s.color || "bg-slate-500",
-        done: s.isCompleted,
-        displayOrder: body.statuses.length - index - 1,
-        jiraMappings: s.jiraMapping || [],
-      }));
-
-      await saveStatusCategories(categories);
-
-      // Update default color if provided
-      if (body.defaultColor) {
-        await saveDefaultColor(body.defaultColor);
-      }
-
-      // Return in legacy format
-      const settings = await getStatusSettings();
-      const statuses = settings.categories.map((cat, index) => ({
-        name: cat.name,
-        color: cat.color,
-        order: settings.categories.length - cat.displayOrder,
-        isCompleted: cat.done,
-        isDefault: index === 0,
-        filter: null,
-        jiraMapping: cat.jiraMappings,
-      }));
-      return json({ statuses, defaultColor: settings.defaultColor });
-    },
-  },
-
-  "/api/v1/settings/statuses/selectable": {
-    async GET() {
-      const categories = await getStatusCategories();
-      // Return categories formatted as selectable statuses
-      const items = categories.map((cat, index) => ({
-        name: cat.name,
-        color: cat.color,
-        order: categories.length - cat.displayOrder,
-        isCompleted: cat.done,
-        isDefault: index === 0,
-        filter: null,
-        jiraMapping: cat.jiraMappings,
-      }));
-      return json({ items });
     },
   },
 };

@@ -14,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { TABLE_COLUMNS, getPrUrl, getColumn } from "./columns";
+import { TABLE_COLUMNS, getColumn } from "./columns";
+import { getPrUrl } from "./columns/cells";
 import type { TaskListItem, Repository } from "@/client/lib/types";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { useChoresQuery, type ChoreEntry } from "@/client/lib/queries/chores";
@@ -23,16 +24,16 @@ import type { ClaudeSession } from "@/client/lib/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 
 // Map Tailwind bg class to rgba for faint row tinting
-const STATUS_ROW_COLORS: Record<string, { light: string; dark: string }> = {
-  "bg-slate-500":   { light: "rgba(100,116,139,0.07)", dark: "rgba(100,116,139,0.12)" },
-  "bg-fuchsia-500": { light: "rgba(217,70,239,0.07)",  dark: "rgba(217,70,239,0.12)" },
-  "bg-yellow-600":  { light: "rgba(202,138,4,0.07)",   dark: "rgba(202,138,4,0.12)" },
-  "bg-blue-600":    { light: "rgba(37,99,235,0.07)",   dark: "rgba(37,99,235,0.12)" },
-  "bg-green-700":   { light: "rgba(21,128,61,0.07)",   dark: "rgba(21,128,61,0.12)" },
-  "bg-red-500":     { light: "rgba(239,68,68,0.07)",   dark: "rgba(239,68,68,0.12)" },
+const STATUS_ROW_COLORS: Record<string, string> = {
+  "bg-slate-500":   "rgba(100,116,139,0.12)",
+  "bg-fuchsia-500": "rgba(217,70,239,0.12)",
+  "bg-yellow-600":  "rgba(202,138,4,0.12)",
+  "bg-blue-600":    "rgba(37,99,235,0.12)",
+  "bg-green-700":   "rgba(21,128,61,0.12)",
+  "bg-red-500":     "rgba(239,68,68,0.12)",
 };
 
-function getStatusRowColor(status: string, categories?: StatusCategory[]): { light: string; dark: string } | undefined {
+function getStatusRowColor(status: string, categories?: StatusCategory[]): string | undefined {
   if (!categories) return undefined;
   const normalized = normalizeStatus(status);
   for (const cat of categories) {
@@ -240,9 +241,7 @@ function TaskRow({ task, columns, repo, jiraHost, statusCategories, nextChore, s
     onSearch,
   };
 
-  const isDark = document.documentElement.classList.contains("dark");
-  const rowColor = getStatusRowColor(task.status, statusCategories);
-  const rowBg = rowColor ? (isDark ? rowColor.dark : rowColor.light) : undefined;
+  const rowBg = getStatusRowColor(task.status, statusCategories);
 
   return (
     <TableRow

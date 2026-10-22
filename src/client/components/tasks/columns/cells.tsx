@@ -1,19 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
-import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
-import { ChecksStatusCell } from "../ChecksStatusCell";
-import { ReviewStatusIcon, PrStatusIcon, UnresolvedCommentsIcon, MergeConflictIcon } from "../StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon, MergeConflictIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
-import { DeploymentBadges } from "../DeploymentBadges";
-import { ChangesSummary } from "../ChangesSummary";
 import { AlertTriangle, CornerDownRight, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { parseReviewStatus } from "@/shared/review-status";
-import { isMergeReady } from "@/shared/merge";
-import { parseChangesByCategory } from "@/shared/file-categories";
 import { useMergePr, useUpdateTask } from "@/client/lib/queries/tasks";
 import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
 import {
@@ -298,33 +292,9 @@ export function PrCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
   );
 }
 
-export function StatusCell({ task }: { task: Task }) {
-  return (
-    <InteractiveStatusBadge
-      taskId={task.id}
-      status={task.status}
-      jiraKey={task.jiraKey}
-    />
-  );
-}
-
-export function MergedInCell({ task }: { task: Task }) {
-  return <DeploymentBadges branches={task.onDeploymentBranches} labelOnlyBranches={task.labelOnlyDeploymentBranches} deployedBranches={task.deployedOnBranches} />;
-}
-
-export function ChecksCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
-  return (
-    <ChecksStatusCell
-      checksStatus={task.checksStatus}
-      checksDetails={task.checksDetails}
-      prUrl={prUrl}
-    />
-  );
-}
-
 /** The Merge button replaces the review status once the gate cleared the PR (reviews are green by then). */
 export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
-  if (isMergeReady(task)) return <MergeButton task={task} />;
+  if (task.mergeReady === 1) return <MergeButton task={task} />;
   return <ReviewStatusIcon status={parseReviewStatus(task.reviewStatus)} prUrl={prUrl} />;
 }
 
@@ -346,26 +316,6 @@ function MergeButton({ task }: { task: Task }) {
     >
       Merge
     </Button>
-  );
-}
-
-export function ChangesCell({ task }: { task: Task }) {
-  return (
-    <ChangesSummary
-      changedFiles={task.changedFiles}
-      additions={task.additions}
-      deletions={task.deletions}
-      changesByCategory={parseChangesByCategory(task.changesByCategory)}
-    />
-  );
-}
-
-export function CommentsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
-  return (
-    <UnresolvedCommentsIcon
-      count={task.unresolvedCommentCount}
-      prUrl={prUrl}
-    />
   );
 }
 

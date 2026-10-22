@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { get } from "../client.js";
 
@@ -14,85 +13,6 @@ export function registerChoreTools(server: McpServer) {
     async () => {
       try {
         const data = await get<{ items: unknown[] }>("/api/v1/chores/definitions");
-        return { content: [{ type: "text", text: JSON.stringify(data) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // list_chores
-  server.registerTool(
-    "list_chores",
-    {
-      description:
-        "List all actionable chores across tasks — one entry per chore+task pair, ordered by task priority first (tall strategy: finish one task before starting another), then chore number within the same task. The chores are: 1 start task, 2 assign Jira ticket, 3 fix merge conflicts, 4 address PR comments (fires on unresolved PR review comments), 5 fix PR checks, 6 continue in progress, 7 code review my PR, 8 request code reviews, 9 deploy to test env, 10 requires dev QA video. Call chore_definitions for each chore's exact condition.",
-      inputSchema: {
-        repository: z
-          .string()
-          .optional()
-          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend'). Omit to include all repos."),
-        minChore: z.number().int().optional().describe("Only return chores with number >= this"),
-        maxChore: z.number().int().optional().describe("Only return chores with number <= this"),
-        sprintView: z
-          .boolean()
-          .optional()
-          .describe("When true, only return chores for tasks that have a sprint assigned. When false or omitted, return all tasks."),
-        taskId: z.number().int().optional().describe("Filter to chores for a specific task ID only."),
-      },
-    },
-    async ({ repository, minChore, maxChore, sprintView, taskId }) => {
-      try {
-        const params = new URLSearchParams();
-        if (repository) params.set("repository", repository);
-        if (minChore !== undefined) params.set("minChore", String(minChore));
-        if (maxChore !== undefined) params.set("maxChore", String(maxChore));
-        if (sprintView !== undefined) params.set("sprintView", String(sprintView));
-        if (taskId !== undefined) params.set("taskId", String(taskId));
-        const query = params.toString();
-        const data = await get<{ items: unknown[] }>(`/api/v1/chores${query ? `?${query}` : ""}`);
-        return { content: [{ type: "text", text: JSON.stringify(data) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // next_chore
-  server.registerTool(
-    "next_chore",
-    {
-      description:
-        "Return the single highest-priority actionable chore+task. Same ordering as list_chores (task priority first, then chore number) but returns only the first match. Returns null if nothing is actionable.",
-      inputSchema: {
-        repository: z
-          .string()
-          .optional()
-          .describe("Filter by repo in owner/repo format (e.g. 'acme/frontend'). Omit to include all repos."),
-        minChore: z.number().int().optional().describe("Only consider chores with number >= this"),
-        maxChore: z.number().int().optional().describe("Only consider chores with number <= this"),
-        sprintView: z
-          .boolean()
-          .optional()
-          .describe("When true, only consider tasks that have a sprint assigned. When false or omitted, consider all tasks."),
-        taskId: z.number().int().optional().describe("Filter to chores for a specific task ID only."),
-      },
-    },
-    async ({ repository, minChore, maxChore, sprintView, taskId }) => {
-      try {
-        const params = new URLSearchParams();
-        if (repository) params.set("repository", repository);
-        if (minChore !== undefined) params.set("minChore", String(minChore));
-        if (maxChore !== undefined) params.set("maxChore", String(maxChore));
-        if (sprintView !== undefined) params.set("sprintView", String(sprintView));
-        if (taskId !== undefined) params.set("taskId", String(taskId));
-        const query = params.toString();
-        const data = await get<unknown>(`/api/v1/chores/next${query ? `?${query}` : ""}`);
-        if (data === null) {
-          return { content: [{ type: "text", text: "No actionable chores found." }] };
-        }
         return { content: [{ type: "text", text: JSON.stringify(data) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

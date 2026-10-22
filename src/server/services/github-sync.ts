@@ -18,9 +18,7 @@ import {
 } from "./github-graphql";
 import { upsertPrTask } from "./github-upsert";
 import { isApiError } from "../lib/errors";
-import type { SyncResult } from "../lib/types";
-
-export type { SyncResult };
+import type { SyncResult } from "@/shared/types";
 
 export class GitHubApiError extends Error {
   constructor(

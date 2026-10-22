@@ -22,8 +22,8 @@ export function removeClient(client: SSEClient) {
   clients.delete(client);
 }
 
-export function broadcast(entity: string, payload?: Record<string, unknown>) {
-  const data = JSON.stringify({ entity, ...payload });
+export function broadcast(entity: string) {
+  const data = JSON.stringify({ entity });
   const message = `data: ${data}\n\n`;
   const encoded = new TextEncoder().encode(message);
 
@@ -43,12 +43,7 @@ export function autoBroadcast(pathname: string) {
   else if (pathname.includes("/sessions")) entity = "session";
   else if (pathname.includes("/dev-stack")) entity = "dev-stack";
   else if (pathname.includes("/worktree")) entity = "worktree";
-  else if (
-    pathname.includes("/tasks") ||
-    pathname.includes("/sync") ||
-    pathname.includes("/deploy") ||
-    pathname.includes("/sync-branch")
-  ) entity = "task";
+  else if (pathname.includes("/tasks") || pathname.includes("/sync")) entity = "task";
   if (entity) broadcast(entity);
 }
 

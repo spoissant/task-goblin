@@ -12,29 +12,18 @@ export function noContent(): Response {
   return new Response(null, { status: 204 });
 }
 
-interface ErrorDetails {
-  [key: string]: unknown;
-}
-
 interface ErrorResponseBody {
   error: {
     code: string;
     message: string;
-    details?: ErrorDetails;
   };
 }
 
-export function error(
-  err: Error | AppError,
-  details?: ErrorDetails
-): Response {
+export function error(err: Error | AppError): Response {
   if (err instanceof AppError) {
     const body: ErrorResponseBody = {
       error: { code: err.code, message: err.message },
     };
-    if (details) {
-      body.error.details = details;
-    }
     return json(body, err.statusCode);
   }
   // Unexpected errors - don't log here, middleware handles it

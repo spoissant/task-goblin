@@ -7,7 +7,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/client/components/ui/table";
-import { SUMMARY_COLUMNS, getPrUrl, getColumn } from "./columns";
+import { SUMMARY_COLUMNS, getColumn } from "./columns";
+import { getPrUrl } from "./columns/cells";
 import type { TaskDetail, Repository } from "@/client/lib/types";
 
 interface TaskSummaryBarProps {

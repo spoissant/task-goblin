@@ -67,7 +67,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === "/"}
                 className={({ isActive }) =>
                   cn(
                     "flex items-center gap-3 rounded-md text-sm font-medium transition-colors relative",

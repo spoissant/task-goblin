@@ -46,14 +46,12 @@ export interface GqlPrCore {
   changedFiles: number | null;
   /** null when GitHub returned no file list. */
   changesByCategory: ChangesByCategory | null;
-  author: { login?: string } | null;
   headRefName: string | null;
   headRefOid: string | null;
   /** The squash/merge commit on the base branch; null until merged. */
   mergeCommitOid: string | null;
   baseRefName: string | null;
   labels: string[];
-  approvedReviewCount: number;
   unresolvedCommentCount: number;
   reviewStatus: ReviewStatus;
 }
@@ -164,11 +162,9 @@ async function runChunked<T, V>(
 const CORE_FIELDS = `
   number title state isDraft mergeable
   additions deletions changedFiles
-  author { login }
   headRefName headRefOid baseRefName
   mergeCommit { oid }
   labels(first: 100) { nodes { name } }
-  reviews(first: 100) { nodes { state author { login } } }
   reviewThreads(first: 100) { nodes { isResolved } }
   files(first: 100) { nodes { path additions deletions } }
   ${REVIEW_STATUS_FIELDS}`;
@@ -244,14 +240,6 @@ export async function fetchPullRequestCore(
         const pr = data?.[`r${ri}`]?.[`p${i}`];
         if (!pr) return;
 
-        // Latest non-COMMENTED review per user, matching REST listReviews order.
-        const latestReviewByUser = new Map<string, string>();
-        for (const review of pr.reviews?.nodes ?? []) {
-          if (review?.author?.login && review.state !== "COMMENTED") {
-            latestReviewByUser.set(review.author.login, review.state ?? "");
-          }
-        }
-
         result.set(prKey(g.owner, g.repo, number), {
           number: pr.number,
           title: pr.title,
@@ -262,13 +250,11 @@ export async function fetchPullRequestCore(
           deletions: pr.deletions ?? null,
           changedFiles: pr.changedFiles ?? null,
           changesByCategory: pr.files ? bucketFilesByCategory(mapFiles(pr.files)) : null,
-          author: pr.author ?? null,
           headRefName: pr.headRefName ?? null,
           headRefOid: pr.headRefOid ?? null,
           mergeCommitOid: pr.mergeCommit?.oid ?? null,
           baseRefName: pr.baseRefName ?? null,
           labels: (pr.labels?.nodes ?? []).map((l: any) => l?.name).filter(Boolean),
-          approvedReviewCount: [...latestReviewByUser.values()].filter((s) => s === "APPROVED").length,
           unresolvedCommentCount: (pr.reviewThreads?.nodes ?? []).filter((t: any) => t && !t.isResolved).length,
           reviewStatus: toReviewStatus(pr),
         });

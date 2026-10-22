@@ -1,31 +1,18 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  get,
-  post,
-  patch,
-  del,
-  resolveTaskId,
-  resolveRepositoryId,
-  type TaskWithRepository,
-  type ListResponse,
-  type Task,
-  type SyncResult,
-} from "../client.js";
-import type { TaskWorktree } from "@/shared/types";
+import { get, post, patch, del, resolveTaskId, resolveRepositoryId } from "../client.js";
+import type { ListResponse, SyncResult, Task, TaskDetail, TaskWorktreeStatus } from "@/shared/types";
 
 const WORKTREE_POLL_MS = 3_000;
 const WORKTREE_MAX_WAIT_SECONDS = 300;
 
-type WorktreeStatus = (TaskWorktree & { changedFiles: number | null }) | null;
-
 /** Poll until the task's worktree leaves preparing, or the wait runs out. */
-async function waitForWorktree(taskId: number, waitSeconds: number): Promise<WorktreeStatus> {
+async function waitForWorktree(taskId: number, waitSeconds: number): Promise<TaskWorktreeStatus | null> {
   const deadline = Date.now() + Math.min(waitSeconds, WORKTREE_MAX_WAIT_SECONDS) * 1000;
-  let status = await get<WorktreeStatus>(`/api/v1/tasks/${taskId}/worktree`);
+  let status = await get<TaskWorktreeStatus | null>(`/api/v1/tasks/${taskId}/worktree`);
   while (Date.now() < deadline && status?.state === "preparing") {
     await Bun.sleep(WORKTREE_POLL_MS);
-    status = await get<WorktreeStatus>(`/api/v1/tasks/${taskId}/worktree`);
+    status = await get<TaskWorktreeStatus | null>(`/api/v1/tasks/${taskId}/worktree`);
   }
   return status;
 }
@@ -51,7 +38,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ id, jiraKey, prNumber, repo, branch }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
+        const task = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(task) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -75,20 +62,18 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("Substring search on title, Jira key, or branch name. Combine terms with | (OR) and & (AND, binds tighter); prefix a term with ~ to negate (e.g. 'tiptap | editor & ~bug')"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
-        maxReviews: z.number().int().optional().describe("Tasks with fewer than N approved reviews"),
         hasComments: z.boolean().optional().describe("Filter by unresolved comments presence"),
         limit: z.number().int().optional().default(25).describe("Page size (default 25)"),
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    async ({ status, statuses, title, completed, checks, maxReviews, hasComments, limit, offset }) => {
+    async ({ status, statuses, title, completed, checks, hasComments, limit, offset }) => {
       try {
         const params = new URLSearchParams();
         if (status) params.set("status", status);
         if (statuses) params.set("statuses", statuses);
         if (title) params.set("title", title);
         if (checks) params.set("checks", checks);
-        if (maxReviews !== undefined) params.set("maxReviews", String(maxReviews));
         if (hasComments !== undefined) params.set("hasComments", String(hasComments));
         if (limit !== undefined) params.set("limit", String(limit));
         if (offset !== undefined) params.set("offset", String(offset));
@@ -122,7 +107,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ owner, repo, prNumber }) => {
       try {
         await post(`/api/v1/sync/github/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${prNumber}`);
-        const task = await get<TaskWithRepository>(
+        const task = await get<Task>(
           `/api/v1/tasks/by-pr/${prNumber}?repo=${encodeURIComponent(`${owner}/${repo}`)}`
         );
         return { content: [{ type: "text", text: JSON.stringify(task) }] };
@@ -191,7 +176,7 @@ export function registerTaskTools(server: McpServer) {
     async ({ id, jiraKey, prNumber, repo, branch }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
-        const task = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
+        const task = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
         const errors: string[] = [];
 
         if (task.jiraKey) {
@@ -225,7 +210,7 @@ export function registerTaskTools(server: McpServer) {
           errors.push(`Git status: ${err instanceof Error ? err.message : String(err)}`);
         }
 
-        const refreshed = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
+        const refreshed = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify({ task: refreshed, errors }) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -267,8 +252,7 @@ export function registerTaskTools(server: McpServer) {
       description:
         "Update an existing task, located by ID, Jira key, PR number, or branch name. Only the fields you pass change; " +
         "returns the full task. status is rejected for Jira-linked tasks (Jira owns it) and must be one of the configured " +
-        "statuses. choreSkips replaces the whole skip map, so include existing skips you want to keep. To reserve a task " +
-        "for a chore, use reserve_task / release_task: writing workingOn here skips the atomic reservation check.",
+        "statuses. choreSkips replaces the whole skip map, so include existing skips you want to keep.",
       inputSchema: {
         id: z.number().optional().describe("Task ID"),
         jiraKey: z.string().optional().describe("Jira key to look up task"),
@@ -289,10 +273,9 @@ export function registerTaskTools(server: McpServer) {
             "Move the task to this repository: 'owner/repo', bare repo name, or alias. null clears it. Only works while the task has no PR - once a PR exists its repository wins."
           ),
         choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
-        workingOn: z.string().nullable().optional().describe("JSON reservation e.g. '{\"choreKey\": \"request-reviews\", \"at\": \"2026-04-20T14:00:00Z\"}' or null to clear"),
       },
     },
-    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, repository, choreSkips, workingOn }) => {
+    async ({ id, jiraKey, prNumber, repo, branch, title, description, status, repository, choreSkips }) => {
       try {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
 
@@ -304,13 +287,12 @@ export function registerTaskTools(server: McpServer) {
           updates.repositoryId = repository === null ? null : await resolveRepositoryId(repository);
         }
         if (choreSkips !== undefined) updates.choreSkips = choreSkips;
-        if (workingOn !== undefined) updates.workingOn = workingOn;
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);
         }
 
-        const fullTask = await get<TaskWithRepository>(`/api/v1/tasks/${taskId}`);
+        const fullTask = await get<TaskDetail>(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify(fullTask) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -342,47 +324,6 @@ export function registerTaskTools(server: McpServer) {
         const taskId = await resolveTaskId({ id, jiraKey, prNumber, repo, branch });
         await del(`/api/v1/tasks/${taskId}`);
         return { content: [{ type: "text", text: JSON.stringify({ deleted: taskId }) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // reserve_task
-  server.registerTool(
-    "reserve_task",
-    {
-      description: "Atomically reserve a task for a chore. Fails (isError) if already reserved within the 30-min TTL. Call before starting a chore skill in /next.",
-      inputSchema: {
-        taskId: z.number().describe("Task ID to reserve"),
-        choreKey: z.string().describe("Chore key being worked on, e.g. 'request-reviews'"),
-      },
-    },
-    async ({ taskId, choreKey }) => {
-      try {
-        const result = await post(`/api/v1/tasks/${taskId}/reserve`, { choreKey });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
-    }
-  );
-
-  // release_task
-  server.registerTool(
-    "release_task",
-    {
-      description: "Release a task reservation after a chore completes or fails. Call after the chore skill returns in /next.",
-      inputSchema: {
-        taskId: z.number().describe("Task ID to release"),
-      },
-    },
-    async ({ taskId }) => {
-      try {
-        const result = await post(`/api/v1/tasks/${taskId}/release`, {});
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

@@ -13,7 +13,6 @@ export interface ActionsRun {
   status: string;
   conclusion: string | null;
   headSha: string;
-  htmlUrl: string;
 }
 
 export interface PullFile {
@@ -38,14 +37,11 @@ export interface MergeGitHub {
   approvePr(t: PrTarget): Promise<void>;
 }
 
-type Octokit = ReturnType<typeof getGitHubClient>;
-
 interface RunJson {
   name?: string | null;
   status?: string | null;
   conclusion?: string | null;
   head_sha: string;
-  html_url: string;
 }
 
 const toRun = (r: RunJson): ActionsRun => ({
@@ -53,7 +49,6 @@ const toRun = (r: RunJson): ActionsRun => ({
   status: r.status ?? "",
   conclusion: r.conclusion ?? null,
   headSha: r.head_sha,
-  htmlUrl: r.html_url,
 });
 
 function createDefault(): MergeGitHub {

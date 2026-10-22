@@ -2,7 +2,6 @@ import { and, eq, isNotNull, like, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, tasks } from "../../db/schema";
 import { json } from "../response";
-import { NotFoundError } from "../lib/errors";
 import { parseId } from "../lib/validation";
 import { getTaskOrThrow } from "../lib/queries";
 import {
@@ -100,9 +99,7 @@ export const taskWorktreeRoutes: Routes = {
   "/api/v1/tasks/:id/repository-guess": {
     async GET(_req, params) {
       const id = parseId(params.id);
-      const guess = await guessRepository(id);
-      if (!guess) throw new NotFoundError("Task", id);
-      return json(guess);
+      return json(await guessRepository(id));
     },
   },
 };

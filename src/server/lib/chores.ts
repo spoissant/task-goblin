@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
@@ -65,19 +65,6 @@ export function parseChoreSkips(value: string | null): Record<string, boolean> {
   }
 }
 
-const RESERVATION_TTL_MS = 30 * 60 * 1000;
-
-function isTaskReserved(workingOn: string | null): boolean {
-  if (!workingOn) return false;
-  try {
-    const parsed = JSON.parse(workingOn) as { at?: string };
-    if (!parsed.at) return false;
-    return Date.now() - Date.parse(parsed.at) < RESERVATION_TTL_MS;
-  } catch {
-    return false;
-  }
-}
-
 function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   if (!repo) return false;
   const repoBranches = parseDeploymentBranches(repo.deploymentBranches);
@@ -88,7 +75,7 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
 
 // A hivetests sub-task's hermetic specs run against its alumni_connect parent's
 // code, so its AI QA waits until the parent has a PR.
-function awaitsParentPr(task: TaskRow, repo: RepoRow | null, parent: TaskRow | null): boolean {
+function awaitsParentPr(repo: RepoRow | null, parent: TaskRow | null): boolean {
   return repo?.repo === "hivetests" && parent !== null && parent.prNumber === null;
 }
 
@@ -107,16 +94,6 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-start-task {{taskId}}",
     categories: ["Backlog"],
     match: () => true,
-  },
-  {
-    number: 2,
-    key: "assign-jira-ticket",
-    name: "Assign Jira Ticket",
-    condition: "prNumber != null AND jiraKey = null",
-    prompt: "/chore-assign-jira-ticket {{taskId}}",
-    categories: null,
-    match: (t) => t.prNumber !== null && !t.jiraKey,
-    auto: { fields: ["prNumber"] },
   },
   {
     number: 3,
@@ -168,7 +145,7 @@ const CHORES: ChoreDefinition[] = [
     categories: ["In Progress"],
     supportsBulk: true,
     requiresSameRepo: true,
-    match: (t, repo, parent) => t.prState === "open" && t.isDraft === 1 && !awaitsParentPr(t, repo, parent),
+    match: (t, repo, parent) => t.prState === "open" && t.isDraft === 1 && !awaitsParentPr(repo, parent),
     auto: { fields: ["status", "headSha"] },
   },
   {
@@ -309,16 +286,16 @@ export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jira
 /** Look up a chore by key, with the cwd it should run in. */
 /**
  * Pseudo-chore for ad-hoc prompts typed in the AI column. Not in CHORES, so it
- * never shows up in the chore list or in `next_chore`.
+ * never shows up in the chore list.
  */
-export const CUSTOM_CHORE = { number: 0, key: "custom", name: "Custom prompt", prompt: "", cwd: "task" } as const;
+export const CUSTOM_CHORE = { key: "custom", name: "Custom prompt", prompt: "", cwd: "task" } as const;
 
 /**
  * Pseudo-chore for reviewing a colleague's PR from the Reviews page. Runs in
  * the repo's main checkout without a task: the skill reads the PR from git
  * objects, so several reviews can share that folder.
  */
-export const REVIEW_CHORE = { number: 0, key: "review-pr", name: "Code review", prompt: "/chore-code-review-pr", cwd: "main" } as const;
+export const REVIEW_CHORE = { key: "review-pr", name: "Code review", prompt: "/chore-code-review-pr", cwd: "main" } as const;
 
 export function getChoreDefinition(key: string) {
   if (key === CUSTOM_CHORE.key) return CUSTOM_CHORE;
@@ -326,7 +303,6 @@ export function getChoreDefinition(key: string) {
   const chore = CHORES.find((c) => c.key === key);
   if (!chore) return null;
   return {
-    number: chore.number,
     key: chore.key,
     name: chore.name,
     prompt: chore.prompt,
@@ -345,24 +321,8 @@ async function buildParentMap(rows: TaskRow[]): Promise<Map<string, TaskRow>> {
   return new Map(parents.map((p) => [p.jiraKey as string, p]));
 }
 
-export interface GetChoresOptions {
-  minChore?: number;
-  maxChore?: number;
-  repository?: string; // "owner/repo"
-  sprintView?: boolean;
-  taskId?: number;
-}
-
-export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry[]> {
-  const { minChore, maxChore, repository, sprintView, taskId } = opts;
-
-  const filteredChores = CHORES.filter((c) => {
-    if (minChore !== undefined && c.number < minChore) return false;
-    if (maxChore !== undefined && c.number > maxChore) return false;
-    return true;
-  });
-
-  if (filteredChores.length === 0) return [];
+export async function getChores(opts: { taskId?: number } = {}): Promise<ChoreEntry[]> {
+  const { taskId } = opts;
 
   // Load status categories once — used for resolving category names → status strings and for sorting
   const allCategories = await getStatusCategories();
@@ -377,26 +337,11 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
     }
   }
 
-  // Optional repo filter — resolve owner/repo to ID
-  let repoId: number | null = null;
-  if (repository) {
-    const [owner, repo] = repository.split("/");
-    const found = await db
-      .select({ id: repositories.id })
-      .from(repositories)
-      .where(and(eq(repositories.owner, owner), eq(repositories.repo, repo)))
-      .limit(1);
-    if (found.length === 0) return [];
-    repoId = found[0].id;
-  }
-
   const notCompleted = await getNotCompletedCondition();
   const notOnIce = sql`COALESCE(${tasks.onIce}, 0) = 0`;
 
   async function fetchAllActive(): Promise<TaskRow[]> {
     const conditions = [notCompleted, notOnIce];
-    if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
-    if (sprintView) conditions.push(isNotNull(tasks.sprint));
     if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
     return db.select().from(tasks).where(and(...conditions));
   }
@@ -409,15 +354,13 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
       notOnIce,
       sql`LOWER(${tasks.status}) IN (${sql.join(lowered.map((s) => sql`${s}`), sql`, `)})`,
     ];
-    if (repoId !== null) conditions.push(eq(tasks.repositoryId, repoId));
-    if (sprintView) conditions.push(isNotNull(tasks.sprint));
     if (taskId !== undefined) conditions.push(eq(tasks.id, taskId));
     return db.select().from(tasks).where(and(...conditions));
   }
 
-  // Collect unique category keys needed by the filtered chore set
+  // Collect unique category keys needed by the chores
   const neededKeys = new Set<string | null>();
-  for (const chore of filteredChores) {
+  for (const chore of CHORES) {
     neededKeys.add(chore.categories ? JSON.stringify(chore.categories) : null);
   }
 
@@ -446,12 +389,10 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
   // Attach repos and sort each batch: displayOrder ASC (closer to done first) → highPriority DESC → id ASC
   const candidateCache = new Map<string | null, TaskWithRepo[]>();
   for (const [key, rows] of batchRows) {
-    const withRepo: TaskWithRepo[] = rows
-      .filter((task) => !isTaskReserved(task.workingOn ?? null))
-      .map((task) => ({
-        task,
-        repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
-      }));
+    const withRepo: TaskWithRepo[] = rows.map((task) => ({
+      task,
+      repo: task.repositoryId ? (repoMap.get(task.repositoryId) ?? null) : null,
+    }));
     withRepo.sort((a, b) => {
       const aOrder = statusToDisplayOrder.get(a.task.status.toLowerCase()) ?? 999;
       const bOrder = statusToDisplayOrder.get(b.task.status.toLowerCase()) ?? 999;
@@ -465,7 +406,7 @@ export async function getChores(opts: GetChoresOptions = {}): Promise<ChoreEntry
 
   const entries: ChoreEntry[] = [];
 
-  for (const chore of filteredChores) {
+  for (const chore of CHORES) {
     const cacheKey = chore.categories ? JSON.stringify(chore.categories) : null;
     const candidates = candidateCache.get(cacheKey) ?? [];
 

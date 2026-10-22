@@ -1,17 +1,5 @@
-import { ApiError, handleResponse } from "@/shared/api";
-import type {
-  Task,
-  TaskWithRepository,
-  Repository,
-  ListResponse,
-  SyncResult,
-  SplitResult,
-} from "@/shared/types";
-
-export { ApiError };
-
-// Re-export types for MCP tools
-export type { Task, TaskWithRepository, Repository, ListResponse, SyncResult, SplitResult };
+import { handleResponse } from "@/shared/api";
+import type { Task, Repository, ListResponse } from "@/shared/types";
 
 const BASE_URL = process.env.API_URL || "http://localhost:3456";
 
@@ -41,15 +29,6 @@ export async function patch<T>(path: string, body: unknown): Promise<T> {
 export async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "DELETE",
-  });
-  return handleResponse<T>(res);
-}
-
-export async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
   return handleResponse<T>(res);
 }

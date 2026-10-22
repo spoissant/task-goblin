@@ -58,8 +58,8 @@ describe("claude sessions", () => {
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
     sqlite.exec(`INSERT INTO worktrees (id, repository_id, path, created_at, updated_at) VALUES (1, 1, '${MAIN_PATH}', 'x', 'x')`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
-      VALUES (1, 'A task', 'Code review', ${ts}, ${ts}, 'EV-1', 1, 10, 'fix/EV-1', 'open', 0, 0)`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+      VALUES (1, 'A task', 'Code review', ${ts}, ${ts}, 'EV-1', 1, 10, 'fix/EV-1', 'open', 0)`);
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
       if (cmd === "claude" && args[0] === "--bg") return ok("backgrounded · abcd1234\n  claude attach abcd1234");
@@ -138,8 +138,8 @@ describe("claude sessions", () => {
 
   it("runs AI QA on one task per repository and refuses it while another task holds the dev stack", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
-      VALUES (2, 'B task', 'In progress', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 1, 0)`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+      VALUES (2, 'B task', 'In progress', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 1)`);
     try {
       expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "ai-qa" })).status).toBe(202);
       const busy = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "ai-qa" });
@@ -150,7 +150,7 @@ describe("claude sessions", () => {
 
       await new Promise((r) => setTimeout(r, 50)); // let the background starts settle
       sqlite.exec(`UPDATE claude_sessions SET state = 'done'`);
-      const stack = { taskId: 1, branch: "fix/EV-1", state: "up", pid: null, detail: null, error: null, startedAt: "x" };
+      const stack = { taskId: 1, prUrl: null, branch: "fix/EV-1", state: "up", pid: null, detail: null, error: null, startedAt: "x" };
       sqlite.exec(`INSERT INTO settings (key, value) VALUES ('dev_stack', '${JSON.stringify(stack)}')`);
       const held = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "ai-qa" });
       expect(held.status).toBe(409);
@@ -165,8 +165,8 @@ describe("claude sessions", () => {
 
   it("links the other tasks of a bulk chore run to its session", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
-      VALUES (2, 'B task', 'Code review', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 0, 0)`);
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+      VALUES (2, 'B task', 'Code review', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 0)`);
     const single = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "fix-pr-checks", withTaskIds: [2] });
     expect(single.status).toBe(400);
     expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds: [9] })).status).toBe(404);
@@ -271,7 +271,7 @@ describe("claude sessions", () => {
     });
 
     await syncProcessLiveness();
-    let row = await (await request("GET", `/api/v1/sessions/${id}`)).json();
+    let row = (await (await request("GET", "/api/v1/tasks/1/sessions")).json()).items[0];
     expect(row.processStoppedAt).not.toBeNull();
 
     const res = await request("POST", `/api/v1/sessions/${id}/respawn`);
@@ -280,7 +280,7 @@ describe("claude sessions", () => {
     expect(commands).toContain("claude respawn abcd1234");
 
     await syncProcessLiveness();
-    row = await (await request("GET", `/api/v1/sessions/${id}`)).json();
+    row = (await (await request("GET", "/api/v1/tasks/1/sessions")).json()).items[0];
     expect(row.processStoppedAt).toBeNull();
   });
 
