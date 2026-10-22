@@ -2,6 +2,7 @@ import { Octokit } from "@octokit/rest";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { settings } from "../../db/schema";
+import { GITHUB_USERNAME_SETTING } from "@/shared/settings-keys";
 
 export interface GitHubConfig {
   username: string;
@@ -26,7 +27,7 @@ async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function getGitHubConfig(): Promise<GitHubConfig> {
-  const username = await getSetting("github_username");
+  const username = await getSetting(GITHUB_USERNAME_SETTING);
 
   if (!username) {
     throw new GitHubConfigError(

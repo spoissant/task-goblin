@@ -15,6 +15,7 @@ import { buildRepoMap } from "../lib/queries";
 import { getBoolSetting } from "../lib/settings";
 import { parseDeploymentBranches } from "../lib/validation";
 import { resolveChoreModel, type ChoreModelDefaults } from "@/shared/chore-models";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import { ACTIVE_STATES, activeTaskIds, startChoreSession, type SessionRow } from "./claude-sessions";
 import { coversTasks, sessionLinks } from "./session-tasks";
 
@@ -22,7 +23,6 @@ import { coversTasks, sessionLinks } from "./session-tasks";
 export const MAX_AUTO_ACTIVE = 5;
 /** Auto runs of one chore on one task per rolling day, whatever its states did. */
 export const MAX_AUTO_RUNS_PER_DAY = 3;
-export const AUTO_CHORES_ENABLED_KEY = "auto_chores_enabled";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTO_DEPLOY_ENV = "staging";
 
@@ -33,7 +33,7 @@ type HistoryRow = Pick<SessionRow, "id" | "taskId" | "choreKey" | "trigger" | "t
 /** Start the auto chores whose trigger state is new; returns how many sessions started. */
 export async function runChoreScheduler(opts: { taskId?: number; now?: Date } = {}): Promise<number> {
   const now = opts.now ?? new Date();
-  if (!(await getBoolSetting(AUTO_CHORES_ENABLED_KEY, true))) return 0;
+  if (!(await getBoolSetting(AUTO_CHORES_SETTING, true))) return 0;
 
   let capacity = await freeAutoSlots();
   if (capacity <= 0) return 0;

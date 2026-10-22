@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState } from "@/client/lib/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { useRespawnSession } from "@/client/lib/queries/sessions";
-import { canRespawn } from "./columns/AiCell";
+import { canRespawn, formatActive, formatCost, formatTime } from "@/client/lib/sessions";
 import {
   Table,
   TableBody,
@@ -24,24 +24,6 @@ const STATE_CLASS: Record<ClaudeSessionState, string> = {
   failed: "text-red-500",
   stopped: "text-muted-foreground",
 };
-
-export function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-export function formatCost(usd: number | null): string {
-  return usd === null ? "—" : `$${usd.toFixed(2)}`;
-}
-
-/** Active time, e.g. "45s", "21m", "1h 10m". */
-export function formatActive(ms: number | null): string {
-  if (ms === null) return "—";
-  const minutes = Math.round(ms / 60_000);
-  if (minutes === 0) return `${Math.round(ms / 1000)}s`;
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
 
 type SessionRow = ClaudeSession & { taskTitle?: string | null };
 

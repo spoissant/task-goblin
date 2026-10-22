@@ -6,13 +6,14 @@ import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
 import { checksFailedAt } from "./checks";
 import type { RepoPair } from "@/shared/chore-pairs";
+import { resolvePrompt, type ChoreDefinition, type ChoreEntry } from "@/shared/chores";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 /** A task column, or a value computed from the task row. */
 type TriggerField = keyof TaskRow | ((task: TaskRow) => unknown);
 
-interface ChoreDefinition {
+interface Chore {
   number: number;
   key: string;
   name: string;
@@ -33,27 +34,6 @@ interface ChoreDefinition {
    * to pass a default env).
    */
   auto?: { fields: TriggerField[]; prompt?: string };
-}
-
-export interface ChoreEntry {
-  number: number;
-  key: string;
-  name: string;
-  prompt: string;
-  task: ChoreTask;
-}
-
-export interface ChoreTask {
-  id: number;
-  title: string;
-  jiraKey: string | null;
-  sprint: string | null;
-  prNumber: number | null;
-  headBranch: string | null;
-  baseBranch: string | null;
-  status: string;
-  highPriority: number | null;
-  repository: { owner: string; repo: string } | null;
 }
 
 export function parseChoreSkips(value: string | null): Record<string, boolean> {
@@ -85,7 +65,7 @@ const UPSTREAM_PAIRS: RepoPair[] = [
   ["front-monorepo", "alumni_connect"],
 ];
 
-const CHORES: ChoreDefinition[] = [
+const CHORES: Chore[] = [
   {
     number: 1,
     key: "start-task",
@@ -263,8 +243,8 @@ export function autoPromptFor(key: string, task: Pick<TaskRow, "id" | "jiraKey">
   return resolvePrompt(chore.auto.prompt ?? chore.prompt, task, taskIds);
 }
 
-export function getChoreDefinitions() {
-  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo, repoPairs }) => ({
+export function getChoreDefinitions(): ChoreDefinition[] {
+  return CHORES.map(({ number, key, name, condition, prompt, supportsBulk, requiresSameRepo, repoPairs, auto }) => ({
     number,
     key,
     name,
@@ -273,14 +253,8 @@ export function getChoreDefinitions() {
     supportsBulk: supportsBulk ?? false,
     requiresSameRepo: requiresSameRepo ?? false,
     repoPairs: repoPairs ?? null,
+    auto: auto !== undefined,
   }));
-}
-
-/** `taskIds` stands in for `{{taskId}}` on a bulk run. */
-export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jiraKey">, taskIds?: number[]): string {
-  return template
-    .replace("{{taskId}}", (taskIds ?? [task.id]).join(" "))
-    .replace("{{jiraKey}}", task.jiraKey ?? "");
 }
 
 /** Look up a chore by key, with the cwd it should run in. */

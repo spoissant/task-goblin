@@ -1,7 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { Flame, ListTree, MessageSquare, Snowflake } from "lucide-react";
 import type { Task, Repository, ClaudeSession } from "@/client/lib/types";
-import type { ChoreEntry } from "@/client/lib/queries/chores";
+import type { ChoreEntry } from "@/shared/chores";
 import { parseChangesByCategory } from "@/shared/file-categories";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";

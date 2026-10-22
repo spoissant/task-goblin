@@ -15,6 +15,7 @@ import { runMergeJira } from "./merge-jira";
 import { runMergeGate } from "./merge-gate";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
+import { runSteps, type Step } from "../lib/steps";
 
 export const SYNC_INTERVAL_MS = 5 * 60_000;
 const FIRST_RUN_DELAY_MS = 30_000;
@@ -22,8 +23,6 @@ const FIRST_RUN_DELAY_MS = 30_000;
 let timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
 let running = false;
 let nextRunAt: string | null = null;
-
-type Step = [name: string, run: () => Promise<unknown>];
 
 const SYNC_STEPS: Step[] = [
   ["jira", syncJiraItems],
@@ -33,7 +32,7 @@ const SYNC_STEPS: Step[] = [
   ["broadcast", async () => broadcast("task")],
 ];
 
-/** What every sync ends with, periodic or from the Sync button. */
+/** What every sync ends with, periodic or from the Sync button. Each step runs on its own: a failing sync still lets the gate and the chores run. */
 const AFTER_SYNC_STEPS: Step[] = [
   ["merge-watch", runMergeWatch],
   ["merge-jira", runMergeJira],
@@ -41,22 +40,13 @@ const AFTER_SYNC_STEPS: Step[] = [
   ["chores", runChoreScheduler],
 ];
 
-/** Each step is isolated: a failing sync still lets the gate and the chores run. */
-async function runSteps(steps: Step[]): Promise<void> {
-  for (const [name, run] of steps) {
-    try {
-      await run();
-    } catch (err) {
-      console.error(`[sync] ${name} failed`, err instanceof Error ? err.message : err);
-    }
-  }
-}
-
 let afterSyncQueue: Promise<void> = Promise.resolve();
 
 /** Run the after-sync steps, queued behind any run in progress so two never overlap. */
 export function runAfterSyncSteps(): Promise<void> {
-  afterSyncQueue = afterSyncQueue.then(() => runSteps(AFTER_SYNC_STEPS));
+  afterSyncQueue = afterSyncQueue.then(async () => {
+    await runSteps("sync", AFTER_SYNC_STEPS);
+  });
   return afterSyncQueue;
 }
 
@@ -65,7 +55,7 @@ export async function runPeriodicSync(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    await runSteps(SYNC_STEPS);
+    await runSteps("sync", SYNC_STEPS);
     await runAfterSyncSteps();
   } finally {
     running = false;

@@ -7,9 +7,9 @@ import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib
 import { setSetting } from "../lib/settings";
 import { invalidateStatusConfigCache } from "../lib/task-status";
 import { CHORE_MODELS_KEY } from "@/shared/chore-models";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import { setCapacityCheck, startChoreSession } from "./claude-sessions";
 import {
-  AUTO_CHORES_ENABLED_KEY,
   MAX_AUTO_ACTIVE,
   MAX_AUTO_RUNS_PER_DAY,
   runChoreScheduler,
@@ -231,9 +231,9 @@ describe("runChoreScheduler", () => {
 
   it("stays quiet when disabled and on opted-out tasks", async () => {
     await seedTask(1);
-    await setSetting(AUTO_CHORES_ENABLED_KEY, "false");
+    await setSetting(AUTO_CHORES_SETTING, "false");
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
-    await setSetting(AUTO_CHORES_ENABLED_KEY, "true");
+    await setSetting(AUTO_CHORES_SETTING, "true");
 
     sqlite.exec(`UPDATE tasks SET chore_skips = '{"auto":true}' WHERE id = 1`);
     expect(await runChoreScheduler({ now: NOON })).toBe(0);

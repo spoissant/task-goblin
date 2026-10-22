@@ -27,7 +27,7 @@ import { Button } from "@/client/components/ui/button";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/client/components/ui/table";
-import { formatActive, formatCost, formatTime } from "@/client/components/tasks/SessionsTable";
+import { formatActive, formatCost, formatTime } from "@/client/lib/sessions";
 import { TrendChart } from "@/client/components/analytics/TrendChart";
 import {
   CONCURRENCY_SERIES,

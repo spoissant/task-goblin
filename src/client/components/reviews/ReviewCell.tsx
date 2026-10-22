@@ -5,7 +5,7 @@ import { useRespawnSession, useStartReviewSession, type StartReviewInput } from 
 import { useChoreModelDefaults } from "@/client/lib/chore-models";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
-import { DISCONNECTED_UI, STATE_UI, canRespawn, isSessionActive } from "../tasks/columns/AiCell";
+import { DISCONNECTED_UI, STATE_UI, canRespawn, isSessionActive } from "@/client/lib/sessions";
 
 interface ReviewCellProps {
   /** Latest review session for this PR, if any. */

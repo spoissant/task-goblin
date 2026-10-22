@@ -8,7 +8,8 @@ import { useRemoveTaskWorktree, useTaskWorktreeQuery } from "@/client/lib/querie
 import { Button } from "@/client/components/ui/button";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
-import { SessionsTable, formatActive, formatCost } from "./SessionsTable";
+import { SessionsTable } from "./SessionsTable";
+import { formatActive, formatCost } from "@/client/lib/sessions";
 import { AiCell } from "./columns/AiCell";
 import { cn } from "@/client/lib/utils";
 

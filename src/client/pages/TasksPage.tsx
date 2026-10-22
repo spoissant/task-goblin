@@ -9,7 +9,8 @@ import { AutoChoresToggle } from "@/client/components/tasks/AutoChoresToggle";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
 import { SavedSearchBar, effectiveQuery, type SavedSearch } from "@/client/components/tasks/SavedSearchBar";
 import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
-import { type ChoreDefinition, useTasksQuery } from "@/client/lib/queries";
+import { useTasksQuery } from "@/client/lib/queries";
+import { resolvePrompt, type ChoreDefinition } from "@/shared/chores";
 import { orderForRepoPair } from "@/shared/chore-pairs";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -63,7 +64,7 @@ export function TasksPage() {
     // A two-repo chore runs on its target task (e.g. alumni_connect) whatever the click order.
     const ids = chore.repoPairs ? orderForRepoPair(chore.repoPairs, selection) : Array.from(selectedIds);
     if (!ids || ids.length === 0) return;
-    const prompt = chore.prompt.replace("{{taskId}}", ids.join(" ")).replace("{{jiraKey}}", "");
+    const prompt = resolvePrompt(chore.prompt, { id: ids[0], jiraKey: null }, ids);
     setBulkPromptTarget({
       taskId: ids[0],
       chore: { number: chore.number, key: chore.key, name: chore.name, prompt },

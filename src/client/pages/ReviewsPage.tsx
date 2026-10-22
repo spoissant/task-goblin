@@ -5,9 +5,15 @@ import { useReviewRequestsQuery, reviewKeys, type ReviewScope } from "@/client/l
 import { useRepositoriesQuery } from "@/client/lib/queries/repositories";
 import { useLatestSessionsQuery, useReviewSessionsQuery } from "@/client/lib/queries/sessions";
 import { ReviewCell } from "@/client/components/reviews/ReviewCell";
-import { isSessionActive } from "@/client/components/tasks/columns/AiCell";
+import { isSessionActive } from "@/client/lib/sessions";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
+import {
+  HIGH_PRIORITY_PRS_SETTING,
+  IGNORED_MEMBERS_SETTING,
+  TEAM_MEMBERS_SETTING,
+  VIP_MEMBERS_SETTING,
+} from "@/shared/settings-keys";
 import { isIgnoredRequest, memberTag, parseUsernames, requestTag, type MemberTag } from "@/client/lib/review-ownership";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { Badge } from "@/client/components/ui/badge";
@@ -105,8 +111,6 @@ function SizeBadge({ size }: { size: SizeCategory }) {
   );
 }
 
-const HIGH_PRIORITY_KEY = "high_priority_prs";
-
 function parseHighPriority(value: string | null | undefined): Set<string> {
   if (!value) return new Set();
   try {
@@ -169,11 +173,11 @@ export function ReviewsPage() {
   const { data: reposData } = useRepositoriesQuery();
   const { data: settings } = useSettingsQuery();
   const updateSetting = useUpdateSetting();
-  const teamMembers = useMemo(() => parseUsernames(settings?.team_members), [settings?.team_members]);
-  const vips = useMemo(() => parseUsernames(settings?.vip_members), [settings?.vip_members]);
-  const ignored = useMemo(() => parseUsernames(settings?.ignored_members), [settings?.ignored_members]);
+  const teamMembers = useMemo(() => parseUsernames(settings?.[TEAM_MEMBERS_SETTING]), [settings?.[TEAM_MEMBERS_SETTING]]);
+  const vips = useMemo(() => parseUsernames(settings?.[VIP_MEMBERS_SETTING]), [settings?.[VIP_MEMBERS_SETTING]]);
+  const ignored = useMemo(() => parseUsernames(settings?.[IGNORED_MEMBERS_SETTING]), [settings?.[IGNORED_MEMBERS_SETTING]]);
   const highPriorityPrs = useMemo(
-    () => parseHighPriority(settings?.[HIGH_PRIORITY_KEY]),
+    () => parseHighPriority(settings?.[HIGH_PRIORITY_PRS_SETTING]),
     [settings],
   );
 
@@ -184,7 +188,7 @@ export function ReviewsPage() {
     } else {
       next.add(key);
     }
-    updateSetting.mutate({ key: HIGH_PRIORITY_KEY, value: JSON.stringify([...next]) });
+    updateSetting.mutate({ key: HIGH_PRIORITY_PRS_SETTING, value: JSON.stringify([...next]) });
   };
 
   const [view, setView] = useState<ViewMode>(() => {

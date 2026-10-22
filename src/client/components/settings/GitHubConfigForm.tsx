@@ -6,6 +6,7 @@ import { Input } from "@/client/components/ui/input";
 import { Label } from "@/client/components/ui/label";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { toast } from "sonner";
+import { GITHUB_USERNAME_SETTING } from "@/shared/settings-keys";
 
 export function GitHubConfigForm() {
   const { data: settings, isLoading } = useSettingsQuery();
@@ -22,7 +23,7 @@ export function GitHubConfigForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateSetting.mutate(
-      { key: "github_username", value: username || null },
+      { key: GITHUB_USERNAME_SETTING, value: username || null },
       {
         onSuccess: () => {
           toast.success("GitHub configuration saved");

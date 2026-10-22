@@ -10,7 +10,8 @@ import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
 import { parsePrUrl } from "../lib/validation";
-import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, isBulkChore, resolvePrompt } from "../lib/chores";
+import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, isBulkChore } from "../lib/chores";
+import { resolvePrompt } from "@/shared/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {

@@ -2,18 +2,18 @@ import { toast } from "sonner";
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 
 /** Setting key read by the chore scheduler; unset means enabled. */
-export const AUTO_CHORES_KEY = "auto_chores_enabled";
 
 export function AutoChoresForm() {
   const { data } = useSettingsQuery();
   const update = useUpdateSetting();
-  const enabled = data?.[AUTO_CHORES_KEY] !== "false";
+  const enabled = data?.[AUTO_CHORES_SETTING] !== "false";
 
   const toggle = (checked: boolean) =>
     update.mutate(
-      { key: AUTO_CHORES_KEY, value: checked ? "true" : "false" },
+      { key: AUTO_CHORES_SETTING, value: checked ? "true" : "false" },
       { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save") },
     );
 

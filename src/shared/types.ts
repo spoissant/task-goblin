@@ -162,6 +162,9 @@ export interface DevStackOverview {
 // Background Claude Code session, one per chore run
 export type ClaudeSessionState = "queued" | "preparing" | "working" | "blocked" | "done" | "failed" | "stopped";
 
+/** States of a session that hasn't finished: waiting to start, or running. */
+export const ACTIVE_SESSION_STATES: readonly ClaudeSessionState[] = ["queued", "preparing", "working", "blocked"];
+
 /** `claude --model` aliases offered for custom-prompt sessions. */
 export const SESSION_MODELS = ["opus", "sonnet", "fable", "haiku"] as const;
 export type SessionModel = (typeof SESSION_MODELS)[number];
@@ -321,6 +324,19 @@ export interface SyncResult {
 
 export interface MatchResult {
   merged: number;
+}
+
+/** One full sync pass (POST /api/v1/sync): Jira and GitHub counts, null when that step failed, and each failed step's error. */
+export interface SyncRunResult {
+  jira: SyncResult | null;
+  github: SyncResult | null;
+  errors: { step: string; message: string }[];
+}
+
+/** POST /api/v1/tasks/:id/sync: the refreshed task, and what failed, per source ("Jira: …", "GitHub: …", "Git status: …"). */
+export interface TaskSyncResult {
+  task: TaskDetail;
+  errors: string[];
 }
 
 // Review request - PR where user is requested as reviewer

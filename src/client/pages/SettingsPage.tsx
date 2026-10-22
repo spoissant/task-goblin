@@ -8,6 +8,7 @@ import { CodeownerTeamsForm } from "@/client/components/settings/CodeownerTeamsF
 import { ChoreModelsForm } from "@/client/components/settings/ChoreModelsForm";
 import { AutoChoresForm } from "@/client/components/settings/AutoChoresForm";
 import { Separator } from "@/client/components/ui/separator";
+import { IGNORED_MEMBERS_SETTING, TEAM_MEMBERS_SETTING, VIP_MEMBERS_SETTING } from "@/shared/settings-keys";
 
 export function SettingsPage() {
   return (
@@ -41,7 +42,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             GitHub usernames of your teammates. Review requests authored by or assigned to them are highlighted on the Reviews page.
           </p>
-          <UsernameListForm settingKey="team_members" label="team members" />
+          <UsernameListForm settingKey={TEAM_MEMBERS_SETTING} label="team members" />
         </section>
 
         <Separator />
@@ -51,7 +52,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             GitHub usernames you always want to unblock first. Review requests authored by or assigned to them are highlighted on the Reviews page.
           </p>
-          <UsernameListForm settingKey="vip_members" label="VIPs" />
+          <UsernameListForm settingKey={VIP_MEMBERS_SETTING} label="VIPs" />
         </section>
 
         <Separator />
@@ -61,7 +62,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             GitHub usernames (e.g. bots) whose PRs you never want to review. Their review requests are hidden from the Reviews page until someone is assigned.
           </p>
-          <UsernameListForm settingKey="ignored_members" label="ignored authors" />
+          <UsernameListForm settingKey={IGNORED_MEMBERS_SETTING} label="ignored authors" />
         </section>
 
         <Separator />

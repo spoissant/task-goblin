@@ -6,7 +6,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/client/components/ui/dropdown-menu";
-import { useChoreDefinitionsQuery, type ChoreDefinition } from "@/client/lib/queries";
+import { useChoreDefinitionsQuery } from "@/client/lib/queries";
+import type { ChoreDefinition } from "@/shared/chores";
 import { orderForRepoPair } from "@/shared/chore-pairs";
 import { useBootDevStack, useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/client/components/ui/tooltip";

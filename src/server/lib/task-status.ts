@@ -178,6 +178,11 @@ async function seedDefaultCategories(): Promise<void> {
   );
 }
 
+/** The status names a category covers, lower-cased: its own name and its Jira mappings. */
+export function statusNamesOf(category: Pick<StatusCategory, "name" | "jiraMappings">): string[] {
+  return [...new Set([category.name, ...category.jiraMappings].map((name) => name.toLowerCase()))];
+}
+
 /**
  * Get all completed status names (for filtering)
  * Returns all status names (category names + jira mappings) where done=true
@@ -187,18 +192,10 @@ export async function getCompletedStatusNames(): Promise<string[]> {
   const names: string[] = [];
 
   for (const category of categories) {
-    if (category.done) {
-      // Add category name
-      names.push(category.name.toLowerCase());
-
-      // Add all mapped statuses
-      for (const jiraStatus of category.jiraMappings) {
-        names.push(jiraStatus.toLowerCase());
-      }
-    }
+    if (category.done) names.push(...statusNamesOf(category));
   }
 
-  return [...new Set(names)]; // Deduplicate
+  return [...new Set(names)];
 }
 
 /**
@@ -274,11 +271,7 @@ export async function getStatusOrderExprAsync(): Promise<ReturnType<typeof sql>>
   const cases: ReturnType<typeof sql>[] = [];
 
   for (const category of categories) {
-    // Collect all status names to map (category name + jiraMappings)
-    const allNames: string[] = [category.name, ...category.jiraMappings];
-
-    // Lower-case and deduplicate
-    const uniqueNames = [...new Set(allNames.map((name) => name.toLowerCase()))];
+    const uniqueNames = statusNamesOf(category);
 
     if (uniqueNames.length === 1) {
       cases.push(sql`WHEN LOWER(${tasks.status}) = ${uniqueNames[0]} THEN ${category.displayOrder}`);
