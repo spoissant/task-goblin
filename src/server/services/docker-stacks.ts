@@ -5,7 +5,7 @@
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessions, taskWorktrees } from "../../db/schema";
+import { claudeSessions, tasks, taskWorktrees } from "../../db/schema";
 import { expandPath } from "../lib/path";
 import { runCommand } from "../lib/process";
 
@@ -75,9 +75,31 @@ interface Activity {
   lastActivityMs: number; // 0 when the task never had a session
 }
 
+/**
+ * The tasks whose sessions count toward each stack task's activity: the task
+ * itself and its sub-tasks, whose sessions may run against the parent's stack
+ * (hivetests hermetic specs run in the alumni_connect parent's worktree).
+ */
+async function stackTasksBySession(taskIds: number[]): Promise<Map<number, number[]>> {
+  const owners = new Map<number, number[]>(taskIds.map((id) => [id, [id]]));
+  const parents = await db.select({ id: tasks.id, jiraKey: tasks.jiraKey }).from(tasks).where(inArray(tasks.id, taskIds));
+  const parentByKey = new Map(parents.flatMap((p) => (p.jiraKey ? [[p.jiraKey, p.id] as const] : [])));
+  if (parentByKey.size === 0) return owners;
+  const children = await db
+    .select({ id: tasks.id, parentKey: tasks.parentKey })
+    .from(tasks)
+    .where(inArray(tasks.parentKey, [...parentByKey.keys()]));
+  for (const child of children) {
+    const parentId = child.parentKey ? parentByKey.get(child.parentKey) : undefined;
+    if (parentId !== undefined) owners.set(child.id, [...(owners.get(child.id) ?? []), parentId]);
+  }
+  return owners;
+}
+
 async function activityByTask(taskIds: number[]): Promise<Map<number, Activity>> {
   const map = new Map<number, Activity>();
   if (taskIds.length === 0) return map;
+  const owners = await stackTasksBySession(taskIds);
   const rows = await db
     .select({
       taskId: claudeSessions.taskId,
@@ -86,15 +108,17 @@ async function activityByTask(taskIds: number[]): Promise<Map<number, Activity>>
       claudeUpdatedAt: claudeSessions.claudeUpdatedAt,
     })
     .from(claudeSessions)
-    .where(inArray(claudeSessions.taskId, taskIds));
+    .where(inArray(claudeSessions.taskId, [...owners.keys()]));
   for (const row of rows) {
     if (row.taskId === null) continue; // unreachable: filtered by taskIds; narrows the type
-    const current = map.get(row.taskId) ?? { working: false, lastActivityMs: 0 };
     const ts = Math.max(Date.parse(row.updatedAt), row.claudeUpdatedAt ? Date.parse(row.claudeUpdatedAt) : 0);
-    map.set(row.taskId, {
-      working: current.working || row.state === "working",
-      lastActivityMs: Math.max(current.lastActivityMs, Number.isNaN(ts) ? 0 : ts),
-    });
+    for (const owner of owners.get(row.taskId) ?? []) {
+      const current = map.get(owner) ?? { working: false, lastActivityMs: 0 };
+      map.set(owner, {
+        working: current.working || row.state === "working",
+        lastActivityMs: Math.max(current.lastActivityMs, Number.isNaN(ts) ? 0 : ts),
+      });
+    }
   }
   return map;
 }

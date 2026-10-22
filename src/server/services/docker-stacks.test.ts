@@ -84,6 +84,22 @@ describe("docker stacks", () => {
     expect(commands).not.toContain("docker compose -p alumni_connect_ev_2 stop");
   });
 
+  it("counts a sub-task's sessions toward its parent's stack", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, parent_key, repository_id) VALUES (5, 't5', 'In Progress', ${ts}, ${ts}, 'EV-5', 'EV-3', 1)`);
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const old = new Date(Date.now() - 60 * 60_000).toISOString();
+    for (const id of [1, 2, 3]) session(id, "done", old);
+    session(5, "working", old);
+    const stopped = await sweepIdleStacks();
+    expect(stopped.sort()).toEqual(["alumni_connect_ev_1", "alumni_connect_ev_2"]);
+
+    commands.length = 0;
+    sqlite.exec(`UPDATE claude_sessions SET state = 'done', updated_at = '${recent}', claude_updated_at = '${recent}' WHERE task_id = 5`);
+    expect(await ensureStackCapacity(wt("EV-4"))).toBe("ok");
+    expect(commands).not.toContain("docker compose -p alumni_connect_ev_3 stop");
+  });
+
   it("queues when every running stack has a working session", async () => {
     for (const id of [1, 2, 3]) session(id, "working", "2026-01-01T00:00:00.000Z");
     expect(await ensureStackCapacity(wt("EV-4"))).toBe("queued");
