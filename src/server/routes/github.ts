@@ -19,6 +19,7 @@ import {
 } from "../services/github-graphql";
 import { fetchMyTeams, selectCodeownerTeams } from "../services/github-teams";
 import { autoMatchAndMerge } from "../services/task-merge";
+import { getNextSyncAt, restartSyncTimer, runAfterSyncSteps } from "../services/sync-scheduler";
 import type { Routes } from "../router";
 import type { Endpoints } from "@octokit/types";
 import type { ReviewRequest, FileChanges, ChangesByCategory, PrChangesByCategory, FileChangesWithPercent } from "@/shared/types";
@@ -107,10 +108,21 @@ export const githubRoutes: Routes = {
     },
   },
 
+  // The Sync button's last call: match, then the same after-sync steps as the
+  // periodic pass (merge watch, Ready to Prod move, merge gate, auto chores), then restart the countdown.
   "/api/v1/sync/match": {
     async POST() {
       const merged = await autoMatchAndMerge();
+      await runAfterSyncSteps();
+      restartSyncTimer();
       return json({ merged });
+    },
+  },
+
+  // When the next auto sync pass (sync, merge gate, auto chores) starts; null while the scheduler is off.
+  "/api/v1/sync/next": {
+    GET() {
+      return json({ nextSyncAt: getNextSyncAt() });
     },
   },
 

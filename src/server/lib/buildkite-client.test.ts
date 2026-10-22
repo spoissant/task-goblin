@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   BuildkiteConfigError,
   buildForCommit,
-  latestFinishedBuild,
   mapBuildState,
   pipelineFor,
   resetBuildkiteFetch,
@@ -48,8 +47,8 @@ describe("buildkite client", () => {
     expect(pipelineFor("front-monorepo")).toBeNull();
   });
 
-  it("asks for the newest finished build of a branch with the bearer token", async () => {
-    const build = await latestFinishedBuild("alumni-connect", "sprint");
+  it("asks for a commit's build on a branch with the bearer token", async () => {
+    const build = await buildForCommit("alumni-connect", "sprint", "abc123");
 
     expect(build).toEqual({ number: 7, state: "passed", commit: "abc123", webUrl: BUILD.web_url, finishedAt: BUILD.finished_at });
     expect(calls).toHaveLength(1);
@@ -57,7 +56,6 @@ describe("buildkite client", () => {
     expect(url.origin + url.pathname).toBe("https://api.buildkite.com/v2/organizations/hivebrite/pipelines/alumni-connect/builds");
     expect(url.searchParams.get("branch")).toBe("sprint");
     expect(url.searchParams.get("per_page")).toBe("1");
-    expect(url.searchParams.getAll("state[]")).toEqual(["passed", "failed", "canceled"]);
     expect(calls[0].auth).toBe("Bearer bk-token");
   });
 
@@ -77,7 +75,7 @@ describe("buildkite client", () => {
   it("throws BuildkiteConfigError without a token, before any request", async () => {
     delete process.env.BUILDKITE_API_TOKEN;
 
-    await expect(latestFinishedBuild("alumni-connect", "sprint")).rejects.toBeInstanceOf(BuildkiteConfigError);
+    await expect(buildForCommit("alumni-connect", "sprint", "abc")).rejects.toBeInstanceOf(BuildkiteConfigError);
     expect(calls).toHaveLength(0);
   });
 

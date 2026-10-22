@@ -4,10 +4,13 @@ import { tasks, repositories } from "../../db/schema";
 import { getNotCompletedCondition, getStatusCategories } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { parseDeploymentBranches } from "./validation";
+import { checksFailedAt } from "./checks";
 import type { RepoPair } from "@/shared/chore-pairs";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
+/** A task column, or a value computed from the task row. */
+type TriggerField = keyof TaskRow | ((task: TaskRow) => unknown);
 
 interface ChoreDefinition {
   number: number;
@@ -24,11 +27,12 @@ interface ChoreDefinition {
   repoPairs?: RepoPair[]; // two-repo chore: run on exactly one task per repo of a pair; the session runs on the target task
   /**
    * Set when the chore scheduler may start this chore on its own. `fields` are
-   * the task columns whose values define one trigger state: the scheduler
-   * starts the chore once per distinct state (see fingerprintFor). `prompt`
-   * replaces the chore prompt for auto-starts (e.g. to pass a default env).
+   * the task columns, or values computed from the row, that define one trigger
+   * state: the scheduler starts the chore once per distinct state (see
+   * fingerprintFor). `prompt` replaces the chore prompt for auto-starts (e.g.
+   * to pass a default env).
    */
-  auto?: { fields: (keyof TaskRow)[]; prompt?: string };
+  auto?: { fields: TriggerField[]; prompt?: string };
 }
 
 export interface ChoreEntry {
@@ -142,7 +146,8 @@ const CHORES: ChoreDefinition[] = [
     prompt: "/chore-fix-pr-checks {{taskId}}",
     categories: null,
     match: (t) => t.prState === "open" && t.checksStatus === "failing",
-    auto: { fields: ["headSha"] },
+    // A CI re-run that fails again on the same commit is a new state.
+    auto: { fields: ["headSha", (t) => checksFailedAt(t.checksDetails)] },
   },
   {
     number: 6,
@@ -248,16 +253,6 @@ const CHORES: ChoreDefinition[] = [
     cwd: "main", // runs before work starts: no worktree or branch yet
     match: () => false,
   },
-  {
-    number: 15,
-    key: "sprint-red",
-    name: "Sprint Build Red",
-    condition: "started by the merge watch when the base-branch build of the merge commit fails (never suggested)",
-    prompt: "/chore-sprint-red {{taskId}}",
-    categories: null,
-    cwd: "main", // the task's worktree is reaped after the merge
-    match: () => false,
-  },
 ];
 
 /** Whether the chore scheduler may start this chore on its own. */
@@ -273,14 +268,22 @@ export function isAutoChore(key: string): boolean {
 export function fingerprintFor(key: string, task: TaskRow): string | null {
   const chore = CHORES.find((c) => c.key === key);
   if (!chore?.auto) return null;
-  return JSON.stringify(chore.auto.fields.map((f) => task[f] ?? null));
+  return JSON.stringify(chore.auto.fields.map((f) => (typeof f === "function" ? f(task) : task[f]) ?? null));
 }
 
-/** The prompt an auto-start uses: the chore's `auto.prompt` when set, else its usual one. */
-export function autoPromptFor(key: string, task: Pick<TaskRow, "id" | "jiraKey">): string | null {
+/** Whether the chore runs on several tasks in one session. */
+export function isBulkChore(key: string): boolean {
+  return CHORES.some((c) => c.key === key && c.supportsBulk);
+}
+
+/**
+ * The prompt an auto-start uses: the chore's `auto.prompt` when set, else its
+ * usual one. `taskIds` lists every task of a bulk run, the first being `task`.
+ */
+export function autoPromptFor(key: string, task: Pick<TaskRow, "id" | "jiraKey">, taskIds?: number[]): string | null {
   const chore = CHORES.find((c) => c.key === key);
   if (!chore?.auto) return null;
-  return resolvePrompt(chore.auto.prompt ?? chore.prompt, task);
+  return resolvePrompt(chore.auto.prompt ?? chore.prompt, task, taskIds);
 }
 
 export function getChoreDefinitions() {
@@ -296,9 +299,10 @@ export function getChoreDefinitions() {
   }));
 }
 
-export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jiraKey">): string {
+/** `taskIds` stands in for `{{taskId}}` on a bulk run. */
+export function resolvePrompt(template: string, task: Pick<TaskRow, "id" | "jiraKey">, taskIds?: number[]): string {
   return template
-    .replace("{{taskId}}", String(task.id))
+    .replace("{{taskId}}", (taskIds ?? [task.id]).join(" "))
     .replace("{{jiraKey}}", task.jiraKey ?? "");
 }
 
@@ -321,7 +325,14 @@ export function getChoreDefinition(key: string) {
   if (key === REVIEW_CHORE.key) return REVIEW_CHORE;
   const chore = CHORES.find((c) => c.key === key);
   if (!chore) return null;
-  return { number: chore.number, key: chore.key, name: chore.name, prompt: chore.prompt, cwd: chore.cwd ?? "task" } as const;
+  return {
+    number: chore.number,
+    key: chore.key,
+    name: chore.name,
+    prompt: chore.prompt,
+    cwd: chore.cwd ?? "task",
+    requiresSameRepo: chore.requiresSameRepo ?? false,
+  } as const;
 }
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };

@@ -1,7 +1,7 @@
 ---
 name: chore-ship-upstream
-description: Ship an upstream PR (api-contracts or front-monorepo) into the alumni_connect PR that depends on it — checks both PRs are green (checks, approvals, no conflicts), asks for the go-ahead, merges the upstream PR, waits for its release (front-monorepo — approves the bot's release PRs), bumps the SDK or packages in the alumni_connect PR, pushes, and gets that PR green again. Never merges the alumni_connect PR. Use for /chore-ship-upstream <alumniConnectTaskId> <upstreamTaskId> or "ship the upstream PR".
-allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(chore-fix-pr-checks),Skill(chore-fix-merge-conflicts),mcp__task-goblin__get_task,mcp__task-goblin__sync_task"
+description: Ship an upstream PR (api-contracts or front-monorepo) into the alumni_connect PR that depends on it — checks both PRs are green (checks, approvals, no conflicts), asks for the go-ahead, merges the upstream PR (or picks up one already merged with Task Goblin's Merge button), waits for its release (front-monorepo — approves the bot's release PRs), bumps the SDK or packages in the alumni_connect PR (or opens a draft PR with just the bump when the alumni_connect task has none yet), pushes, and gets that PR green again. Never merges the alumni_connect PR. Use for /chore-ship-upstream <alumniConnectTaskId> <upstreamTaskId> or "ship the upstream PR".
+allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),Skill(chore-fix-pr-checks),Skill(chore-fix-merge-conflicts),mcp__task-goblin__get_task,mcp__task-goblin__sync_task"
 ---
 
 # Ship Upstream PR
@@ -12,11 +12,11 @@ Waits happen in the background: a `run_in_background` Bash loop polling `gh` eve
 
 ## 1. Context
 
-`sync_task` then `get_task` on both → `prNumber`, `repository`, `headBranch`, `baseBranch`, `unresolvedCommentCount`. A task without an open PR: stop. `Skill(checkout-branch)` with the target's `headBranch`.
+`sync_task` then `get_task` on both → `prNumber`, `prState`, `repository`, `headBranch`, `baseBranch`, `unresolvedCommentCount`. The target has an open PR or none yet (a bump-only target: the chore opens its PR in step 5); the upstream PR may be open or already merged (the user merged it with Task Goblin's Merge button). Anything else: stop. `Skill(checkout-branch)` with the target's `headBranch`; without one, keep the worktree's branch (Task Goblin creates `<fix|chore|feat>/<TICKET>` from `origin/sprint`), and only if the worktree is detached create that branch from HEAD.
 
 ## 2. Green gate
 
-Both PRs must be green all the way. Per PR, `gh pr view <n> --repo <owner/repo> --json state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid,labels`:
+Both PRs must be green all the way; an already merged upstream PR only needs the upstream-specific condition, and a bump-only target has no PR to gate. Per PR, `gh pr view <n> --repo <owner/repo> --json state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid,labels`:
 
 - open and not a draft;
 - `mergeable` is `MERGEABLE` (`UNKNOWN` means GitHub is still computing: ask again);
@@ -27,9 +27,11 @@ Plus the upstream-specific condition from the reference. Anything red: stop and 
 
 ## 3. Go-ahead
 
-Merging cannot be undone, so ask before it. AskUserQuestion with both PRs' links and gate results, and the plan: merge the upstream PR (squash), the release steps from the reference (front-monorepo: approve its release PRs), the dependencies that will be bumped in the alumni_connect PR, then commit and push. Options "Ship it" and "Stop". This answer also covers every later confirmation in the chore except a breaking-change gate.
+Merging cannot be undone, so ask before it. AskUserQuestion with both PRs' links and gate results, and the plan: merge the upstream PR (squash; left out when already merged), the release steps from the reference (front-monorepo: approve its release PRs), the dependencies that will be bumped in the alumni_connect PR, then commit and push (bump-only target: and open a draft PR). Options "Ship it" and "Stop". This answer also covers every later confirmation in the chore except a breaking-change gate.
 
 ## 4. Merge and wait for the release
+
+Upstream PR already merged: skip to the wait, with its `headRefOid` from step 2.
 
 Do the reference's pre-merge step first, if it has one (api-contracts: update the branch), and use the head it leaves.
 
@@ -37,11 +39,11 @@ Do the reference's pre-merge step first, if it has one (api-contracts: update th
 
 ## 5. Bump the alumni_connect PR
 
-Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`.
+Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
 
 ## 6. Green again
 
-Wait for the checks on the new head, then `sync_task(target)` and rerun the step 2 gate on the alumni_connect PR.
+Wait for the checks on the new head, then `sync_task(target)` and rerun the step 2 gate on the alumni_connect PR. A PR this chore opened is a draft without approvals: gate only its checks and conflicts.
 
 - Failing checks: `Skill(chore-fix-pr-checks)` with the target task ID, wait again, re-gate.
 - Conflicts: `Skill(chore-fix-merge-conflicts)` with the target task ID, wait again, re-gate.
@@ -52,4 +54,4 @@ Wait for the checks on the new head, then `sync_task(target)` and rerun the step
 
 ## 7. Report
 
-Banner `🚢 Ship upstream · <upstream repo>#<n> → alumni_connect#<n> · ✅ ready for your validation` (or `❌ stopped at step <N>`), then: the merged PR, the releases with versions (and release PRs approved), each dependency bumped from → to, the alumni_connect PR's link and gate result, and anything left for the user.
+Banner `🚢 Ship upstream · <upstream repo>#<n> → alumni_connect#<n> · ✅ ready for your validation` (or `❌ stopped at step <N>`), then: the merged PR, the releases with versions (and release PRs approved), each dependency bumped from → to, the alumni_connect PR's link (say when the chore opened it) and gate result, and anything left for the user.

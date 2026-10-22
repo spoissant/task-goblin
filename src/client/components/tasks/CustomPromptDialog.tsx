@@ -43,13 +43,15 @@ interface CustomPromptDialogProps {
   chore?: PromptChore | null;
   /** Pre-fills an ad-hoc prompt, e.g. the selected tasks' IDs. Ignored when a chore is given. */
   initialPrompt?: string;
+  /** The other tasks a bulk chore runs on, linked to the session. */
+  withTaskIds?: number[];
 }
 
 /**
  * Start a background session on a task. Opens blank for an ad-hoc prompt, or
  * pre-filled with a chore's command so it can be tweaked before it runs.
  */
-export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialPrompt }: CustomPromptDialogProps) {
+export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialPrompt, withTaskIds }: CustomPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<SessionModel>("sonnet");
   const [effort, setEffort] = useState<SessionEffort>("high");
@@ -59,7 +61,8 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialP
   const prefill = chore?.prompt ?? initialPrompt ?? null;
   const choreKey = chore?.key;
   const { getDefault } = useChoreModelDefaults();
-  const defaults = getDefault(choreKey);
+  // Ad-hoc prompts run as the server's "custom" pseudo-chore.
+  const defaults = getDefault(choreKey ?? "custom");
 
   // Keyed on the chore's fields, not the object, so typing is never wiped.
   useEffect(() => {
@@ -99,7 +102,7 @@ export function CustomPromptDialog({ open, onOpenChange, taskId, chore, initialP
     e.preventDefault();
     if (!prompt.trim()) return;
     startSession.mutate(
-      { taskId, prompt: prompt.trim(), model, effort, choreKey: chore?.key },
+      { taskId, prompt: prompt.trim(), model, effort, choreKey: chore?.key, withTaskIds: chore ? withTaskIds : undefined },
       {
         onSuccess: (row) => {
           toast.success(`Started ${row.choreName}`);

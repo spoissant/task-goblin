@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useSyncAll, type SyncStep } from "@/client/lib/queries";
+import { useState, useMemo, useEffect } from "react";
+import { useNextSyncQuery, useSyncAll, type SyncStep } from "@/client/lib/queries";
 import { Button } from "@/client/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -16,8 +16,27 @@ const stepNames: Record<SyncStep, string> = {
   matching: "Matching",
 };
 
+/** Milliseconds until `at`, ticking every second; null without a time. */
+function useCountdown(at: string | null): number | null {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!at) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [at]);
+  return at ? Math.max(0, Date.parse(at) - now) : null;
+}
+
+function formatCountdown(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 export function RefreshButton() {
   const [syncStep, setSyncStep] = useState<SyncStep | null>(null);
+  const nextSyncAt = useNextSyncQuery().data?.nextSyncAt ?? null;
+  const untilNextSync = useCountdown(nextSyncAt);
 
   const syncOptions = useMemo(() => ({ onStepChange: setSyncStep }), []);
 
@@ -65,9 +84,17 @@ export function RefreshButton() {
   const buttonLabel = syncStep ? stepLabels[syncStep] : "Sync";
 
   return (
-    <Button variant="outline" disabled={isLoading} onClick={handleSyncAll}>
+    <Button
+      variant="outline"
+      disabled={isLoading}
+      onClick={handleSyncAll}
+      title={nextSyncAt ? `Next auto sync at ${new Date(nextSyncAt).toLocaleTimeString()}` : "Auto sync is off"}
+    >
       <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
       {buttonLabel}
+      {!syncStep && untilNextSync !== null && (
+        <span className="ml-2 tabular-nums text-muted-foreground">{formatCountdown(untilNextSync)}</span>
+      )}
     </Button>
   );
 }

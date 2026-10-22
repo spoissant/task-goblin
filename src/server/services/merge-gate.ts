@@ -1,6 +1,7 @@
-// Enables GitHub auto-merge (squash) on Ready to Merge PRs that pass every gate
-// and records why the others are held. Runs every sync tick after the GitHub
-// sync, so it reads the task row rather than GitHub for the PR state.
+// Records which Ready to Merge PRs pass every gate (an empty hold: the task's
+// Merge button shows) and why the others are held. Runs at the end of every
+// sync, so it reads the task row rather than GitHub for the PR state. Nothing
+// merges on its own: the Merge button squash-merges via mergeTaskPr.
 import { and, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import { repositories, tasks } from "../../db/schema";
@@ -8,22 +9,17 @@ import type { HoldReason, MergeHold } from "@/shared/merge";
 import { parseMergeHold } from "@/shared/merge";
 import { parseReviewStatus } from "@/shared/review-status";
 import { getStatusCategories } from "../lib/task-status";
-import { BuildkiteConfigError, latestFinishedBuild, mapBuildState, pipelineFor } from "../lib/buildkite-client";
+import { AppError, NotFoundError } from "../lib/errors";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
-import { getMergeGitHub, type ActionsRun, type MergeGitHub, type PrTarget, type PullFile } from "./merge-github";
+import { getMergeGitHub, type MergeGitHub, type PrTarget, type PullFile } from "./merge-github";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 
 export const READY_TO_MERGE_CATEGORY = "Ready to Merge";
-/** alumni_connect PRs merge into sprint; Buildkite builds it. */
-const BUILDKITE_BASE_BRANCH = "sprint";
-const ACTIONS_CI_WORKFLOW = "CI";
 
-export type BaseHealth = "green" | "red" | "pending" | "unknown";
-
-const normalize = (status: string | null | undefined) => (status ?? "").toLowerCase().replace(/_/g, " ");
+export const normalize = (status: string | null | undefined) => (status ?? "").toLowerCase().replace(/_/g, " ");
 
 /** Lower-cased status names (category name + Jira mappings) of the Ready to Merge category. */
 export async function readyToMergeStatuses(): Promise<Set<string>> {
@@ -32,7 +28,7 @@ export async function readyToMergeStatuses(): Promise<Set<string>> {
   return new Set(cat ? [cat.name, ...cat.jiraMappings].map(normalize) : []);
 }
 
-/** The holds the task row itself shows; base CI and pins need GitHub/Buildkite and come after. */
+/** The holds the task row itself shows; pins need GitHub and come after. */
 export function evaluateTaskGate(task: TaskRow, readyStatuses: Set<string>): HoldReason[] {
   const reasons: HoldReason[] = [];
   if (!readyStatuses.has(normalize(task.status))) reasons.push("not-ready-to-merge");
@@ -73,33 +69,7 @@ export function findPrereleasePins(files: PullFile[]): string[] {
   return pins;
 }
 
-/** Collapse the CI workflow's runs on one commit into a branch verdict. */
-export function actionsHealth(runs: ActionsRun[]): BaseHealth {
-  const ci = runs.filter((r) => r.name === ACTIONS_CI_WORKFLOW);
-  if (ci.length === 0) return "unknown";
-  if (ci.some((r) => r.conclusion === "failure" || r.conclusion === "timed_out")) return "red";
-  if (ci.some((r) => r.status !== "completed")) return "pending";
-  return ci.every((r) => r.conclusion === "success") ? "green" : "unknown";
-}
-
-/** The base branch's latest build: Buildkite for alumni_connect, Actions elsewhere. */
-export async function baseBranchHealth(repo: RepoRow, gh: MergeGitHub): Promise<BaseHealth> {
-  const pipeline = pipelineFor(repo.repo);
-  if (pipeline) {
-    try {
-      const state = mapBuildState((await latestFinishedBuild(pipeline, BUILDKITE_BASE_BRANCH))?.state ?? null);
-      if (state === "passed") return "green";
-      if (state === "failed") return "red";
-      return state === "pending" ? "pending" : "unknown";
-    } catch (err) {
-      if (!(err instanceof BuildkiteConfigError)) console.error(`[merge-gate] Buildkite ${repo.repo} failed`, err);
-      return "unknown";
-    }
-  }
-  return actionsHealth(await gh.latestBaseRuns(repo.owner, repo.repo, repo.defaultBaseBranch ?? "main"));
-}
-
-type TaskPatch = Partial<Pick<TaskRow, "autoMergeEnabledAt" | "mergeHold">>;
+type TaskPatch = Partial<Pick<TaskRow, "mergeHold" | "prState" | "mergeCommitSha">>;
 
 async function writeTask(taskId: number, patch: TaskPatch): Promise<void> {
   await db.update(tasks).set({ ...patch, updatedAt: now() }).where(eq(tasks.id, taskId));
@@ -118,51 +88,47 @@ async function writeHoldIfChanged(task: TaskRow, reasons: HoldReason[]): Promise
 interface GateContext {
   gh: MergeGitHub;
   ready: Set<string>;
-  health: (repo: RepoRow) => Promise<BaseHealth>;
+}
+
+/** A hivetests PR on a branch an alumni_connect task also has (its hermetic specs): it merges with that PR. */
+async function hasAlumniConnectBranch(task: TaskRow, repo: RepoRow): Promise<boolean> {
+  if (repo.repo !== "hivetests" || !task.headBranch) return false;
+  const [match] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .innerJoin(repositories, eq(tasks.repositoryId, repositories.id))
+    .where(and(eq(repositories.repo, "alumni_connect"), eq(tasks.headBranch, task.headBranch)))
+    .limit(1);
+  return match !== undefined;
 }
 
 const targetOf = (task: TaskRow, repo: RepoRow): PrTarget => ({ owner: repo.owner, repo: repo.repo, number: task.prNumber ?? 0 });
 
-/** A Ready to Merge PR without auto-merge: enable it or record the hold. */
-async function gateTask(task: TaskRow, repo: RepoRow, ctx: GateContext): Promise<void> {
+/** Every hold on a PR: the row's first, then the alumni_connect pairing and a prerelease pin (one GitHub call), once the row is clear. */
+async function holdReasons(task: TaskRow, repo: RepoRow, ctx: GateContext): Promise<HoldReason[]> {
   const reasons = evaluateTaskGate(task, ctx.ready);
-  if (reasons.length === 0) {
-    const health = await ctx.health(repo);
-    if (health === "red") reasons.push("base-ci-red");
-    else if (health !== "green") reasons.push("base-ci-unknown");
-  }
+  if (reasons.length === 0 && (await hasAlumniConnectBranch(task, repo))) reasons.push("alumni-connect-branch");
   if (reasons.length === 0 && findPrereleasePins(await ctx.gh.listPullFiles(targetOf(task, repo))).length > 0) {
     reasons.push("prerelease-pin");
   }
-  if (reasons.length > 0) {
-    await writeHoldIfChanged(task, reasons);
-    return;
-  }
-  await ctx.gh.enableAutoMerge(targetOf(task, repo));
-  await writeTask(task.id, { autoMergeEnabledAt: now(), mergeHold: null });
+  return reasons;
 }
 
-/** Auto-merge is on: take it back if the task left Ready to Merge or a pin landed since. */
-async function regateEnabledTask(task: TaskRow, repo: RepoRow, ctx: GateContext): Promise<void> {
-  const reasons: HoldReason[] = [];
-  if (!ctx.ready.has(normalize(task.status))) reasons.push("not-ready-to-merge");
-  else if (findPrereleasePins(await ctx.gh.listPullFiles(targetOf(task, repo))).length > 0) reasons.push("prerelease-pin");
-  if (reasons.length === 0) return;
-  await ctx.gh.disableAutoMerge(targetOf(task, repo));
-  const hold: MergeHold = { reasons, at: now() };
-  await writeTask(task.id, { autoMergeEnabledAt: null, mergeHold: JSON.stringify(hold) });
+/** A Ready to Merge PR: record its holds; none means its Merge button shows. */
+async function gateTask(task: TaskRow, repo: RepoRow, ctx: GateContext): Promise<void> {
+  await writeHoldIfChanged(task, await holdReasons(task, repo, ctx));
 }
 
 type TaskWithRepo = { task: TaskRow; repo: RepoRow | null };
 
-/** Open PRs that are, were, or might be gated: candidates plus rows carrying gate state. */
+/** Open PRs that are or might be gated, plus rows carrying a hold to clear. */
 async function loadGateRows(): Promise<TaskWithRepo[]> {
   const openPr = and(eq(tasks.prState, "open"), isNotNull(tasks.prNumber), isNotNull(tasks.repositoryId));
   const rows = await db
     .select({ task: tasks, repo: repositories })
     .from(tasks)
     .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
-    .where(or(openPr, isNotNull(tasks.mergeHold), isNotNull(tasks.autoMergeEnabledAt)));
+    .where(or(openPr, isNotNull(tasks.mergeHold)));
   return rows;
 }
 
@@ -176,35 +142,20 @@ function isCandidate(task: TaskRow, ready: Set<string>): boolean {
   );
 }
 
-function memoizedHealth(gh: MergeGitHub): GateContext["health"] {
-  const cache = new Map<number, Promise<BaseHealth>>();
-  return (repo) => {
-    let hit = cache.get(repo.id);
-    if (!hit) {
-      hit = baseBranchHealth(repo, gh);
-      cache.set(repo.id, hit);
-    }
-    return hit;
-  };
-}
-
 async function processRow({ task, repo }: TaskWithRepo, ctx: GateContext): Promise<void> {
   const candidate = isCandidate(task, ctx.ready);
-  if (task.autoMergeEnabledAt && task.prState === "open" && repo) {
-    await regateEnabledTask(task, repo, ctx);
-  } else if (candidate && repo) {
+  if (candidate && repo) {
     await gateTask(task, repo, ctx);
   } else if (!candidate && task.mergeHold) {
     await writeTask(task.id, { mergeHold: null });
   }
 }
 
-/** Enable GitHub auto-merge on PRs that pass every gate; record holds on the others. */
+/** Record which Ready to Merge PRs pass every gate and why the others are held. */
 export async function runMergeGate(): Promise<void> {
   const ready = await readyToMergeStatuses();
   if (ready.size === 0) return;
-  const gh = getMergeGitHub();
-  const ctx: GateContext = { gh, ready, health: memoizedHealth(gh) };
+  const ctx: GateContext = { gh: getMergeGitHub(), ready };
   for (const row of await loadGateRows()) {
     try {
       await processRow(row, ctx);
@@ -212,4 +163,29 @@ export async function runMergeGate(): Promise<void> {
       console.error(`[merge-gate] task ${row.task.id} failed`, err instanceof Error ? err.message : err);
     }
   }
+}
+
+/** The Merge button: re-check the gate on the task row, then squash-merge the PR. */
+export async function mergeTaskPr(taskId: number): Promise<TaskRow> {
+  const [row] = await db
+    .select({ task: tasks, repo: repositories })
+    .from(tasks)
+    .leftJoin(repositories, eq(tasks.repositoryId, repositories.id))
+    .where(eq(tasks.id, taskId));
+  if (!row) throw new NotFoundError("Task", taskId);
+  const { task, repo } = row;
+  if (!repo || task.prState !== "open" || task.prNumber == null) {
+    throw new AppError("Task has no open PR", 400, "NO_OPEN_PR");
+  }
+  const ctx: GateContext = { gh: getMergeGitHub(), ready: await readyToMergeStatuses() };
+  const reasons = await holdReasons(task, repo, ctx);
+  if (reasons.length > 0) {
+    await writeHoldIfChanged(task, reasons);
+    throw new AppError(`Not ready to merge: ${reasons.join(", ")}`, 409, "MERGE_HELD");
+  }
+  const { sha } = await ctx.gh.mergePr(targetOf(task, repo));
+  // The merge watch follows the merge commit's build; the next sync fills in the rest.
+  const patch: TaskPatch = { prState: "merged", mergeCommitSha: sha, mergeHold: null };
+  await writeTask(task.id, patch);
+  return { ...task, ...patch };
 }

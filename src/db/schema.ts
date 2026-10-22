@@ -56,11 +56,10 @@ export const tasks = sqliteTable("tasks", {
   // Merge gate and post-merge watch (see merge-gate.ts, merge-watch.ts)
   headSha: text("head_sha"), // PR head commit at last sync
   mergeCommitSha: text("merge_commit_sha"), // squash commit on the base branch once merged
-  autoMergeEnabledAt: text("auto_merge_enabled_at"), // when the gate enabled GitHub auto-merge
-  mergeHold: text("merge_hold"), // JSON MergeHold {reasons, at}: why the gate did not enable auto-merge
+  mergeHold: text("merge_hold"), // JSON MergeHold {reasons, at}: why the gate holds the PR; no reasons = Merge button shows
   baseBuildState: text("base_build_state"), // pending | passed | failed | missing: the base-branch build of mergeCommitSha
   baseBuildUrl: text("base_build_url"),
-  mergeVerifiedAt: text("merge_verified_at"), // when the watch finished (passed, failed + sprint-red started, or timed out)
+  mergeVerifiedAt: text("merge_verified_at"), // when the watch finished (passed, failed, or timed out)
 }, (table) => [
   index("idx_tasks_repository_id").on(table.repositoryId),
 ]);
@@ -143,6 +142,17 @@ export const claudeSessions = sqliteTable("claude_sessions", {
   index("idx_claude_sessions_task_id").on(table.taskId),
   index("idx_claude_sessions_pr_url").on(table.prUrl),
   index("idx_claude_sessions_state").on(table.state),
+]);
+
+// 3d2. Claude session tasks - the other tasks a bulk chore session covers; the session row keeps the first
+export const claudeSessionTasks = sqliteTable("claude_session_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull().references(() => claudeSessions.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  triggerFingerprint: text("trigger_fingerprint"), // this task's trigger state at start (see claudeSessions)
+}, (table) => [
+  index("idx_claude_session_tasks_session_id").on(table.sessionId),
+  index("idx_claude_session_tasks_task_id").on(table.taskId),
 ]);
 
 // 3e. Claude session requests - one row per API request in a session's transcript, subagents included

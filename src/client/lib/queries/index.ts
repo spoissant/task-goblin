@@ -5,7 +5,6 @@ export * from "./sync";
 export * from "./chores";
 export * from "./sessions";
 export * from "./standups";
-export * from "./inbox";
 export * from "./worktrees";
 
 export * from "./reviews";

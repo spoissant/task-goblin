@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "fs";
 import { db, sqlite } from "../../db";
-import { claudeSessions, repositories, statusCategories, taskWorktrees, tasks, worktrees } from "../../db/schema";
+import { claudeSessionTasks, claudeSessions, repositories, statusCategories, taskWorktrees, tasks, worktrees } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
 import { setSetting } from "../lib/settings";
@@ -12,7 +12,6 @@ import {
   AUTO_CHORES_ENABLED_KEY,
   MAX_AUTO_ACTIVE,
   MAX_AUTO_RUNS_PER_DAY,
-  isWithinAutoWindow,
   runChoreScheduler,
 } from "./chore-scheduler";
 
@@ -20,8 +19,7 @@ const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 })
 const JOBS_DIR = `${import.meta.dir}/../../../.test-scheduler-jobs`;
 const MAIN_PATH = `${import.meta.dir}/../../..`; // any existing directory works as the checkout
 const TS = "2026-01-01T00:00:00.000Z";
-const NOON = new Date(2026, 9, 21, 12, 0, 0); // local time, inside the window
-const NIGHT = new Date(2026, 9, 21, 23, 0, 0);
+const NOON = new Date(2026, 9, 21, 12, 0, 0);
 
 /** Let the background session start (worktree lookup + fake spawn) finish. */
 const settle = () => new Promise((r) => setTimeout(r, 50));
@@ -70,7 +68,7 @@ async function seedSession(taskId: number, overrides: Partial<typeof claudeSessi
     name: `EV-${taskId} · Fix PR checks`,
     state: "done",
     trigger: "auto",
-    triggerFingerprint: JSON.stringify(["aaa"]),
+    triggerFingerprint: JSON.stringify(["aaa", null]),
     createdAt: new Date(NOON.getTime() - 60 * 60 * 1000).toISOString(),
     updatedAt: TS,
     ...overrides,
@@ -80,15 +78,6 @@ async function seedSession(taskId: number, overrides: Partial<typeof claudeSessi
 const sessions = () => db.select().from(claudeSessions).orderBy(claudeSessions.id);
 const setState = (state: string) => sqlite.exec(`UPDATE claude_sessions SET state = '${state}'`);
 
-describe("isWithinAutoWindow", () => {
-  it("allows 06:00 to 21:59 local time", () => {
-    expect(isWithinAutoWindow(new Date(2026, 0, 1, 5, 59))).toBe(false);
-    expect(isWithinAutoWindow(new Date(2026, 0, 1, 6, 0))).toBe(true);
-    expect(isWithinAutoWindow(new Date(2026, 0, 1, 21, 59))).toBe(true);
-    expect(isWithinAutoWindow(new Date(2026, 0, 1, 22, 0))).toBe(false);
-  });
-});
-
 describe("runChoreScheduler", () => {
   beforeAll(() => {
     createTestTables(sqlite);
@@ -96,7 +85,7 @@ describe("runChoreScheduler", () => {
   });
 
   beforeEach(async () => {
-    for (const t of ["claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories", "settings", "status_categories"]) {
+    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories", "settings", "status_categories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
     invalidateStatusConfigCache();
@@ -143,7 +132,7 @@ describe("runChoreScheduler", () => {
       choreKey: "fix-pr-checks",
       prompt: "/chore-fix-pr-checks 1",
       trigger: "auto",
-      triggerFingerprint: JSON.stringify(["aaa"]),
+      triggerFingerprint: JSON.stringify(["aaa", null]),
       model: "opus",
       effort: "low",
       state: "working",
@@ -187,7 +176,20 @@ describe("runChoreScheduler", () => {
 
     const rows = await sessions();
     expect(rows).toHaveLength(2);
-    expect(rows[1].triggerFingerprint).toBe(JSON.stringify(["bbb"]));
+    expect(rows[1].triggerFingerprint).toBe(JSON.stringify(["bbb", null]));
+  });
+
+  it("restarts fix-pr-checks when CI fails again on the same commit", async () => {
+    const failedAt = (completedAt: string) =>
+      JSON.stringify([{ name: "buildkite", status: "completed", conclusion: "failure", url: null, isRequired: true, completedAt }]);
+    await seedTask(1, { checksDetails: failedAt("2026-10-21T11:00:00Z") });
+    expect(await runChoreScheduler({ now: NOON })).toBe(1);
+    await settle();
+    setState("done");
+    expect(await runChoreScheduler({ now: NOON })).toBe(0);
+
+    sqlite.exec(`UPDATE tasks SET checks_details = '${failedAt("2026-10-21T11:40:00Z")}' WHERE id = 1`);
+    expect(await runChoreScheduler({ now: NOON })).toBe(1);
   });
 
   it("caps auto runs of one chore on one task per day", async () => {
@@ -202,15 +204,13 @@ describe("runChoreScheduler", () => {
     expect(await runChoreScheduler({ now: later })).toBe(1);
   });
 
-  it("keeps a slot free: at most MAX_AUTO_ACTIVE auto sessions run at once", async () => {
-    await seedTask(1);
-    await seedTask(2);
-    await seedTask(3);
+  it("runs at most MAX_AUTO_ACTIVE auto sessions at once", async () => {
+    for (let id = 1; id <= MAX_AUTO_ACTIVE + 1; id++) await seedTask(id);
 
     expect(await runChoreScheduler({ now: NOON })).toBe(MAX_AUTO_ACTIVE);
     await settle();
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
-    expect((await sessions()).map((s) => s.taskId)).toEqual([1, 2]);
+    expect((await sessions()).map((s) => s.taskId)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("starts nothing while a session waits for a Docker slot", async () => {
@@ -229,10 +229,8 @@ describe("runChoreScheduler", () => {
     expect(await sessions()).toHaveLength(1);
   });
 
-  it("stays quiet at night, when disabled, and on opted-out tasks", async () => {
+  it("stays quiet when disabled and on opted-out tasks", async () => {
     await seedTask(1);
-    expect(await runChoreScheduler({ now: NIGHT })).toBe(0);
-
     await setSetting(AUTO_CHORES_ENABLED_KEY, "false");
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
     await setSetting(AUTO_CHORES_ENABLED_KEY, "true");
@@ -259,6 +257,38 @@ describe("runChoreScheduler", () => {
     await seedTask(1, { status: "Backlog", prNumber: null, prState: null, checksStatus: null });
 
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
+  });
+
+  it("batches a bulk chore: every task at that step of a repository in one session, the rest linked", async () => {
+    const draft: TaskOverrides = { checksStatus: "passing", isDraft: 1 }; // AI QA
+    await seedTask(1, draft);
+    await seedTask(2, draft);
+    await seedTask(3, { ...draft, repositoryId: 2 });
+
+    expect(await runChoreScheduler({ now: NOON })).toBe(2);
+    await settle();
+    const rows = await sessions();
+    expect(rows.map((r) => [r.taskId, r.choreKey, r.prompt, r.name])).toEqual([
+      [1, "ai-qa", "/chore-ai-qa 1 2", "EV-1 +1 · AI QA"],
+      [3, "ai-qa", "/chore-ai-qa 3", "EV-3 · AI QA"],
+    ]);
+    expect(await db.select().from(claudeSessionTasks)).toMatchObject([
+      { sessionId: rows[0].id, taskId: 2, triggerFingerprint: JSON.stringify(["In Progress", "aaa"]) },
+    ]);
+
+    // a linked task is busy while the batch runs, then done on that state
+    sqlite.exec(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
+    expect(await runChoreScheduler({ now: NOON })).toBe(0);
+    setState("done");
+    sqlite.exec(`UPDATE tasks SET head_sha = 'aaa' WHERE id = 2`);
+    expect(await runChoreScheduler({ now: NOON })).toBe(0);
+
+    // a new state waits for the periodic sync, not a post-session run
+    sqlite.exec(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
+    expect(await runChoreScheduler({ taskId: 2, now: NOON })).toBe(0);
+    expect(await runChoreScheduler({ now: NOON })).toBe(1);
+    await settle();
+    expect((await sessions()).at(-1)).toMatchObject({ taskId: 2, prompt: "/chore-ai-qa 2" });
   });
 
   it("limits a post-session run to that task", async () => {

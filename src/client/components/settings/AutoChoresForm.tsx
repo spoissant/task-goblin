@@ -26,8 +26,8 @@ export function AutoChoresForm() {
         </Label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Auto-starts run between 06:00 and 22:00. Start New Task always stays manual. Set <code>BUILDKITE_API_TOKEN</code> in{" "}
-        <code>.env</code> to enable the sprint build gate before auto-merge.
+        Also toggled by the play/stop button on the Tasks page. Start New Task always stays manual. Set <code>BUILDKITE_API_TOKEN</code> in{" "}
+        <code>.env</code> to follow the sprint build of merged PRs.
       </p>
     </div>
   );

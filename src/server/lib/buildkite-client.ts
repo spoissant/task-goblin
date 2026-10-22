@@ -1,5 +1,5 @@
-// Read-only Buildkite REST client for the merge gate (base branch health) and
-// the merge watch (the build of a merge commit). Token: BUILDKITE_API_TOKEN
+// Read-only Buildkite REST client for the merge watch (the build of a merge
+// commit). Token: BUILDKITE_API_TOKEN
 // (read_builds). Only alumni_connect builds on Buildkite; the other repos use
 // GitHub Actions (see merge-github.ts).
 import type { BaseBuildState } from "@/shared/merge";
@@ -64,14 +64,6 @@ async function listBuilds(pipeline: string, params: URLSearchParams): Promise<Bk
     webUrl: b.web_url,
     finishedAt: b.finished_at ?? null,
   }));
-}
-
-/** The newest build of `branch` that reached a final state, or null when the branch never built. */
-export async function latestFinishedBuild(pipeline: string, branch: string): Promise<BkBuild | null> {
-  const params = new URLSearchParams({ branch, per_page: "1" });
-  for (const state of ["passed", "failed", "canceled"]) params.append("state[]", state);
-  const builds = await listBuilds(pipeline, params);
-  return builds[0] ?? null;
 }
 
 /** The build of one commit on `branch` (any state), or null when Buildkite hasn't seen it. */

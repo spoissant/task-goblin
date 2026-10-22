@@ -104,10 +104,10 @@ export const COLUMNS = {
         <TooltipTrigger asChild>
           <ListTree className="h-4 w-4" />
         </TooltipTrigger>
-        <TooltipContent>Has sub-tasks</TooltipContent>
+        <TooltipContent>Has / is sub-task</TooltipContent>
       </Tooltip>
     ),
-    width: "40px",
+    width: "56px",
     render: (task, ctx) => <IsParentCell task={task} isParent={ctx.isParent} onSearch={ctx.onSearch} />,
   },
   type: {

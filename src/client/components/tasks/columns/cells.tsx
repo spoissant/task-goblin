@@ -8,12 +8,13 @@ import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
 import { DeploymentBadges } from "../DeploymentBadges";
 import { ChangesSummary } from "../ChangesSummary";
-import { AlertTriangle, Flame, ListTree, Snowflake, Zap } from "lucide-react";
+import { AlertTriangle, CornerDownRight, Flame, ListTree, Snowflake, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/client/lib/types";
 import { parseReviewStatus } from "@/shared/review-status";
+import { isMergeReady } from "@/shared/merge";
 import { parseChangesByCategory } from "@/shared/file-categories";
-import { useUpdateTask } from "@/client/lib/queries/tasks";
+import { useMergePr, useUpdateTask } from "@/client/lib/queries/tasks";
 import { usePushTaskWorktree } from "@/client/lib/queries/worktrees";
 import {
   Dialog,
@@ -321,8 +322,31 @@ export function ChecksCell({ task, prUrl }: { task: Task; prUrl?: string | null 
   );
 }
 
+/** The Merge button replaces the review status once the gate cleared the PR (reviews are green by then). */
 export function ReviewsCell({ task, prUrl }: { task: Task; prUrl?: string | null }) {
+  if (isMergeReady(task)) return <MergeButton task={task} />;
   return <ReviewStatusIcon status={parseReviewStatus(task.reviewStatus)} prUrl={prUrl} />;
+}
+
+/** Shown once the merge gate cleared the PR: squash-merges it. */
+function MergeButton({ task }: { task: Task }) {
+  const mergePr = useMergePr();
+  return (
+    <Button
+      size="sm"
+      className="h-6 px-2 text-xs bg-green-600 text-white hover:bg-green-700"
+      disabled={mergePr.isPending}
+      onClick={(e) => {
+        e.stopPropagation();
+        mergePr.mutate(task.id, {
+          onSuccess: () => toast.success(`Merged PR #${task.prNumber}`),
+          onError: (err) => toast.error(err.message),
+        });
+      }}
+    >
+      Merge
+    </Button>
+  );
 }
 
 export function ChangesCell({ task }: { task: Task }) {
@@ -454,25 +478,55 @@ export function HighPriorityCell({ task }: { task: Task }) {
   );
 }
 
-// Derived flag (not editable): the task has sub-tasks or child issues.
+// Derived flags (not editable): the task has sub-tasks or child issues, and/or is itself a sub-task.
 // Clicking searches the Jira key, which matches the task and every child (via parent/epic key).
 export function IsParentCell({ task, isParent, onSearch }: { task: Task; isParent?: boolean; onSearch?: (query: string) => void }) {
-  if (!isParent) return null;
+  const parentIcon = isParent && task.jiraKey && (
+    <SearchIcon
+      icon={<ListTree className="h-4 w-4 text-violet-400" />}
+      query={task.jiraKey}
+      label="Has sub-tasks"
+      searchLabel="Has sub-tasks: show parent + children"
+      onSearch={onSearch}
+    />
+  );
+  const subtaskIcon = task.parentKey && (
+    <SearchIcon
+      icon={<CornerDownRight className="h-4 w-4 text-sky-400" />}
+      query={task.parentKey}
+      label={`Sub-task of ${task.parentKey}`}
+      searchLabel={`Sub-task of ${task.parentKey}: show parent + siblings`}
+      onSearch={onSearch}
+    />
+  );
+  if (!parentIcon && !subtaskIcon) return null;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {parentIcon}
+      {subtaskIcon}
+    </span>
+  );
+}
 
-  const jiraKey = task.jiraKey;
-  const icon = <ListTree className="h-4 w-4 text-violet-400" />;
+function SearchIcon({ icon, query, label, searchLabel, onSearch }: {
+  icon: React.ReactNode;
+  query: string;
+  label: string;
+  searchLabel: string;
+  onSearch?: (query: string) => void;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {onSearch && jiraKey ? (
-          <button type="button" className="cursor-pointer hover:opacity-80" onClick={() => onSearch(jiraKey)}>
+        {onSearch ? (
+          <button type="button" className="cursor-pointer hover:opacity-80" onClick={() => onSearch(query)}>
             {icon}
           </button>
         ) : (
           icon
         )}
       </TooltipTrigger>
-      <TooltipContent>{onSearch && jiraKey ? "Has sub-tasks: show parent + children" : "Has sub-tasks"}</TooltipContent>
+      <TooltipContent>{onSearch ? searchLabel : label}</TooltipContent>
     </Tooltip>
   );
 }

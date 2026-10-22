@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
-  task: [["tasks"], ["inbox"], ["chores"]],
+  task: [["tasks"], ["chores"]],
   setting: [["settings"], ["statusCategories"]],
-  session: [["sessions"], ["tasks"], ["inbox"], ["chores"]],
+  session: [["sessions"], ["tasks"], ["chores"]],
   worktree: [["worktree"]],
   "dev-stack": [["dev-stack"]],
   standup: [["standups"]],

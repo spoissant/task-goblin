@@ -4,9 +4,8 @@ import { db, sqlite } from "../../db";
 import { repositories, statusCategories, tasks } from "../../db/schema";
 import { createTestTables } from "../../test/createSchema";
 import { invalidateStatusConfigCache } from "../lib/task-status";
-import { resetBuildkiteFetch, setBuildkiteFetch } from "../lib/buildkite-client";
-import { parseMergeHold, type HoldReason } from "@/shared/merge";
-import { actionsHealth, evaluateTaskGate, findPrereleasePins, runMergeGate } from "./merge-gate";
+import { isMergeReady, parseMergeHold, type HoldReason } from "@/shared/merge";
+import { evaluateTaskGate, findPrereleasePins, mergeTaskPr, runMergeGate } from "./merge-gate";
 import { resetMergeGitHub, setMergeGitHub, type MergeGitHub, type PullFile } from "./merge-github";
 
 type TaskRow = typeof tasks.$inferSelect;
@@ -61,7 +60,6 @@ function greenTask(over: Partial<TaskRow> = {}): TaskRow {
     workingOn: null,
     headSha: "head1",
     mergeCommitSha: null,
-    autoMergeEnabledAt: null,
     mergeHold: null,
     baseBuildState: null,
     baseBuildUrl: null,
@@ -146,42 +144,18 @@ describe("findPrereleasePins", () => {
   });
 });
 
-describe("actionsHealth", () => {
-  const run = (conclusion: string | null, status = "completed", name = "CI") => ({ name, status, conclusion, headSha: "s", htmlUrl: "u" });
-
-  it("reads only the CI workflow", () => {
-    expect(actionsHealth([run("failure", "completed", "Release")])).toBe("unknown");
-    expect(actionsHealth([run("success"), run("failure", "completed", "Lint")])).toBe("green");
-  });
-
-  it("is red on a failure, pending while running, green when all succeeded", () => {
-    expect(actionsHealth([run("success"), run("timed_out")])).toBe("red");
-    expect(actionsHealth([run(null, "in_progress")])).toBe("pending");
-    expect(actionsHealth([run("success"), run("success")])).toBe("green");
-    expect(actionsHealth([run("cancelled")])).toBe("unknown");
-  });
-});
-
 describe("runMergeGate", () => {
   const calls: string[] = [];
   let files: PullFile[] = [];
-  let buildkiteState = "passed";
 
   const stub: MergeGitHub = {
-    async enableAutoMerge(t) {
-      calls.push(`enable ${t.repo}#${t.number}`);
-      return "enabled";
-    },
-    async disableAutoMerge(t) {
-      calls.push(`disable ${t.repo}#${t.number}`);
+    async mergePr(t) {
+      calls.push(`merge ${t.repo}#${t.number}`);
+      return { sha: "squash-sha" };
     },
     async listPullFiles() {
       calls.push("files");
       return files;
-    },
-    async latestBaseRuns(_o, repo) {
-      calls.push(`runs ${repo}`);
-      return [{ name: "CI", status: "completed", conclusion: "success", headSha: "m", htmlUrl: "u" }];
     },
     async runsForSha() {
       return [];
@@ -202,7 +176,6 @@ describe("runMergeGate", () => {
   beforeEach(async () => {
     calls.length = 0;
     files = [];
-    buildkiteState = "passed";
     sqlite.exec("DELETE FROM tasks");
     sqlite.exec("DELETE FROM repositories");
     sqlite.exec("DELETE FROM status_categories");
@@ -214,19 +187,13 @@ describe("runMergeGate", () => {
     await db.insert(repositories).values([
       { id: 1, owner: "Hivebrite", repo: "alumni_connect", enabled: 1, defaultBaseBranch: "sprint" },
       { id: 2, owner: "Hivebrite", repo: "front-monorepo", enabled: 1, defaultBaseBranch: "main" },
+      { id: 3, owner: "Hivebrite", repo: "hivetests", enabled: 1, defaultBaseBranch: "main" },
     ]);
-    process.env.BUILDKITE_API_TOKEN = "bk";
-    setBuildkiteFetch(async (input) => {
-      calls.push(`buildkite ${new URL(String(input)).searchParams.get("branch")}`);
-      return new Response(JSON.stringify([{ number: 1, state: buildkiteState, commit: "c", web_url: "w", finished_at: null }]));
-    });
     setMergeGitHub(stub);
   });
 
   afterEach(() => {
     resetMergeGitHub();
-    resetBuildkiteFetch();
-    delete process.env.BUILDKITE_API_TOKEN;
   });
 
   async function insert(over: Partial<TaskRow> = {}): Promise<number> {
@@ -237,38 +204,26 @@ describe("runMergeGate", () => {
 
   const load = async (id: number) => (await db.select().from(tasks).where(eq(tasks.id, id)))[0];
 
-  it("enables auto-merge once and stamps the task; the next tick re-checks only pins", async () => {
+  it("marks a PR that passes every gate as ready without merging it", async () => {
     const id = await insert();
 
     await runMergeGate();
 
-    expect(calls).toEqual(["buildkite sprint", "files", "enable alumni_connect#10"]);
-    const after = await load(id);
-    expect(after.autoMergeEnabledAt).not.toBeNull();
-    expect(after.mergeHold).toBeNull();
-
-    calls.length = 0;
-    await runMergeGate();
     expect(calls).toEqual(["files"]);
-    expect((await load(id)).autoMergeEnabledAt).toBe(after.autoMergeEnabledAt);
+    const row = await load(id);
+    expect(parseMergeHold(row.mergeHold)?.reasons).toEqual([]);
+    expect(row.prState).toBe("open");
+    expect(isMergeReady(row)).toBe(true);
   });
 
-  it("stamps the task when GitHub says auto-merge was already on", async () => {
-    setMergeGitHub({ ...stub, enableAutoMerge: async () => "already" });
-    const id = await insert();
-
-    await runMergeGate();
-
-    expect((await load(id)).autoMergeEnabledAt).not.toBeNull();
-  });
-
-  it("records a hold instead of enabling, updates it when the reasons change, and clears it once green", async () => {
+  it("records a hold, updates it when the reasons change, and empties it once green", async () => {
     const id = await insert({ checksStatus: "pending" });
 
     await runMergeGate();
     expect(calls).toEqual([]);
     const first = parseMergeHold((await load(id)).mergeHold);
     expect(first?.reasons).toEqual(["checks-pending"]);
+    expect(isMergeReady(await load(id))).toBe(false);
 
     await runMergeGate();
     expect((await load(id)).mergeHold).toBe(JSON.stringify(first)); // unchanged reasons: no rewrite
@@ -280,32 +235,8 @@ describe("runMergeGate", () => {
     await db.update(tasks).set({ checksStatus: "passing", hasConflicts: 0 }).where(eq(tasks.id, id));
     await runMergeGate();
     const done = await load(id);
-    expect(done.mergeHold).toBeNull();
-    expect(done.autoMergeEnabledAt).not.toBeNull();
-  });
-
-  it("holds on a red or unknown base branch and never calls GitHub for it", async () => {
-    buildkiteState = "failed";
-    const red = await insert();
-    await runMergeGate();
-    expect(parseMergeHold((await load(red)).mergeHold)?.reasons).toEqual(["base-ci-red"]);
-    expect(calls).not.toContain("enable alumni_connect#10");
-
-    delete process.env.BUILDKITE_API_TOKEN;
-    await db.update(tasks).set({ mergeHold: null }).where(eq(tasks.id, red));
-    await runMergeGate();
-    expect(parseMergeHold((await load(red)).mergeHold)?.reasons).toEqual(["base-ci-unknown"]);
-  });
-
-  it("checks the base branch once per repository per tick, via Actions for non-Buildkite repos", async () => {
-    await insert({ repositoryId: 2, prNumber: 20 });
-    await insert({ repositoryId: 2, prNumber: 21, jiraKey: "EV-2" });
-
-    await runMergeGate();
-
-    expect(calls.filter((c) => c === "runs front-monorepo")).toHaveLength(1);
-    expect(calls).toContain("enable front-monorepo#20");
-    expect(calls).toContain("enable front-monorepo#21");
+    expect(parseMergeHold(done.mergeHold)?.reasons).toEqual([]);
+    expect(calls).not.toContain("merge alumni_connect#10");
   });
 
   it("holds on a prerelease pin", async () => {
@@ -315,7 +246,21 @@ describe("runMergeGate", () => {
     await runMergeGate();
 
     expect(parseMergeHold((await load(id)).mergeHold)?.reasons).toEqual(["prerelease-pin"]);
-    expect(calls).not.toContain("enable alumni_connect#10");
+    expect(calls).not.toContain("merge alumni_connect#10");
+  });
+
+  it("holds a hivetests PR whose branch an alumni_connect task has, whatever that task's state", async () => {
+    const paired = await insert({ repositoryId: 3, prNumber: 30, headBranch: "feat/EV-1", jiraKey: "EV-2" });
+    await insert({ status: "Done", prState: "merged", headBranch: "feat/EV-1" });
+    const alone = await insert({ repositoryId: 3, prNumber: 31, headBranch: "feat/EV-9", jiraKey: "EV-3" });
+    await insert({ repositoryId: 2, prNumber: 20, headBranch: "feat/EV-9", jiraKey: "EV-4", status: "Code Review" });
+
+    await runMergeGate();
+
+    expect(parseMergeHold((await load(paired)).mergeHold)?.reasons).toEqual(["alumni-connect-branch"]);
+    expect(parseMergeHold((await load(alone)).mergeHold)?.reasons).toEqual([]);
+    await expect(mergeTaskPr(paired)).rejects.toMatchObject({ code: "MERGE_HELD" });
+    expect(calls).not.toContain("merge hivetests#30");
   });
 
   it("leaves tasks outside Ready to Merge, on ice, or without a PR untouched", async () => {
@@ -327,50 +272,26 @@ describe("runMergeGate", () => {
 
     expect(calls).toEqual([]);
     for (const id of [review, ice, noPr]) {
-      const row = await load(id);
-      expect(row.autoMergeEnabledAt).toBeNull();
-      expect(row.mergeHold).toBeNull();
+      expect((await load(id)).mergeHold).toBeNull();
     }
   });
 
-  it("clears a stale hold when the task leaves Ready to Merge", async () => {
-    const id = await insert({ status: "Code Review", mergeHold: JSON.stringify({ reasons: ["checks-pending"], at: NOW }) });
+  it("clears a stale hold or ready mark when the task leaves Ready to Merge", async () => {
+    const held = await insert({ status: "Code Review", mergeHold: JSON.stringify({ reasons: ["checks-pending"], at: NOW }) });
+    const ready = await insert({ status: "Code Review", jiraKey: "EV-2", mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
 
     await runMergeGate();
 
-    expect((await load(id)).mergeHold).toBeNull();
-  });
-
-  it("disables auto-merge when a pin lands after enabling", async () => {
-    const id = await insert({ autoMergeEnabledAt: NOW });
-    files = [{ filename: "Gemfile", patch: '+gem "dto", github: "Hivebrite/dto-ruby", ref: "abc123def"' }];
-
-    await runMergeGate();
-
-    expect(calls).toEqual(["files", "disable alumni_connect#10"]);
-    const row = await load(id);
-    expect(row.autoMergeEnabledAt).toBeNull();
-    expect(parseMergeHold(row.mergeHold)?.reasons).toEqual(["prerelease-pin"]);
-  });
-
-  it("disables auto-merge when the task leaves Ready to Merge", async () => {
-    const id = await insert({ autoMergeEnabledAt: NOW, status: "Code Review" });
-
-    await runMergeGate();
-
-    expect(calls).toEqual(["disable alumni_connect#10"]);
-    const row = await load(id);
-    expect(row.autoMergeEnabledAt).toBeNull();
-    expect(parseMergeHold(row.mergeHold)?.reasons).toEqual(["not-ready-to-merge"]);
+    expect((await load(held)).mergeHold).toBeNull();
+    expect((await load(ready)).mergeHold).toBeNull();
   });
 
   it("keeps going when one task's GitHub call fails", async () => {
     setMergeGitHub({
       ...stub,
-      async enableAutoMerge(t) {
+      async listPullFiles(t) {
         if (t.number === 10) throw new Error("boom");
-        calls.push(`enable ${t.repo}#${t.number}`);
-        return "enabled";
+        return [];
       },
     });
     const failing = await insert();
@@ -378,7 +299,55 @@ describe("runMergeGate", () => {
 
     await runMergeGate();
 
-    expect((await load(failing)).autoMergeEnabledAt).toBeNull();
-    expect((await load(fine)).autoMergeEnabledAt).not.toBeNull();
+    expect((await load(failing)).mergeHold).toBeNull();
+    expect(parseMergeHold((await load(fine)).mergeHold)?.reasons).toEqual([]);
+  });
+
+  describe("mergeTaskPr", () => {
+    it("squash-merges a PR that passes every gate and marks the task merged for the watch", async () => {
+      const id = await insert({ mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
+
+      const task = await mergeTaskPr(id);
+
+      expect(calls).toEqual(["files", "merge alumni_connect#10"]);
+      const row = await load(id);
+      expect(row.prState).toBe("merged");
+      expect(row.mergeCommitSha).toBe("squash-sha");
+      expect(row.mergeHold).toBeNull();
+      expect(task).toMatchObject({ prState: "merged", mergeCommitSha: "squash-sha", mergeHold: null });
+      expect(isMergeReady(row)).toBe(false);
+    });
+
+    it("refuses with the holds when the task no longer passes, and records them", async () => {
+      const id = await insert({ checksStatus: "failing", mergeHold: JSON.stringify({ reasons: [], at: NOW }) });
+
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({ statusCode: 409, code: "MERGE_HELD" });
+
+      expect(calls).toEqual([]);
+      expect(parseMergeHold((await load(id)).mergeHold)?.reasons).toEqual(["checks-failing"]);
+    });
+
+    it("refuses a prerelease pin", async () => {
+      files = [{ filename: "package.json", patch: '+    "@hivebrite/ui": "github:Hivebrite/ui#feat"' }];
+      const id = await insert();
+
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({ code: "MERGE_HELD" });
+      expect(calls).not.toContain("merge alumni_connect#10");
+    });
+
+    it("leaves the task open when GitHub refuses the merge", async () => {
+      setMergeGitHub({ ...stub, mergePr: async () => { throw new Error("Required status check is expected"); } });
+      const id = await insert();
+
+      await expect(mergeTaskPr(id)).rejects.toThrow(/Required status check/);
+      expect((await load(id)).prState).toBe("open");
+    });
+
+    it("refuses a task without an open PR and an unknown task", async () => {
+      const id = await insert({ prState: "merged" });
+
+      await expect(mergeTaskPr(id)).rejects.toMatchObject({ statusCode: 400, code: "NO_OPEN_PR" });
+      await expect(mergeTaskPr(9999)).rejects.toMatchObject({ statusCode: 404 });
+    });
   });
 });

@@ -57,7 +57,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Reads only — retrying a write could double-apply it. GraphQL goes out as a
- * POST; queries are retried, mutations (auto-merge, reviews) are not.
+ * POST; queries are retried, mutations (merges, reviews) are not.
  */
 export function isRetryableRead(options: { method?: string; url?: string; query?: unknown }): boolean {
   if (options.method === "GET") return true;

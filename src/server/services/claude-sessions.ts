@@ -10,7 +10,7 @@ import { AppError, NotFoundError } from "../lib/errors";
 import { now } from "../lib/timestamp";
 import { findRepository, getTaskWithRepository } from "../lib/queries";
 import { parsePrUrl } from "../lib/validation";
-import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, resolvePrompt } from "../lib/chores";
+import { CUSTOM_CHORE, REVIEW_CHORE, fingerprintFor, getChoreDefinition, isBulkChore, resolvePrompt } from "../lib/chores";
 import { broadcast } from "../lib/sse";
 import type { ClaudeSession, ClaudeSessionState } from "../../shared/types";
 import {
@@ -31,6 +31,8 @@ import {
   resolveMainPath,
   worktreePathFor,
 } from "./task-worktrees";
+import { getDevStackStatus } from "./dev-stack";
+import { coversTasks, coveredTaskIds, linkSessionTasks, sessionLinks, type SessionTaskLink } from "./session-tasks";
 
 export type SessionRow = typeof claudeSessions.$inferSelect;
 
@@ -56,8 +58,19 @@ export function setOnSessionFinished(fn: SessionFinishedHook): void {
   onSessionFinished = fn;
 }
 
-export function toApi(row: SessionRow): ClaudeSession {
-  return { ...row, state: row.state as ClaudeSessionState, link: sessionLink(row.bridgeSessionId) };
+/** API shape of each row, with the other tasks a bulk run covers. */
+export async function toApiList<T extends SessionRow>(rows: T[]): Promise<(T & ClaudeSession)[]> {
+  const links = await sessionLinks(rows.map((r) => r.id));
+  return rows.map((row) => ({
+    ...row,
+    state: row.state as ClaudeSessionState,
+    link: sessionLink(row.bridgeSessionId),
+    linkedTaskIds: (links.get(row.id) ?? []).map((l) => l.taskId),
+  }));
+}
+
+export async function toApi(row: SessionRow): Promise<ClaudeSession> {
+  return (await toApiList([row]))[0];
 }
 
 async function getRow(id: number): Promise<SessionRow | null> {
@@ -83,17 +96,21 @@ export async function getSession(id: number): Promise<SessionRow> {
   return row;
 }
 
+/** The task's sessions, bulk runs it is linked into included. */
 export async function listTaskSessions(taskId: number): Promise<SessionRow[]> {
-  return db.select().from(claudeSessions).where(eq(claudeSessions.taskId, taskId)).orderBy(desc(claudeSessions.id));
+  return db.select().from(claudeSessions).where(coversTasks([taskId])).orderBy(desc(claudeSessions.id));
 }
 
-/** Newest session per task, for the tasks table. */
+/** Newest session per task, linked tasks of bulk runs included, for the tasks table. */
 export async function listLatestSessions(): Promise<SessionRow[]> {
   return db
     .select()
     .from(claudeSessions)
     .where(
-      sql`${claudeSessions.id} IN (SELECT MAX(id) FROM claude_sessions WHERE task_id IS NOT NULL GROUP BY task_id)`,
+      sql`${claudeSessions.id} IN (SELECT MAX(id) FROM (
+        SELECT id, task_id FROM claude_sessions WHERE task_id IS NOT NULL
+        UNION ALL SELECT session_id, task_id FROM claude_session_tasks
+      ) GROUP BY task_id)`,
     )
     .orderBy(desc(claudeSessions.id));
 }
@@ -129,13 +146,47 @@ export async function listRecentSessions(
   return { rows: rows.map((r) => ({ ...r.session, taskTitle: r.taskTitle })), total: count };
 }
 
+/** Chores that QA on the repository's one dev stack: one task at a time per repository. */
+const DEV_STACK_CHORES = ["ai-qa"];
+
+/** Refuse a dev-stack chore while another task's run or stack holds the repository's stack. */
+async function assertDevStackFree(taskIds: number[], repositoryId: number): Promise<void> {
+  const [other] = await db
+    .select({ taskId: claudeSessions.taskId })
+    .from(claudeSessions)
+    .where(
+      and(
+        eq(claudeSessions.repositoryId, repositoryId),
+        inArray(claudeSessions.choreKey, DEV_STACK_CHORES),
+        inArray(claudeSessions.state, ACTIVE_STATES),
+      ),
+    )
+    .limit(1);
+  if (other) throw new AppError(`AI QA is already running on task ${other.taskId}`, 409, "DEV_STACK_BUSY");
+  const { stack } = await getDevStackStatus({ taskId: taskIds[0] });
+  const owners = stack ? [stack.taskId, ...stack.mergedTaskIds] : [];
+  if (stack && !taskIds.some((id) => owners.includes(id))) {
+    throw new AppError(`Dev stack belongs to ${stack.branch}`, 409, "DEV_STACK_BUSY");
+  }
+}
+
 async function findActiveSession(taskId: number): Promise<SessionRow | null> {
   const rows = await db
     .select()
     .from(claudeSessions)
-    .where(and(eq(claudeSessions.taskId, taskId), inArray(claudeSessions.state, ACTIVE_STATES)))
+    .where(and(coversTasks([taskId]), inArray(claudeSessions.state, ACTIVE_STATES)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/** Tasks with an active session, their own or a bulk run's they are linked into. */
+export async function activeTaskIds(): Promise<Set<number>> {
+  const rows = await db
+    .select({ id: claudeSessions.id, taskId: claudeSessions.taskId })
+    .from(claudeSessions)
+    .where(inArray(claudeSessions.state, ACTIVE_STATES));
+  const links = await sessionLinks(rows.map((r) => r.id));
+  return new Set(rows.flatMap((r) => [r.taskId, ...(links.get(r.id) ?? []).map((l) => l.taskId)]).filter((id) => id !== null));
 }
 
 export type SessionTrigger = "auto" | "manual";
@@ -149,6 +200,8 @@ export interface ChoreSessionInput {
   trigger?: SessionTrigger;
   /** The task state the chore was started on; the scheduler won't restart it on the same state. */
   triggerFingerprint?: string | null;
+  /** The other tasks of a bulk chore run, linked to the session. */
+  withTaskIds?: number[];
 }
 
 /**
@@ -164,10 +217,15 @@ export async function startChoreSession(
   if (!chore || chore.key === CUSTOM_CHORE.key) {
     throw new AppError(`Unknown chore: ${choreKey}`, 400, "UNKNOWN_CHORE");
   }
+  const withTaskIds = [...new Set(input.withTaskIds ?? [])].filter((id) => id !== taskId);
+  if (withTaskIds.length > 0 && !isBulkChore(chore.key)) {
+    throw new AppError(`${chore.name} runs on one task at a time`, 400, "VALIDATION_ERROR");
+  }
   const override = input.prompt?.trim();
   return createSession(taskId, {
     chore,
-    prompt: (task) => override || resolvePrompt(chore.prompt, task),
+    withTaskIds,
+    prompt: (task) => override || resolvePrompt(chore.prompt, task, [taskId, ...withTaskIds]),
     model: input.model ?? null,
     effort: input.effort ?? null,
     trigger: input.trigger ?? "manual",
@@ -241,7 +299,7 @@ export async function startReviewSession(
   return row;
 }
 
-type ChoreLike = { key: string; name: string; cwd: "task" | "main" };
+type ChoreLike = { key: string; name: string; cwd: "task" | "main"; requiresSameRepo?: boolean };
 type TaskForPrompt = { id: number; jiraKey: string | null };
 
 async function createSession(
@@ -253,6 +311,7 @@ async function createSession(
     effort?: string | null;
     trigger?: SessionTrigger;
     triggerFingerprint?: string | null;
+    withTaskIds?: number[];
   },
 ): Promise<SessionRow> {
   const result = await getTaskWithRepository(taskId);
@@ -266,6 +325,10 @@ async function createSession(
   const active = await findActiveSession(taskId);
   if (active) {
     throw new AppError(`Session ${active.id} is already ${active.state} on this task`, 409, "SESSION_ACTIVE");
+  }
+  const links = await checkLinkedTasks(chore, repository.id, opts.withTaskIds ?? []);
+  if (DEV_STACK_CHORES.includes(chore.key)) {
+    await assertDevStackFree([taskId, ...links.map((l) => l.taskId)], repository.id);
   }
 
   let cwd = mainPath;
@@ -284,7 +347,7 @@ async function createSession(
       choreName: chore.name,
       prompt: opts.prompt(task),
       cwd,
-      name: `${task.jiraKey ?? `#${task.id}`} · ${chore.name}`,
+      name: `${task.jiraKey ?? `#${task.id}`}${links.length > 0 ? ` +${links.length}` : ""} · ${chore.name}`,
       model: opts.model ?? null,
       effort: opts.effort ?? null,
       trigger: opts.trigger ?? "manual",
@@ -296,9 +359,27 @@ async function createSession(
     })
     .returning();
   const row = rows[0];
+  await linkSessionTasks(row.id, links);
   broadcast("session", { taskId, id: row.id, state: row.state });
   void runStart(row.id);
   return row;
+}
+
+/** The other tasks of a bulk run, each idle (and in the repository when the chore needs it), with its trigger state. */
+async function checkLinkedTasks(chore: ChoreLike, repositoryId: number, taskIds: number[]): Promise<SessionTaskLink[]> {
+  const links: SessionTaskLink[] = [];
+  for (const id of taskIds) {
+    const result = await getTaskWithRepository(id);
+    if (!result) throw new NotFoundError("Task", id);
+    if (chore.requiresSameRepo && result.repository?.id !== repositoryId) {
+      throw new AppError(`Task ${id} is in another repository`, 400, "VALIDATION_ERROR");
+    }
+    const active = await findActiveSession(id);
+    if (active) throw new AppError(`Session ${active.id} is already ${active.state} on task ${id}`, 409, "SESSION_ACTIVE");
+    const { repository: _repository, ...task } = result;
+    links.push({ taskId: id, triggerFingerprint: fingerprintFor(chore.key, task) });
+  }
+  return links;
 }
 
 // Capacity check + spawn are serialized so two starts cannot both pass the cap.
@@ -483,7 +564,9 @@ export async function pollActiveSessions(): Promise<void> {
     }
 
     if (Object.keys(updates).length > 0) await updateRow(row.id, updates);
-    if (nextState && nextState !== row.state && TERMINAL_STATES.includes(nextState) && row.taskId) onSessionFinished(row.taskId);
+    if (nextState && nextState !== row.state && TERMINAL_STATES.includes(nextState)) {
+      for (const taskId of await coveredTaskIds(row)) onSessionFinished(taskId);
+    }
   }
 }
 

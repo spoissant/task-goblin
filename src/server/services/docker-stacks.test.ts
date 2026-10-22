@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test
 import { sqlite } from "../../db";
 import { createTestTables } from "../../test/createSchema";
 import { resetCommandRunner, setCommandRunner, type CommandResult } from "../lib/process";
-import { ensureStackCapacity, listRunningTaskStacks, sweepIdleStacks } from "./docker-stacks";
+import { ensureStackCapacity, listProjectVolumes, listRunningTaskStacks, sweepIdleStacks } from "./docker-stacks";
 
 const ok = (stdout = ""): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
 const MAIN = "/repo/alumni_connect";
@@ -47,6 +47,21 @@ describe("docker stacks", () => {
   it("ignores the main checkout and dedupes containers per project", async () => {
     const stacks = await listRunningTaskStacks();
     expect(stacks.map((s) => s.project).sort()).toEqual(["alumni_connect_ev_1", "alumni_connect_ev_2", "alumni_connect_ev_3"]);
+  });
+
+  it("lists a project's volumes by exact prefix, or null when Docker is down", async () => {
+    setCommandRunner(async (cmd, args) => {
+      commands.push([cmd, ...args].join(" "));
+      return ok("alumni_connect_ev_1_bundle\nold_alumni_connect_ev_1_bundle\nalumni_connect_ev_1_postgres-15-volume\n");
+    });
+    expect(await listProjectVolumes("alumni_connect_ev_1")).toEqual([
+      "alumni_connect_ev_1_bundle",
+      "alumni_connect_ev_1_postgres-15-volume",
+    ]);
+    expect(commands).toEqual(["docker volume ls --format {{.Name}} --filter name=alumni_connect_ev_1_"]);
+
+    setCommandRunner(async () => ({ stdout: "", stderr: "Cannot connect to the Docker daemon", exitCode: 1 }));
+    expect(await listProjectVolumes("alumni_connect_ev_1")).toBeNull();
   });
 
   it("stops idle stacks but keeps working and recently active ones", async () => {

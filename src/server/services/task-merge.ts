@@ -1,6 +1,7 @@
 import { eq, and, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, taskWorktrees, claudeSessions } from "../../db/schema";
+import { moveSessionLinks } from "./session-tasks";
 import { json } from "../response";
 import { AppError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -154,6 +155,7 @@ export async function mergeSingleTask(
       .update(claudeSessions)
       .set({ taskId: targetId })
       .where(eq(claudeSessions.taskId, sourceId));
+    await moveSessionLinks(tx, sourceId, targetId);
 
     // Delete source before updating target: jira_key is unique, so the target
     // can't take the source's key while the source still holds it.

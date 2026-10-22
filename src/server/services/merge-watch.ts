@@ -1,24 +1,19 @@
 // Follows the base-branch build of each merged PR's merge commit: green closes
-// the loop (and approves front-monorepo release PRs), red starts a sprint-red
-// session, and a build that never shows up times out after a day.
+// the loop (and approves front-monorepo release PRs), red is recorded on the
+// task, and a build that never shows up times out after a day.
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../../db";
-import { claudeSessions, repositories, tasks } from "../../db/schema";
+import { repositories, tasks } from "../../db/schema";
 import type { BaseBuildState } from "@/shared/merge";
-import { resolveChoreModel } from "@/shared/chore-models";
 import { buildForCommit, mapBuildState, pipelineFor } from "../lib/buildkite-client";
-import { getChoreModelDefaults } from "../lib/chore-models";
-import { AppError } from "../lib/errors";
 import { broadcast } from "../lib/sse";
 import { now } from "../lib/timestamp";
-import { startChoreSession } from "./claude-sessions";
 import { getMergeGitHub, type ActionsRun, type MergeGitHub, type PrTarget } from "./merge-github";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
 
 export const WATCH_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-const SPRINT_RED_CHORE = "sprint-red";
 const BUILDKITE_BASE_BRANCH = "sprint";
 const RELEASE_REPO = "front-monorepo";
 
@@ -55,7 +50,7 @@ export function publishProject(label: string): string | null {
 /**
  * The bot opens one release PR per publish label, titled
  * `chore: publish <project>-<version> [publish-<project>-<bump>]`, with
- * auto-merge on: one approval ships it.
+ * GitHub auto-merge on (the bot's, not ours): one approval ships it.
  */
 export async function approveReleasePrs(gh: MergeGitHub, target: PrTarget): Promise<number[]> {
   const projects = (await gh.prLabels(target)).map(publishProject).filter((p): p is string => p !== null);
@@ -70,23 +65,6 @@ export async function approveReleasePrs(gh: MergeGitHub, target: PrTarget): Prom
     }
   }
   return approved;
-}
-
-/** One sprint-red session per task, ever; a 409 means another session is already on it. */
-async function startSprintRed(taskId: number): Promise<void> {
-  const existing = await db
-    .select({ id: claudeSessions.id })
-    .from(claudeSessions)
-    .where(and(eq(claudeSessions.taskId, taskId), eq(claudeSessions.choreKey, SPRINT_RED_CHORE)))
-    .limit(1);
-  if (existing.length > 0) return;
-  const model = resolveChoreModel(await getChoreModelDefaults(), SPRINT_RED_CHORE);
-  try {
-    await startChoreSession(taskId, SPRINT_RED_CHORE, { trigger: "auto", ...model });
-  } catch (err) {
-    if (err instanceof AppError && err.statusCode === 409) return;
-    throw err;
-  }
 }
 
 function timedOut(task: TaskRow): boolean {
@@ -110,7 +88,6 @@ async function watchTask(task: TaskRow, repo: RepoRow, gh: MergeGitHub): Promise
     }
     patch.mergeVerifiedAt = now();
   } else if (build.state === "failed") {
-    await startSprintRed(task.id);
     patch.mergeVerifiedAt = now();
   } else if (timedOut(task)) {
     patch.baseBuildState = "missing";

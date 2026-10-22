@@ -50,6 +50,17 @@ export async function listRunningTaskStacks(): Promise<TaskStack[]> {
   });
 }
 
+/** Volumes of a Compose project (named `<project>_<volume>`); null when Docker is down. */
+export async function listProjectVolumes(project: string): Promise<string[] | null> {
+  const result = await runCommand("docker", ["volume", "ls", "--format", "{{.Name}}", "--filter", `name=${project}_`], {
+    cwd: process.cwd(),
+    timeoutMs: 30_000,
+  });
+  if (result.exitCode !== 0) return null;
+  // The name filter matches anywhere in the name: keep only this project's prefix.
+  return result.stdout.split("\n").filter((name) => name.startsWith(`${project}_`));
+}
+
 export async function stopStack(project: string): Promise<boolean> {
   const result = await runCommand("docker", ["compose", "-p", project, "stop"], {
     cwd: process.cwd(),

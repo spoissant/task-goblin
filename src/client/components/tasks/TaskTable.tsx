@@ -77,10 +77,12 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   const { data: choresData } = useChoresQuery();
   const { data: sessionsData } = useLatestSessionsQuery();
 
-  // Latest AI session per task
+  // Latest AI session per task, a bulk run's linked tasks included (items come newest first)
   const sessionMap = useMemo(() => {
     const map = new Map<number, ClaudeSession>();
-    for (const s of sessionsData?.items ?? []) if (s.taskId !== null) map.set(s.taskId, s);
+    for (const s of sessionsData?.items ?? []) {
+      for (const id of [s.taskId, ...s.linkedTaskIds]) if (id !== null && !map.has(id)) map.set(id, s);
+    }
     return map;
   }, [sessionsData?.items]);
 
@@ -126,7 +128,7 @@ export function TaskTable({ selectedIds, onSelectionChange, titleFilter, hideLow
   });
 
   // Same flag the "has sub-tasks" column shows, so what "Hide parents" removes
-  // is exactly what carries the icon.
+  // is exactly what carries the parent icon.
   const tasks = hideParents ? shownTasks.filter((t) => !t.hasChildren) : shownTasks;
 
   if (isLoading) {

@@ -28,12 +28,9 @@ export interface ReleasePr {
 }
 
 export interface MergeGitHub {
-  /** Squash auto-merge; "already" when GitHub reports it enabled before the call. */
-  enableAutoMerge(t: PrTarget): Promise<"enabled" | "already">;
-  disableAutoMerge(t: PrTarget): Promise<void>;
+  /** Squash-merge now; GitHub refuses when branch protection is not met. Returns the merge commit. */
+  mergePr(t: PrTarget): Promise<{ sha: string }>;
   listPullFiles(t: PrTarget): Promise<PullFile[]>;
-  /** Push-event runs of the newest commit on `branch`. */
-  latestBaseRuns(owner: string, repo: string, branch: string): Promise<ActionsRun[]>;
   runsForSha(owner: string, repo: string, sha: string): Promise<ActionsRun[]>;
   prLabels(t: PrTarget): Promise<string[]>;
   /** Open PRs labelled `release`, with whether the configured user already approved each. */
@@ -42,10 +39,6 @@ export interface MergeGitHub {
 }
 
 type Octokit = ReturnType<typeof getGitHubClient>;
-
-interface AutoMergeLookup {
-  repository: { pullRequest: { id: string; autoMergeRequest: { enabledAt: string | null } | null } | null } | null;
-}
 
 interface RunJson {
   name?: string | null;
@@ -63,52 +56,16 @@ const toRun = (r: RunJson): ActionsRun => ({
   htmlUrl: r.html_url,
 });
 
-async function lookupPullRequestId(client: Octokit, t: PrTarget): Promise<{ id: string; enabledAt: string | null }> {
-  const data = await client.graphql<AutoMergeLookup>(
-    `query($owner: String!, $repo: String!, $number: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $number) { id autoMergeRequest { enabledAt } }
-      }
-    }`,
-    { owner: t.owner, repo: t.repo, number: t.number },
-  );
-  const pr = data.repository?.pullRequest;
-  if (!pr) throw new Error(`PR ${t.owner}/${t.repo}#${t.number} not found`);
-  return { id: pr.id, enabledAt: pr.autoMergeRequest?.enabledAt ?? null };
-}
-
 function createDefault(): MergeGitHub {
   const client = () => getGitHubClient();
   return {
-    async enableAutoMerge(t) {
-      const c = client();
-      const { id, enabledAt } = await lookupPullRequestId(c, t);
-      if (enabledAt) return "already";
-      await c.graphql(
-        `mutation($id: ID!) {
-          enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId }
-        }`,
-        { id },
-      );
-      return "enabled";
-    },
-    async disableAutoMerge(t) {
-      const c = client();
-      const { id } = await lookupPullRequestId(c, t);
-      await c.graphql(
-        `mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } }`,
-        { id },
-      );
+    async mergePr(t) {
+      const { data } = await client().pulls.merge({ owner: t.owner, repo: t.repo, pull_number: t.number, merge_method: "squash" });
+      return { sha: data.sha };
     },
     async listPullFiles(t) {
       const { data } = await client().pulls.listFiles({ owner: t.owner, repo: t.repo, pull_number: t.number, per_page: 100 });
       return data.map((f) => ({ filename: f.filename, patch: f.patch ?? null }));
-    },
-    async latestBaseRuns(owner, repo, branch) {
-      const { data } = await client().actions.listWorkflowRunsForRepo({ owner, repo, branch, event: "push", per_page: 20 });
-      const runs = data.workflow_runs.map(toRun);
-      const newest = runs[0]?.headSha;
-      return newest ? runs.filter((r) => r.headSha === newest) : [];
     },
     async runsForSha(owner, repo, sha) {
       const { data } = await client().actions.listWorkflowRunsForRepo({ owner, repo, head_sha: sha, per_page: 50 });

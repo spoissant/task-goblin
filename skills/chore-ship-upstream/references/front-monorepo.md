@@ -15,8 +15,8 @@ The upstream PR carries at least one `publish-*` label; none means no release wi
 ## Wait for the release (step 4)
 
 1. Wait for the `Release - Create Publish PR on Label` run on the upstream PR's head commit: `gh run list --repo Hivebrite/front-monorepo --workflow "Release - Create Publish PR on Label" --commit <headRefOid>`. Red: stop and report.
-2. Per `publish-*` label, find the open release PR whose title carries `[publish-<project>-`: `gh pr list --repo Hivebrite/front-monorepo --label release --state open --json number,title,body`.
-3. Approve each one with `gh pr review <r> --repo Hivebrite/front-monorepo --approve`.
+2. Per `publish-*` label, find the release PR whose title carries `[publish-<project>-` and whose body links the upstream PR: `gh pr list --repo Hivebrite/front-monorepo --label release --state all --limit 20 --json number,title,body,state`. One already merged (the merge watch approved it): go to step 5 for it.
+3. Approve each one with `gh pr review <r> --repo Hivebrite/front-monorepo --approve`, unless you already have: Task Goblin's merge watch approves them once the merged PR's build is green.
 4. Wait until each is merged.
 5. Read the package's npm name and version from the `package.json` the release PR changed, at `main`. Wait until the version is listed in `gh api orgs/Hivebrite/packages/npm/<name without @hivebrite/>/versions --jq '.[].name'`.
 

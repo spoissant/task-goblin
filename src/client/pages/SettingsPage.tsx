@@ -100,7 +100,7 @@ export function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold mb-4">Auto Chores</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Task Goblin starts the next chore on each task by itself; the Inbox lists what still needs you.
+            Task Goblin starts the next chore on each task by itself.
           </p>
           <AutoChoresForm />
         </section>

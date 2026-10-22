@@ -1,5 +1,6 @@
 import { getGitHubClient } from "../lib/github-client";
 import type { ChecksResult } from "./github-mappers";
+import { countedChecks, isFailedCheck } from "../lib/checks";
 import { REVIEW_STATUS_FIELDS, toReviewStatus } from "./github-review-status";
 import type { ReviewStatus } from "@/shared/review-status";
 import type { ChangesByCategory } from "@/shared/types";
@@ -19,6 +20,7 @@ export interface GqlCheckRun {
   conclusion: string | null;
   detailsUrl: string | null;
   startedAt: string | null;
+  completedAt: string | null;
   databaseId: number | null;
   /** Whether branch protection requires this check on the PR. */
   isRequired?: boolean;
@@ -28,6 +30,8 @@ export interface GqlStatusContext {
   context: string;
   state: string;
   targetUrl: string | null;
+  /** When this status was posted. */
+  createdAt: string;
   isRequired?: boolean;
 }
 
@@ -189,9 +193,9 @@ const checkFields = (number: number) => `
   number
   commits(last: 1) { nodes { commit {
     checkSuites(first: 50) { nodes { checkRuns(first: 100) {
-      nodes { name status conclusion detailsUrl startedAt databaseId isRequired(pullRequestNumber: ${number}) }
+      nodes { name status conclusion detailsUrl startedAt completedAt databaseId isRequired(pullRequestNumber: ${number}) }
     } } }
-    status { contexts { context state targetUrl isRequired(pullRequestNumber: ${number}) } }
+    status { contexts { context state targetUrl createdAt isRequired(pullRequestNumber: ${number}) } }
   } } }`;
 
 function mapFiles(files: any): Array<{ filename: string; additions: number; deletions: number }> {
@@ -459,6 +463,7 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
     conclusion: run.conclusion ? run.conclusion.toLowerCase() : null,
     url: run.detailsUrl ?? null,
     isRequired: !!run.isRequired,
+    completedAt: run.completedAt ?? null,
   }));
 
   const statusDetails = checks.statusContexts.map((status) => {
@@ -469,6 +474,8 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
       conclusion: state === "success" ? "success" : state === "pending" ? null : "failure",
       url: status.targetUrl ?? null,
       isRequired: !!status.isRequired,
+      // A status is posted at each change, so a final one was posted when it finished.
+      completedAt: state === "pending" ? null : (status.createdAt ?? null),
     };
   });
 
@@ -478,9 +485,8 @@ export function mapChecks(checks: GqlPrChecks | undefined): ChecksResult {
   for (const detail of checkRunDetails) byName.set(detail.name, detail);
   const details = [...byName.values()];
 
-  const required = details.filter((d) => d.isRequired);
-  const counted = required.length > 0 ? required : details;
-  const hasFailed = counted.some((d) => d.conclusion === "failure" || d.conclusion === "timed_out");
+  const counted = countedChecks(details);
+  const hasFailed = counted.some(isFailedCheck);
   const hasPending = counted.some((d) => d.status !== "completed");
 
   return {

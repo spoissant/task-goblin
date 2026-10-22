@@ -134,6 +134,18 @@ export function useAssignJira() {
   });
 }
 
+// Squash-merge a PR the merge gate cleared (the Merge button)
+export function useMergePr() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/merge-pr`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
 // Merge two orphan tasks (jira + pr)
 export function useMergeTasks() {
   const queryClient = useQueryClient();

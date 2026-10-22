@@ -43,7 +43,23 @@ import type { ClaudeSession, ReviewRequest, Repository } from "@/client/lib/type
 import { categorizePrSize } from "@/shared/pr-size";
 import type { PrSize } from "@/shared/types";
 
-import { formatRelativeTime } from "@/client/lib/time";
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now();
+  const then = new Date(dateString).getTime();
+  const diffSeconds = Math.round((then - now) / 1000);
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  for (const [unit, seconds] of units) {
+    if (Math.abs(diffSeconds) >= seconds) {
+      return rtf.format(Math.round(diffSeconds / seconds), unit);
+    }
+  }
+  return rtf.format(diffSeconds, "second");
+}
 
 type SizeCategory = PrSize;
 

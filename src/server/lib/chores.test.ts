@@ -255,7 +255,7 @@ describe("auto chores", () => {
     await db.update(tasks).set({ headSha: "abc123" }).where(eq(tasks.id, task.id));
     const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
 
-    expect(fingerprintFor("fix-pr-checks", row)).toBe(JSON.stringify(["abc123"]));
+    expect(fingerprintFor("fix-pr-checks", row)).toBe(JSON.stringify(["abc123", null]));
     expect(fingerprintFor("fix-pr-checks", row)).toBe(fingerprintFor("fix-pr-checks", { ...row, title: "renamed" }));
     expect(fingerprintFor("fix-pr-checks", { ...row, headSha: "def456" })).not.toBe(fingerprintFor("fix-pr-checks", row));
     expect(fingerprintFor("continue-work", row)).toBe(JSON.stringify(["In Progress", 0, "abc123", 0]));
@@ -263,10 +263,24 @@ describe("auto chores", () => {
     expect(fingerprintFor("request-reviews", row)).toBeNull();
   });
 
+  it("gives fix-pr-checks a new state when its failing checks finish again on the same commit", async () => {
+    const task = await seedTask();
+    const failedAt = (completedAt: string) =>
+      JSON.stringify([{ name: "buildkite", status: "completed", conclusion: "failure", url: null, isRequired: true, completedAt }]);
+    await db.update(tasks).set({ headSha: "abc123", checksDetails: failedAt("2026-10-22T17:30:00Z") }).where(eq(tasks.id, task.id));
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+
+    expect(fingerprintFor("fix-pr-checks", row)).toBe(JSON.stringify(["abc123", "2026-10-22T17:30:00Z"]));
+    expect(fingerprintFor("fix-pr-checks", { ...row, checksDetails: failedAt("2026-10-22T18:10:00Z") })).toBe(
+      JSON.stringify(["abc123", "2026-10-22T18:10:00Z"]),
+    );
+  });
+
   it("deploys to staging by default and keeps the usual prompt elsewhere", async () => {
     const task = await seedTask();
 
     expect(autoPromptFor("deploy-test-env", task)).toBe(`/chore-deploy-to-test-env ${task.id} staging`);
+    expect(autoPromptFor("deploy-test-env", task, [task.id, 9])).toBe(`/chore-deploy-to-test-env ${task.id} 9 staging`);
     expect(autoPromptFor("fix-pr-checks", task)).toBe(`/chore-fix-pr-checks ${task.id}`);
     expect(autoPromptFor("start-task", task)).toBeNull();
   });

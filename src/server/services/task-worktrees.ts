@@ -3,6 +3,7 @@ import { basename, dirname } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { taskWorktrees, claudeSessions, tasks, type repositories } from "../../db/schema";
+import { coversTasks } from "./session-tasks";
 import { AppError, NotFoundError } from "../lib/errors";
 import { expandPath } from "../lib/path";
 import { now } from "../lib/timestamp";
@@ -12,6 +13,7 @@ import { runShell, tailOutput } from "../lib/process";
 import { changedFileCount, fetchRef, localBranchExists, remoteBranchExists, runGit, unpushedCommitCount, worktreePrune } from "../lib/git";
 import { wtPreStart, wtRemove, wtSwitch } from "../lib/wt";
 import { broadcast } from "../lib/sse";
+import { listProjectVolumes } from "./docker-stacks";
 
 type TaskRow = typeof tasks.$inferSelect;
 type RepoRow = typeof repositories.$inferSelect;
@@ -42,6 +44,17 @@ export async function composeProjectFor(worktreePath: string): Promise<string> {
     // no .env.worktree yet: fall back to the same sanitization as script/worktree/core.sh
   }
   return basename(expanded).toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+/**
+ * Whether a worktree with its own Docker Compose project (it has a
+ * `.env.worktree`) lost every volume of it, e.g. to `bin/dev worktree-cleanup`.
+ * Its setup hook copies them again only when none exist. False when Docker is down.
+ */
+async function dockerVolumesGone(worktreePath: string): Promise<boolean> {
+  if (!existsSync(`${expandPath(worktreePath)}/.env.worktree`)) return false;
+  const volumes = await listProjectVolumes(await composeProjectFor(worktreePath));
+  return volumes?.length === 0;
 }
 
 /**
@@ -108,7 +121,7 @@ async function hasActiveSession(taskId: number): Promise<boolean> {
   const rows = await db
     .select({ id: claudeSessions.id })
     .from(claudeSessions)
-    .where(and(eq(claudeSessions.taskId, taskId), inArray(claudeSessions.state, [...ACTIVE_SESSION_STATES])))
+    .where(and(coversTasks([taskId]), inArray(claudeSessions.state, [...ACTIVE_SESSION_STATES])))
     .limit(1);
   return rows.length > 0;
 }
@@ -185,11 +198,11 @@ async function prepare(taskId: number): Promise<TaskWorktreeRow> {
   const mainPath = await resolveMainPath(repository);
   let row = await upsertPreparing(task, repository, mainPath);
 
-  if (row.state === "ready" && existsSync(expandPath(row.path))) {
+  if (row.state === "ready" && existsSync(expandPath(row.path)) && !(await dockerVolumesGone(row.path))) {
     return row;
   }
   if (row.state === "ready") {
-    // Row says ready but the directory is gone: rebuild it.
+    // Row says ready but the directory or its Docker volumes are gone: set it up again.
     row = await updateRow(row.id, { state: "preparing", error: null });
   }
 

@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocalStorage } from "@/client/lib/useLocalStorage";
+import { useTaskFilters } from "@/client/lib/taskFilters";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
+import { AutoChoresToggle } from "@/client/components/tasks/AutoChoresToggle";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
 import { SavedSearchBar, effectiveQuery, type SavedSearch } from "@/client/components/tasks/SavedSearchBar";
 import { CustomPromptDialog, type PromptChore } from "@/client/components/tasks/CustomPromptDialog";
@@ -17,28 +19,32 @@ import { Plus, Search, X } from "lucide-react";
 
 export function TasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [filters, updateFilters] = useTaskFilters();
+  const [searchQuery, setSearchQuery] = useState(filters.q);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [repoFilter, setRepoFilter] = useState<number | null>(null);
-  const [hideLowPriority, setHideLowPriority] = useLocalStorage("tasksPage.hideLowPriority", true);
-  const [backlogOnly, setBacklogOnly] = useLocalStorage("tasksPage.backlogOnly", false);
-  const [hideOnIce, setHideOnIce] = useLocalStorage("tasksPage.hideOnIce", true);
-  const [hideParents, setHideParents] = useLocalStorage("tasksPage.hideParents", false);
-  const [hideIdle, setHideIdle] = useLocalStorage("tasksPage.hideIdle", false);
-  const [idleOnly, setIdleOnly] = useLocalStorage("tasksPage.idleOnly", false);
   const [compactMode, setCompactMode] = useLocalStorage("tasksPage.compactMode", false);
-  const [savedSearches, setSavedSearches] = useLocalStorage<SavedSearch[]>("tasksPage.namedSearches", []);
-  const titleFilter = effectiveQuery(debouncedQuery, savedSearches);
+  const [savedSearchDefs, setSavedSearchDefs] = useLocalStorage<SavedSearch[]>("tasksPage.namedSearches", []);
+  // Definitions live in localStorage; which ones are active lives in the URL.
+  const savedSearches = savedSearchDefs.map((s) => ({ ...s, active: filters.saved.includes(s.id) }));
+  const setSavedSearches = (next: SavedSearch[]) => {
+    setSavedSearchDefs(next);
+    updateFilters({ saved: next.filter((s) => s.active).map((s) => s.id) });
+  };
+  const titleFilter = effectiveQuery(filters.q, savedSearches);
 
   const [bulkPromptTarget, setBulkPromptTarget] = useState<
-    { taskId: number; chore: PromptChore | null; initialPrompt?: string } | undefined
+    { taskId: number; chore: PromptChore | null; initialPrompt?: string; withTaskIds?: number[] } | undefined
   >(undefined);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
+    const timer = setTimeout(() => updateFilters({ q: searchQuery.trim() }), 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, updateFilters]);
+
+  // Back/forward changes the URL: bring the input along.
+  useEffect(() => {
+    setSearchQuery((current) => (current.trim() === filters.q ? current : filters.q));
+  }, [filters.q]);
 
   // Same query + filters as TaskTable, so this reads from the shared cache instead of refetching.
   const { data: tasksData } = useTasksQuery({ title: titleFilter });
@@ -58,7 +64,11 @@ export function TasksPage() {
     const ids = chore.repoPairs ? orderForRepoPair(chore.repoPairs, selection) : Array.from(selectedIds);
     if (!ids || ids.length === 0) return;
     const prompt = chore.prompt.replace("{{taskId}}", ids.join(" ")).replace("{{jiraKey}}", "");
-    setBulkPromptTarget({ taskId: ids[0], chore: { number: chore.number, key: chore.key, name: chore.name, prompt } });
+    setBulkPromptTarget({
+      taskId: ids[0],
+      chore: { number: chore.number, key: chore.key, name: chore.name, prompt },
+      withTaskIds: chore.supportsBulk ? ids.slice(1) : undefined, // a two-repo chore names its tasks in the prompt only
+    });
   };
 
   const handleCustomPromptForSelection = () => {
@@ -77,11 +87,10 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="hide-low-priority"
-              checked={hideLowPriority}
-              onCheckedChange={(checked) => {
-                setHideLowPriority(checked === true);
-                if (checked === true) setBacklogOnly(false);
-              }}
+              checked={filters.sprint}
+              onCheckedChange={(checked) =>
+                updateFilters(checked === true ? { sprint: true, backlog: false } : { sprint: false })
+              }
             />
             <Label htmlFor="hide-low-priority" className="text-sm cursor-pointer whitespace-nowrap">
               Sprint view
@@ -90,11 +99,10 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="backlog-only"
-              checked={backlogOnly}
-              onCheckedChange={(checked) => {
-                setBacklogOnly(checked === true);
-                if (checked === true) setHideLowPriority(false);
-              }}
+              checked={filters.backlog}
+              onCheckedChange={(checked) =>
+                updateFilters(checked === true ? { backlog: true, sprint: false } : { backlog: false })
+              }
             />
             <Label htmlFor="backlog-only" className="text-sm cursor-pointer whitespace-nowrap">
               Backlog
@@ -103,8 +111,8 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="hide-on-ice"
-              checked={hideOnIce}
-              onCheckedChange={(checked) => setHideOnIce(checked === true)}
+              checked={filters.hideOnIce}
+              onCheckedChange={(checked) => updateFilters({ hideOnIce: checked === true })}
             />
             <Label htmlFor="hide-on-ice" className="text-sm cursor-pointer whitespace-nowrap">
               Hide on ice
@@ -113,8 +121,8 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="hide-parents"
-              checked={hideParents}
-              onCheckedChange={(checked) => setHideParents(checked === true)}
+              checked={filters.hideParents}
+              onCheckedChange={(checked) => updateFilters({ hideParents: checked === true })}
             />
             <Label htmlFor="hide-parents" className="text-sm cursor-pointer whitespace-nowrap">
               Hide parents
@@ -123,11 +131,10 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="hide-idle"
-              checked={hideIdle}
-              onCheckedChange={(checked) => {
-                setHideIdle(checked === true);
-                if (checked === true) setIdleOnly(false);
-              }}
+              checked={filters.hideIdle}
+              onCheckedChange={(checked) =>
+                updateFilters(checked === true ? { hideIdle: true, idleOnly: false } : { hideIdle: false })
+              }
             />
             <Label htmlFor="hide-idle" className="text-sm cursor-pointer whitespace-nowrap">
               Hide idle
@@ -136,11 +143,10 @@ export function TasksPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               id="idle-only"
-              checked={idleOnly}
-              onCheckedChange={(checked) => {
-                setIdleOnly(checked === true);
-                if (checked === true) setHideIdle(false);
-              }}
+              checked={filters.idleOnly}
+              onCheckedChange={(checked) =>
+                updateFilters(checked === true ? { idleOnly: true, hideIdle: false } : { idleOnly: false })
+              }
             />
             <Label htmlFor="idle-only" className="text-sm cursor-pointer whitespace-nowrap">
               Show idle
@@ -191,6 +197,7 @@ export function TasksPage() {
             )}
           </div>
         )}
+        <AutoChoresToggle />
         <RefreshButton />
         {selectedIds.size === 0 && (
           <Button onClick={() => setCreateModalOpen(true)}>
@@ -202,22 +209,22 @@ export function TasksPage() {
 
       <RepoFilterBar
         titleFilter={titleFilter}
-        selectedRepoId={repoFilter}
-        onSelectedRepoIdChange={setRepoFilter}
+        selectedRepoId={filters.repo}
+        onSelectedRepoIdChange={(repo) => updateFilters({ repo })}
       />
 
       <TaskTable
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         titleFilter={titleFilter}
-        hideLowPriority={hideLowPriority}
-        backlogOnly={backlogOnly}
-        hideOnIce={hideOnIce}
-        hideParents={hideParents}
-        hideIdle={hideIdle}
-        idleOnly={idleOnly}
+        hideLowPriority={filters.sprint}
+        backlogOnly={filters.backlog}
+        hideOnIce={filters.hideOnIce}
+        hideParents={filters.hideParents}
+        hideIdle={filters.hideIdle}
+        idleOnly={filters.idleOnly}
         compactMode={compactMode}
-        repoFilter={repoFilter}
+        repoFilter={filters.repo}
         onSearch={setSearchQuery}
       />
 
@@ -228,6 +235,7 @@ export function TasksPage() {
         taskId={bulkPromptTarget?.taskId ?? 0}
         chore={bulkPromptTarget?.chore ?? null}
         initialPrompt={bulkPromptTarget?.initialPrompt}
+        withTaskIds={bulkPromptTarget?.withTaskIds}
       />
     </div>
   );

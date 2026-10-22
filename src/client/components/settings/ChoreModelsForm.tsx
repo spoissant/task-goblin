@@ -16,6 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/client/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/client/components/ui/table";
 
 export function ChoreModelsForm() {
   const { data } = useChoreDefinitionsQuery();
@@ -30,46 +38,60 @@ export function ChoreModelsForm() {
     );
   };
 
-  // Reviewing a colleague's PR from the Reviews page is not a numbered chore.
+  // Reviewing a colleague's PR from the Reviews page and custom prompts are not numbered chores.
   const rows = [
     ...(data?.items ?? []).map((chore) => ({ key: chore.key, name: chore.name, label: `#${chore.number} ${chore.name}` })),
     { key: "review-pr", name: "Code review", label: "Code review (colleague PR)" },
+    { key: "custom", name: "Custom prompt", label: "Custom prompt" },
   ];
 
   return (
-    <div className="space-y-2">
-      {rows.map((chore) => {
-        const current = getDefault(chore.key);
-        return (
-          <div key={chore.key} className="flex items-center gap-4">
-            <span className="flex-1 text-sm">{chore.label}</span>
-            <Select value={current.model} onValueChange={(v) => save(chore.key, { model: v as SessionModel })}>
-              <SelectTrigger className="w-32" aria-label={`${chore.name} model`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SESSION_MODELS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {MODEL_LABELS[m]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={current.effort} onValueChange={(v) => save(chore.key, { effort: v as SessionEffort })}>
-              <SelectTrigger className="w-32" aria-label={`${chore.name} effort`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SESSION_EFFORTS.map((e) => (
-                  <SelectItem key={e} value={e}>
-                    {EFFORT_LABELS[e]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      })}
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-full">Chore</TableHead>
+          <TableHead>Model</TableHead>
+          <TableHead>Effort</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((chore) => {
+          const current = getDefault(chore.key);
+          return (
+            <TableRow key={chore.key}>
+              <TableCell>{chore.label}</TableCell>
+              <TableCell>
+                <Select value={current.model} onValueChange={(v) => save(chore.key, { model: v as SessionModel })}>
+                  <SelectTrigger className="w-32" aria-label={`${chore.name} model`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SESSION_MODELS.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {MODEL_LABELS[m]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TableCell>
+              <TableCell>
+                <Select value={current.effort} onValueChange={(v) => save(chore.key, { effort: v as SessionEffort })}>
+                  <SelectTrigger className="w-32" aria-label={`${chore.name} effort`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SESSION_EFFORTS.map((e) => (
+                      <SelectItem key={e} value={e}>
+                        {EFFORT_LABELS[e]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

@@ -52,7 +52,7 @@ describe("claude sessions", () => {
     finishedTaskIds.length = 0;
     setOnSessionFinished((taskId) => finishedTaskIds.push(taskId));
     rmSync(JOBS_DIR, { recursive: true, force: true });
-    for (const t of ["claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
+    for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "worktrees", "repositories"]) {
       sqlite.exec(`DELETE FROM ${t}`);
     }
     sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
@@ -134,6 +134,61 @@ describe("claude sessions", () => {
     } finally {
       setCapacityCheck(async () => "ok");
     }
+  });
+
+  it("runs AI QA on one task per repository and refuses it while another task holds the dev stack", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
+      VALUES (2, 'B task', 'In progress', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 1, 0)`);
+    try {
+      expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "ai-qa" })).status).toBe(202);
+      const busy = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "ai-qa" });
+      expect(busy.status).toBe(409);
+      expect((await busy.json()).error.code).toBe("DEV_STACK_BUSY");
+      // other chores are not held back
+      expect((await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "request-reviews" })).status).toBe(202);
+
+      await new Promise((r) => setTimeout(r, 50)); // let the background starts settle
+      sqlite.exec(`UPDATE claude_sessions SET state = 'done'`);
+      const stack = { taskId: 1, branch: "fix/EV-1", state: "up", pid: null, detail: null, error: null, startedAt: "x" };
+      sqlite.exec(`INSERT INTO settings (key, value) VALUES ('dev_stack', '${JSON.stringify(stack)}')`);
+      const held = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "ai-qa" });
+      expect(held.status).toBe(409);
+      expect((await held.json()).error.message).toBe("Dev stack belongs to fix/EV-1");
+      // the stack's owner may QA again
+      expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "ai-qa" })).status).toBe(202);
+    } finally {
+      sqlite.exec(`DELETE FROM settings WHERE key = 'dev_stack'`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  });
+
+  it("links the other tasks of a bulk chore run to its session", async () => {
+    const ts = "'2026-01-01T00:00:00.000Z'";
+    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft, approved_review_count)
+      VALUES (2, 'B task', 'Code review', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 0, 0)`);
+    const single = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "fix-pr-checks", withTaskIds: [2] });
+    expect(single.status).toBe(400);
+    expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds: [9] })).status).toBe(404);
+
+    const res = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "request-reviews", withTaskIds: [2] });
+    expect(res.status).toBe(202);
+    const created = await res.json();
+    expect(created).toMatchObject({ prompt: "/chore-request-reviews 1 2", name: "EV-1 +1 · Request Code Reviews", linkedTaskIds: [2] });
+
+    // the linked task lists the session and counts as busy
+    const ofTask2 = await (await request("GET", "/api/v1/tasks/2/sessions")).json();
+    expect(ofTask2.items.map((s: { id: number }) => s.id)).toEqual([created.id]);
+    const latest = await (await request("GET", "/api/v1/sessions")).json();
+    expect(latest.items.map((s: { id: number; linkedTaskIds: number[] }) => [s.id, s.linkedTaskIds])).toEqual([[created.id, [2]]]);
+    const busy = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "request-reviews" });
+    expect(busy.status).toBe(409);
+
+    // both tasks are synced when it finishes
+    await new Promise((r) => setTimeout(r, 50));
+    writeState("abcd1234", { state: "done", updatedAt: "2026-01-01T00:02:00.000Z", firstTerminalAt: "2026-01-01T00:02:00.000Z" });
+    await pollActiveSessions();
+    expect(finishedTaskIds).toEqual([1, 2]);
   });
 
   it("starts a main-checkout chore, polls it to done, and reaps it", async () => {

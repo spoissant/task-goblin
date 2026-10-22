@@ -17,6 +17,7 @@ import {
   startReviewSession,
   stopSession,
   toApi,
+  toApiList,
 } from "../services/claude-sessions";
 import { listDailyConcurrency, listSessionAnalytics } from "../services/session-usage";
 import { SESSION_EFFORTS, SESSION_MODELS } from "../../shared/types";
@@ -26,7 +27,7 @@ export const sessionRoutes: Routes = {
   // Newest session per task, for the tasks table.
   "/api/v1/sessions": {
     async GET() {
-      const items = (await listLatestSessions()).map(toApi);
+      const items = await toApiList(await listLatestSessions());
       return json({ items, total: items.length });
     },
   },
@@ -41,7 +42,7 @@ export const sessionRoutes: Routes = {
       const since = sinceParam === null ? null : new Date(sinceParam);
       if (since && Number.isNaN(since.getTime())) throw new ValidationError("since must be an ISO 8601 timestamp");
       const { rows, total } = await listRecentSessions(limit, offset, since?.toISOString() ?? null);
-      const items = rows.map((row) => ({ ...toApi(row), taskTitle: row.taskTitle }));
+      const items = await toApiList(rows);
       return json({ items, total, limit, offset });
     },
   },
@@ -65,7 +66,7 @@ export const sessionRoutes: Routes = {
   // Task-less PR reviews for the Reviews page: newest session per PR, and start one.
   "/api/v1/review-sessions": {
     async GET() {
-      const items = (await listLatestReviewSessions()).map(toApi);
+      const items = await toApiList(await listLatestReviewSessions());
       return json({ items, total: items.length });
     },
 
@@ -74,7 +75,7 @@ export const sessionRoutes: Routes = {
       if (typeof body.prUrl !== "string" || !body.prUrl) throw new ValidationError("prUrl is required");
       const model = optionalEnum(body.model, SESSION_MODELS, "model");
       const effort = optionalEnum(body.effort, SESSION_EFFORTS, "effort");
-      return json(toApi(await startReviewSession(body.prUrl, { model, effort })), 202);
+      return json(await toApi(await startReviewSession(body.prUrl, { model, effort })), 202);
     },
   },
 
@@ -94,19 +95,19 @@ export const sessionRoutes: Routes = {
 
   "/api/v1/sessions/:id": {
     async GET(_req, params) {
-      return json(toApi(await getSession(parseId(params.id))));
+      return json(await toApi(await getSession(parseId(params.id))));
     },
   },
 
   "/api/v1/sessions/:id/stop": {
     async POST(_req, params) {
-      return json(toApi(await stopSession(parseId(params.id))));
+      return json(await toApi(await stopSession(parseId(params.id))));
     },
   },
 
   "/api/v1/sessions/:id/respawn": {
     async POST(_req, params) {
-      return json(toApi(await respawnSession(parseId(params.id))));
+      return json(await toApi(await respawnSession(parseId(params.id))));
     },
   },
 
@@ -114,7 +115,7 @@ export const sessionRoutes: Routes = {
     async GET(_req, params) {
       const id = parseId(params.id);
       await getTaskOrThrow(id);
-      const items = (await listTaskSessions(id)).map(toApi);
+      const items = await toApiList(await listTaskSessions(id));
       return json({ items, total: items.length });
     },
 
@@ -128,14 +129,15 @@ export const sessionRoutes: Routes = {
       const effort = optionalEnum(body.effort, SESSION_EFFORTS, "effort");
       const prompt = typeof body.prompt === "string" ? body.prompt : null;
       if (typeof body.choreKey === "string" && body.choreKey) {
-        const row = await startChoreSession(id, body.choreKey, { prompt, model, effort });
-        return json(toApi(row), 202);
+        const withTaskIds = optionalIds(body.withTaskIds, "withTaskIds");
+        const row = await startChoreSession(id, body.choreKey, { prompt, model, effort, withTaskIds });
+        return json(await toApi(row), 202);
       }
       if (prompt === null) {
         throw new ValidationError("choreKey or prompt is required");
       }
       const row = await startCustomSession(id, { prompt, model, effort });
-      return json(toApi(row), 202);
+      return json(await toApi(row), 202);
     },
   },
 };
@@ -146,6 +148,14 @@ const IMAGE_TYPES: Record<string, string> = {
   "image/gif": "gif",
   "image/webp": "webp",
 };
+
+function optionalIds(value: unknown, field: string): number[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || !value.every((v) => Number.isInteger(v) && v > 0)) {
+    throw new ValidationError(`${field} must be an array of task IDs`);
+  }
+  return value;
+}
 
 function optionalEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T | null {
   if (value === undefined || value === null || value === "") return null;

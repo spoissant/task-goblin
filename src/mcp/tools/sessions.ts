@@ -26,6 +26,10 @@ export function registerSessionTools(server: McpServer) {
         taskId: z.number().int().describe("Task ID"),
         choreKey: z.string().optional().describe("Chore key, e.g. ai-qa, fix-merge-conflicts, deploy-test-env"),
         prompt: z.string().optional().describe("Custom prompt (required when choreKey is omitted)"),
+        withTaskIds: z
+          .array(z.number().int())
+          .optional()
+          .describe("Other tasks of a bulk chore run (chores with supportsBulk); linked to the session so they count as busy"),
         model: z.enum(SESSION_MODELS).optional(),
         effort: z.enum(SESSION_EFFORTS).optional(),
       },

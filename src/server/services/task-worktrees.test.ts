@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { sqlite } from "../../db";
@@ -122,14 +122,20 @@ describe("task worktree routes", () => {
   });
 
   /** Main checkout registered for repo 1, plus a runner that fakes git and wt. */
-  function setupRepo(opts: { branchExists: boolean; wtPath?: (main: string) => string; hooksExit?: number }) {
+  function setupRepo(opts: {
+    branchExists: boolean;
+    wtPath?: (main: string) => string;
+    hooksExit?: number;
+    dockerVolumes?: () => CommandResult;
+  }) {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
     sqlite.exec(`INSERT INTO worktrees (repository_id, path, created_at, updated_at) VALUES (1, '${main}', ${ts}, ${ts})`);
     const calls: { args: string[]; opts: CommandOptions }[] = [];
-    setCommandRunner(async (_cmd, args, runOpts) => {
+    setCommandRunner(async (cmd, args, runOpts) => {
       calls.push({ args, opts: runOpts });
+      if (cmd === "docker" && args[0] === "volume") return opts.dockerVolumes?.() ?? ok();
       const wt = wtCommand(args);
       if (wt === "switch") return ok(JSON.stringify({ path: opts.wtPath?.(main) ?? `${main}.wt` }));
       if (wt === "hook") return { stdout: "hooks ran", stderr: "", exitCode: opts.hooksExit ?? 0 };
@@ -185,6 +191,28 @@ describe("task worktree routes", () => {
     expect(wtCalls().filter((a) => a[0] === "switch")).toEqual([
       ["switch", "feat/x", "--no-hooks", "--no-cd", "--yes", "--format", "json"],
     ]);
+  });
+
+  it("sets a ready worktree up again once its Docker volumes are gone", async () => {
+    let volumes = ok("alumni_connect_feat_x_bundle\n");
+    const { main, wtCalls } = setupRepo({ branchExists: true, wtPath: (m) => `${m}.feat-x`, dockerVolumes: () => volumes });
+    mkdirSync(`${main}.feat-x`);
+    writeFileSync(`${main}.feat-x/.env.worktree`, "COMPOSE_PROJECT_NAME=alumni_connect_feat_x\n");
+    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+    const hookRuns = () => wtCalls().filter((a) => a[0] === "hook").length;
+
+    await ensureTaskWorktree(1);
+    await ensureTaskWorktree(1);
+    expect(hookRuns()).toBe(1);
+
+    volumes = { stdout: "", stderr: "Cannot connect to the Docker daemon", exitCode: 1 };
+    await ensureTaskWorktree(1);
+    expect(hookRuns()).toBe(1);
+
+    volumes = ok(); // e.g. after bin/dev worktree-cleanup
+    await ensureTaskWorktree(1);
+    expect(hookRuns()).toBe(2);
+    expect((await getTaskWorktreeRow(1))?.state).toBe("ready");
   });
 
   it("repoints a stale worktree row when the task moved to another repository", async () => {

@@ -9,6 +9,7 @@ export interface CheckDetail {
   conclusion: string | null;
   url: string | null;
   isRequired?: boolean; // absent on details synced before required checks were tracked
+  completedAt?: string | null; // absent on details synced before finish times were tracked
 }
 
 // Unified Task - can be manual, Jira-only, PR-only, or merged
@@ -64,7 +65,6 @@ export interface Task {
   // Merge gate and post-merge watch
   headSha: string | null;
   mergeCommitSha: string | null;
-  autoMergeEnabledAt: string | null;
   mergeHold: string | null; // JSON MergeHold, see shared/merge
   baseBuildState: string | null; // pending | passed | failed | missing
   baseBuildUrl: string | null;
@@ -199,6 +199,7 @@ export interface ClaudeSession {
   sessionId: string | null;
   bridgeSessionId: string | null;
   link: string | null; // https://claude.ai/code/session_XXX, derived from bridgeSessionId
+  linkedTaskIds: number[]; // the other tasks of a bulk chore run; the session's own task is taskId
   state: ClaudeSessionState;
   detail: string | null;
   needs: string | null;

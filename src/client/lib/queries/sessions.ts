@@ -94,6 +94,8 @@ export interface StartSessionInput {
   effort: SessionEffort;
   /** Records the session under that chore; the prompt stands in for its command. */
   choreKey?: string;
+  /** The other tasks of a bulk chore run, linked to the session. */
+  withTaskIds?: number[];
 }
 
 export function useStartSession() {

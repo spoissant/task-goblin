@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type { SyncResult, MatchResult, Task, Repository, SyncBranchResult } from "../types";
 import { taskKeys } from "./tasks";
@@ -7,8 +7,23 @@ import { choreKeys } from "./chores";
 
 export type SyncStep = "jira" | "github" | "matching";
 
+const nextSyncKey = ["sync", "next"] as const;
+
 export interface SyncOptions {
   onStepChange?: (step: SyncStep | null) => void;
+}
+
+/** When the server's next auto sync pass starts; null while its scheduler is off. */
+export function useNextSyncQuery() {
+  return useQuery({
+    queryKey: nextSyncKey,
+    queryFn: () => api.get<{ nextSyncAt: string | null }>("/sync/next"),
+    // Refetch just after the pass starts, to pick up the one after it.
+    refetchInterval: (query) => {
+      const at = query.state.data?.nextSyncAt;
+      return at ? Math.max(Date.parse(at) - Date.now() + 1000, 5000) : 60_000;
+    },
+  });
 }
 
 export function useSyncMatch() {
@@ -134,6 +149,8 @@ export function useSyncAll(options?: SyncOptions) {
     },
     onSettled: () => {
       options?.onStepChange?.(null);
+      // The server restarts its countdown after the after-sync steps.
+      queryClient.invalidateQueries({ queryKey: nextSyncKey });
     },
   });
 }

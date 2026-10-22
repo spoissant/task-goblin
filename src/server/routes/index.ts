@@ -14,7 +14,7 @@ import { sessionRoutes } from "./sessions";
 import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
 import { standupRoutes } from "./standups";
-import { inboxRoutes } from "./inbox";
+import { mergeGateRoutes } from "./merge-gate";
 import { json } from "../response";
 
 const healthRoute: Routes = {
@@ -42,5 +42,5 @@ export const routes: Routes = {
   ...teamChannelRoutes,
   ...choreRoutes,
   ...standupRoutes,
-  ...inboxRoutes,
+  ...mergeGateRoutes,
 };
