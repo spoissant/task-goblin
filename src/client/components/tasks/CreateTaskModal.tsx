@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useCreateTask } from "@/client/lib/queries";
+import { useCreateTask } from "@/client/lib/queries/tasks";
 import { useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";

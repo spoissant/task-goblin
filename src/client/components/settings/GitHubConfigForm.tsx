@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries";
+import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 import { Card, CardContent } from "@/client/components/ui/card";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";

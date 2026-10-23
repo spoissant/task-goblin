@@ -54,11 +54,11 @@ describe("task worktree routes", () => {
 
   beforeEach(() => {
     for (const t of ["claude_sessions", "task_worktrees", "tasks", "repositories"]) {
-      sqlite.exec(`DELETE FROM ${t}`);
+      sqlite.run(`DELETE FROM ${t}`);
     }
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number)
       VALUES (1, 'Old ac task', 'Done', ${ts}, ${ts}, 'EV-1', 1, 10),
              (2, 'Old ac task 2', 'Done', ${ts}, ${ts}, 'EV-2', 1, 11),
              (3, 'Old fm task', 'Done', ${ts}, ${ts}, 'EV-3', 2, 12),
@@ -123,7 +123,7 @@ describe("task worktree routes", () => {
   }) {
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
-    sqlite.exec(`UPDATE repositories SET local_path = '${main}' WHERE id = 1`);
+    sqlite.run(`UPDATE repositories SET local_path = '${main}' WHERE id = 1`);
     const calls: { args: string[]; opts: CommandOptions }[] = [];
     setCommandRunner(async (cmd, args, runOpts) => {
       calls.push({ args, opts: runOpts });
@@ -139,8 +139,8 @@ describe("task worktree routes", () => {
 
   it("creates a new branch from the base with wt, then runs its pre-start hooks", async () => {
     const { main, wtCalls } = setupRepo({ branchExists: false });
-    sqlite.exec(`UPDATE repositories SET default_base_branch = 'sprint' WHERE id = 1`);
-    sqlite.exec(`UPDATE tasks SET type = 'Bug' WHERE id = 1`);
+    sqlite.run(`UPDATE repositories SET default_base_branch = 'sprint' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET type = 'Bug' WHERE id = 1`);
 
     await ensureTaskWorktree(1);
 
@@ -158,10 +158,10 @@ describe("task worktree routes", () => {
   it("names a hivetests sub-task's branch like its alumni_connect parent's", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const { wtCalls } = setupRepo({ branchExists: false });
-    sqlite.exec(`UPDATE repositories SET repo = 'hivetests' WHERE id = 1`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, type, repository_id)
+    sqlite.run(`UPDATE repositories SET repo = 'hivetests' WHERE id = 1`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, type, repository_id)
       VALUES (6, 'Poll deletion', 'In Progress', ${ts}, ${ts}, 'EV-6', 'Story', 2)`);
-    sqlite.exec(`UPDATE tasks SET parent_key = 'EV-6', type = 'Sub-task', pr_number = NULL WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET parent_key = 'EV-6', type = 'Sub-task', pr_number = NULL WHERE id = 1`);
 
     await ensureTaskWorktree(1);
 
@@ -171,8 +171,8 @@ describe("task worktree routes", () => {
 
   it("answers a preparation with wt's sibling path for the branch until wt reports the real one", async () => {
     const { main } = setupRepo({ branchExists: false });
-    sqlite.exec(`UPDATE repositories SET local_path = '${main}/' WHERE id = 1`);
-    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/PS-1' WHERE id = 1`);
+    sqlite.run(`UPDATE repositories SET local_path = '${main}/' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET head_branch = 'feat/PS-1' WHERE id = 1`);
 
     const res = await request("POST", "/api/v1/tasks/1/worktree");
 
@@ -185,7 +185,7 @@ describe("task worktree routes", () => {
   it("checks out an existing task branch and reuses the ready worktree afterwards", async () => {
     const { main, wtCalls } = setupRepo({ branchExists: true, wtPath: (m) => `${m}.by-hand` });
     mkdirSync(`${main}.by-hand`);
-    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
 
     await ensureTaskWorktree(1);
     await ensureTaskWorktree(1);
@@ -203,7 +203,7 @@ describe("task worktree routes", () => {
     const { main, wtCalls } = setupRepo({ branchExists: true, wtPath: (m) => `${m}.feat-x`, dockerVolumes: () => volumes });
     mkdirSync(`${main}.feat-x`);
     writeFileSync(`${main}.feat-x/.env.worktree`, "COMPOSE_PROJECT_NAME=alumni_connect_feat_x\n");
-    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
     const hookRuns = () => wtCalls().filter((a) => a[0] === "hook").length;
 
     await ensureTaskWorktree(1);
@@ -223,7 +223,7 @@ describe("task worktree routes", () => {
   it("repoints a stale worktree row when the task moved to another repository", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const { main } = setupRepo({ branchExists: false });
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, error, created_at, updated_at)
+    sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, error, created_at, updated_at)
       VALUES (1, 2, '/elsewhere/front-monorepo.EV-1', 'failed', 'old error', ${ts}, ${ts})`);
 
     await ensureTaskWorktree(1);
@@ -237,7 +237,7 @@ describe("task worktree routes", () => {
 
   it("fails when the branch is checked out in the main checkout", async () => {
     setupRepo({ branchExists: true, wtPath: (m) => m });
-    sqlite.exec(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET head_branch = 'feat/x' WHERE id = 1`);
 
     await ensureTaskWorktree(1);
 
@@ -248,7 +248,7 @@ describe("task worktree routes", () => {
 
   it("fails with the hook output when pre-start hooks fail, and skips the setup command", async () => {
     const { calls } = setupRepo({ branchExists: false, hooksExit: 2 });
-    sqlite.exec(`UPDATE repositories SET setup_command = 'pnpm install' WHERE id = 1`);
+    sqlite.run(`UPDATE repositories SET setup_command = 'pnpm install' WHERE id = 1`);
 
     await ensureTaskWorktree(1);
 
@@ -262,7 +262,7 @@ describe("task worktree routes", () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const { main, wtCalls } = setupRepo({ branchExists: true });
     mkdirSync(`${main}.fix-EV-1`);
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+    sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
       VALUES (1, 1, '${main}.fix-EV-1', 'ready', ${ts}, ${ts})`);
 
     const res = await request("DELETE", "/api/v1/tasks/1");
@@ -275,8 +275,8 @@ describe("task worktree routes", () => {
   it("recounts a task's uncommitted files and unpushed commits", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const path = mkdtempSync(join(tmpdir(), "tg-wt-"));
-    sqlite.exec(`UPDATE tasks SET uncommitted_files = 573, unpushed_commits = 2 WHERE id = 1`);
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+    sqlite.run(`UPDATE tasks SET uncommitted_files = 573, unpushed_commits = 2 WHERE id = 1`);
+    sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
       VALUES (1, 1, '${path}', 'ready', ${ts}, ${ts})`);
     setCommandRunner(async (_cmd, args) => ok(args[0] === "rev-list" ? "0" : ""));
 
@@ -292,8 +292,8 @@ describe("task worktree routes", () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
     const main = join(mkdtempSync(join(tmpdir(), "tg-")), "alumni_connect");
     mkdirSync(main);
-    sqlite.exec(`UPDATE repositories SET teardown_command = 'bin/dev worktree-cleanup {{composeProject}}', local_path = '${main}' WHERE id = 1`);
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+    sqlite.run(`UPDATE repositories SET teardown_command = 'bin/dev worktree-cleanup {{composeProject}}', local_path = '${main}' WHERE id = 1`);
+    sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
       VALUES (1, 1, '${main}.EV-1', 'ready', ${ts}, ${ts})`);
     const calls: { args: string[]; opts: CommandOptions }[] = [];
     setCommandRunner(async (_cmd, args, opts) => {
@@ -312,9 +312,9 @@ describe("task worktree routes", () => {
 
   it("moves the source task's worktree to the target on merge", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
       VALUES (6, 'PR for EV-4', 'open', ${ts}, ${ts}, 1, 20, 'open')`);
-    sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
+    sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at)
       VALUES (6, 1, '/repo/alumni_connect.task-6', 'ready', ${ts}, ${ts})`);
 
     await mergeSingleTask(4, 6);

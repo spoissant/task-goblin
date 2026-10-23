@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { SessionEffort, SessionModel } from "@/client/lib/types";
+import type { SessionEffort, SessionModel } from "@/shared/types";
 import { ApiError } from "@/client/lib/api";
 import { handleResponse } from "@/shared/api";
 import { useChoreModelDefaults } from "@/client/lib/chore-models";

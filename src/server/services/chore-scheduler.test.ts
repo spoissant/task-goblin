@@ -76,7 +76,7 @@ async function seedSession(taskId: number, overrides: Partial<typeof claudeSessi
 }
 
 const sessions = () => db.select().from(claudeSessions).orderBy(claudeSessions.id);
-const setState = (state: string) => sqlite.exec(`UPDATE claude_sessions SET state = '${state}'`);
+const setState = (state: string) => sqlite.run(`UPDATE claude_sessions SET state = '${state}'`);
 
 describe("runChoreScheduler", () => {
   beforeAll(() => {
@@ -86,7 +86,7 @@ describe("runChoreScheduler", () => {
 
   beforeEach(async () => {
     for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "repositories", "settings", "status_categories"]) {
-      sqlite.exec(`DELETE FROM ${t}`);
+      sqlite.run(`DELETE FROM ${t}`);
     }
     invalidateStatusConfigCache();
     await db.insert(statusCategories).values([
@@ -164,7 +164,7 @@ describe("runChoreScheduler", () => {
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
     await settle();
     setState("done");
-    sqlite.exec("UPDATE tasks SET head_sha = 'bbb' WHERE id = 1");
+    sqlite.run("UPDATE tasks SET head_sha = 'bbb' WHERE id = 1");
 
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
     await settle();
@@ -183,7 +183,7 @@ describe("runChoreScheduler", () => {
     setState("done");
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
 
-    sqlite.exec(`UPDATE tasks SET checks_details = '${failedAt("2026-10-21T11:40:00Z")}' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET checks_details = '${failedAt("2026-10-21T11:40:00Z")}' WHERE id = 1`);
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
   });
 
@@ -230,7 +230,7 @@ describe("runChoreScheduler", () => {
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
     await setSetting(AUTO_CHORES_SETTING, "true");
 
-    sqlite.exec(`UPDATE tasks SET chore_skips = '{"auto":true}' WHERE id = 1`);
+    sqlite.run(`UPDATE tasks SET chore_skips = '{"auto":true}' WHERE id = 1`);
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
     expect(await sessions()).toHaveLength(0);
   });
@@ -273,14 +273,14 @@ describe("runChoreScheduler", () => {
     ]);
 
     // a linked task is busy while the batch runs, then done on that state
-    sqlite.exec(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
+    sqlite.run(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
     setState("done");
-    sqlite.exec(`UPDATE tasks SET head_sha = 'aaa' WHERE id = 2`);
+    sqlite.run(`UPDATE tasks SET head_sha = 'aaa' WHERE id = 2`);
     expect(await runChoreScheduler({ now: NOON })).toBe(0);
 
     // a new state waits for the periodic sync, not a post-session run
-    sqlite.exec(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
+    sqlite.run(`UPDATE tasks SET head_sha = 'bbb' WHERE id = 2`);
     expect(await runChoreScheduler({ taskId: 2, now: NOON })).toBe(0);
     expect(await runChoreScheduler({ now: NOON })).toBe(1);
     await settle();

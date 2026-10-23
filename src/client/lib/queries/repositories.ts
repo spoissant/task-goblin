@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Repository, ListResponse } from "../types";
+import { taskKeys } from "./tasks";
+import type { Repository, ListResponse } from "@/shared/types";
 
 const repositoryKeys = {
   all: ["repositories"] as const,
@@ -31,6 +32,7 @@ export function useCreateRepository() {
       api.post<Repository>("/repositories", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all }); // task rows carry their repository
     },
   });
 }
@@ -43,6 +45,7 @@ export function useUpdateRepository() {
       api.patch<Repository>(`/repositories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all }); // task rows carry their repository
     },
   });
 }
@@ -54,6 +57,7 @@ export function useDeleteRepository() {
     mutationFn: (id: number) => api.delete(`/repositories/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all }); // task rows carry their repository
     },
   });
 }

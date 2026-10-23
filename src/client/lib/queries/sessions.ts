@@ -10,7 +10,7 @@ import type {
   SessionAnalyticsRow,
   SessionEffort,
   SessionModel,
-} from "../types";
+} from "@/shared/types";
 import { taskKeys } from "./tasks";
 
 const sessionKeys = {

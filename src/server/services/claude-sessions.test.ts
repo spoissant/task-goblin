@@ -49,11 +49,11 @@ describe("claude sessions", () => {
     setOnSessionFinished((taskId) => finishedTaskIds.push(taskId));
     rmSync(JOBS_DIR, { recursive: true, force: true });
     for (const t of ["claude_session_tasks", "claude_sessions", "task_worktrees", "tasks", "repositories", "settings"]) {
-      sqlite.exec(`DELETE FROM ${t}`);
+      sqlite.run(`DELETE FROM ${t}`);
     }
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (1, 'hb', 'alumni_connect', 1, '${MAIN_PATH}')`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (1, 'hb', 'alumni_connect', 1, '${MAIN_PATH}')`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
       VALUES (1, 'A task', 'Code review', ${ts}, ${ts}, 'EV-1', 1, 10, 'fix/EV-1', 'open', 0)`);
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
@@ -119,8 +119,8 @@ describe("claude sessions", () => {
     expect(page2.total).toBe(2);
 
     // since: last Claude activity, falling back to creation
-    sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = NULL WHERE id = ${recent.items[1].id}`);
-    sqlite.exec(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = '2026-01-03T00:00:00.000Z' WHERE id = ${recent.items[0].id}`);
+    sqlite.run(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = NULL WHERE id = ${recent.items[1].id}`);
+    sqlite.run(`UPDATE claude_sessions SET created_at = '2026-01-01T00:00:00.000Z', claude_updated_at = '2026-01-03T00:00:00.000Z' WHERE id = ${recent.items[0].id}`);
     const since = await (await request("GET", "/api/v1/sessions/recent?since=2026-01-02T00:00:00-05:00")).json();
     expect(since.items.map((s: { id: number }) => s.id)).toEqual([recent.items[0].id]);
     expect(since.total).toBe(1);
@@ -129,7 +129,7 @@ describe("claude sessions", () => {
 
   it("runs AI QA on one task per repository and refuses it while another task holds the dev stack", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
       VALUES (2, 'B task', 'In progress', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 1)`);
     try {
       expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "ai-qa" })).status).toBe(202);
@@ -140,23 +140,23 @@ describe("claude sessions", () => {
       expect((await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "request-reviews" })).status).toBe(202);
 
       await new Promise((r) => setTimeout(r, 50)); // let the background starts settle
-      sqlite.exec(`UPDATE claude_sessions SET state = 'done'`);
+      sqlite.run(`UPDATE claude_sessions SET state = 'done'`);
       const stack = { taskId: 1, prUrl: null, branch: "fix/EV-1", state: "up", pid: null, detail: null, error: null, startedAt: "x" };
-      sqlite.exec(`INSERT INTO settings (key, value) VALUES ('dev_stack', '${JSON.stringify(stack)}')`);
+      sqlite.run(`INSERT INTO settings (key, value) VALUES ('dev_stack', '${JSON.stringify(stack)}')`);
       const held = await request("POST", "/api/v1/tasks/2/sessions", { choreKey: "ai-qa" });
       expect(held.status).toBe(409);
       expect((await held.json()).error.message).toBe("Dev stack belongs to fix/EV-1");
       // the stack's owner may QA again
       expect((await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "ai-qa" })).status).toBe(202);
     } finally {
-      sqlite.exec(`DELETE FROM settings WHERE key = 'dev_stack'`);
+      sqlite.run(`DELETE FROM settings WHERE key = 'dev_stack'`);
       await new Promise((r) => setTimeout(r, 50));
     }
   });
 
   it("links the other tasks of a bulk chore run to its session", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id, pr_number, head_branch, pr_state, is_draft)
       VALUES (2, 'B task', 'Code review', ${ts}, ${ts}, 'EV-2', 1, 11, 'fix/EV-2', 'open', 0)`);
     const single = await request("POST", "/api/v1/tasks/1/sessions", { choreKey: "fix-pr-checks", withTaskIds: [2] });
     expect(single.status).toBe(400);
@@ -196,7 +196,7 @@ describe("claude sessions", () => {
       expect(res.status).toBe(202);
       const { id, model, effort } = await res.json();
       await new Promise((r) => setTimeout(r, 50)); // let the background start settle
-      sqlite.exec(`UPDATE claude_sessions SET state = 'done' WHERE id = ${id}`); // free the task for the next start
+      sqlite.run(`UPDATE claude_sessions SET state = 'done' WHERE id = ${id}`); // free the task for the next start
       return { model, effort };
     };
 

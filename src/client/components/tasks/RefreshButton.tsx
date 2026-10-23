@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNextSyncQuery, useSyncAll } from "@/client/lib/queries";
+import { useNextSyncQuery, useSyncAll } from "@/client/lib/queries/sync";
 import { ApiError } from "@/client/lib/api";
 import { Button } from "@/client/components/ui/button";
 import { RefreshCw } from "lucide-react";

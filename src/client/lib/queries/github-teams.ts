@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import type { GitHubTeam, ListResponse } from "../types";
+import type { GitHubTeam, ListResponse } from "@/shared/types";
 
 const githubTeamKeys = {
   all: ["github-teams"] as const,

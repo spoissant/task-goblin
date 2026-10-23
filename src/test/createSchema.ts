@@ -18,6 +18,6 @@ const ddl = statements
   .join("\n");
 
 /** Creates every table and index of the schema that the database doesn't have yet. */
-export function createTestTables(sqlite: { exec: (sql: string) => void }): void {
-  sqlite.exec(ddl);
+export function createTestTables(sqlite: { run: (sql: string) => unknown }): void {
+  sqlite.run(ddl);
 }

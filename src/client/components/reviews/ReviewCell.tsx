@@ -1,6 +1,6 @@
 import { CheckCircle, PencilLine, RotateCcw, Sparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import type { ClaudeSession } from "@/client/lib/types";
+import type { ClaudeSession } from "@/shared/types";
 import { useRespawnSession, useStartReviewSession, type StartReviewInput } from "@/client/lib/queries/sessions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";

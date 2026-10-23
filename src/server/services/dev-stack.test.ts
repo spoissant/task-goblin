@@ -52,15 +52,15 @@ describe("dev stack", () => {
     spawnedCommands.length = 0;
     exits.length = 0;
     bootOutput = "";
-    for (const t of ["settings", "tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch, local_path) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint', '${MAIN}')`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (2, 'hb', 'front-monorepo', 1, '${MAIN}')`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (3, 'hb', 'harborhive', 1)`);
+    for (const t of ["settings", "tasks", "repositories"]) sqlite.run(`DELETE FROM ${t}`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled, default_base_branch, local_path) VALUES (1, 'hb', 'alumni_connect', 1, 'sprint', '${MAIN}')`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled, local_path) VALUES (2, 'hb', 'front-monorepo', 1, '${MAIN}')`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (3, 'hb', 'harborhive', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (1, 't1', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-1')`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (2, 't2', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-2')`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (3, 't3', 'In Progress', ${ts}, ${ts}, 2, 'feat/x')`);
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (4, 't4', 'In Progress', ${ts}, ${ts}, 3, 'feat/y')`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (1, 't1', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-1')`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (2, 't2', 'In Progress', ${ts}, ${ts}, 1, 'fix/EV-2')`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (3, 't3', 'In Progress', ${ts}, ${ts}, 2, 'feat/x')`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (4, 't4', 'In Progress', ${ts}, ${ts}, 3, 'feat/y')`);
 
     setCommandRunner(async (cmd, args) => {
       commands.push([cmd, ...args].join(" "));
@@ -99,7 +99,7 @@ describe("dev stack", () => {
 
   afterEach(async () => {
     // Let a pending readiness watcher notice the record is gone.
-    sqlite.exec("DELETE FROM settings");
+    sqlite.run("DELETE FROM settings");
     await Bun.sleep(20);
     resetCommandRunner();
     setDevStackRuntime(null);
@@ -264,7 +264,7 @@ describe("dev stack", () => {
 
     // Simulate a crash whose EXIT trap killed Docker but left the dev-server
     // supervisor tree running past the recorded pid.
-    sqlite.exec(
+    sqlite.run(
       `UPDATE settings SET value = '${JSON.stringify({
         taskId: 1,
         prUrl: null,
@@ -358,7 +358,7 @@ describe("dev stack", () => {
   });
 
   it("merges other tasks' branches on top of the owner's and lets each of them act as owner", async () => {
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (5, 't5', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1, 'fix/EV-5')`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, head_branch) VALUES (5, 't5', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1, 'fix/EV-5')`);
     ready();
     await bootDevStack({ taskId: 1 }, [2, 5, 1]);
     await devStackSettled();
@@ -408,7 +408,7 @@ describe("dev stack", () => {
   });
 
   it("refuses to merge tasks of another repository or without a branch", async () => {
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id) VALUES (6, 't6', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1)`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id) VALUES (6, 't6', 'In Progress', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1)`);
     await expect(bootDevStack({ taskId: 1 }, [3])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(bootDevStack({ taskId: 1 }, [6])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(bootDevStack({ taskId: 1 }, [99])).rejects.toMatchObject({ code: "NOT_FOUND" });

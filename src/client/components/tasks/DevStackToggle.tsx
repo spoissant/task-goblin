@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useBootDevStack, useDevStackOverviewQuery, useRefreshDevStack, useStopDevStack } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
 import { cn } from "@/client/lib/utils";
-import type { DevStack, DevStackOwner } from "@/client/lib/types";
+import type { DevStack, DevStackOwner } from "@/shared/types";
 
 interface DevStackToggleProps {
   owner: DevStackOwner;

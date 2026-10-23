@@ -60,18 +60,3 @@ export function validatePagination(
 
   return { limit, offset };
 }
-
-/**
- * Safely parse a JSON string array from database field.
- * Returns empty array on null/invalid JSON.
- */
-export function parseDeploymentBranches(value: string | null): string[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string");
-  } catch {
-    return [];
-  }
-}

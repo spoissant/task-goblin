@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useUpdateTask } from "@/client/lib/queries";
+import { useUpdateTask } from "@/client/lib/queries/tasks";
 import {
   Card,
   CardContent,
@@ -13,7 +13,7 @@ import { Markdown } from "@/client/components/ui/markdown";
 import { InteractiveStatusBadge } from "./InteractiveStatusBadge";
 import { Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
-import type { TaskDetail } from "@/client/lib/types";
+import type { TaskDetail } from "@/shared/types";
 
 interface TaskHeaderProps {
   task: TaskDetail;

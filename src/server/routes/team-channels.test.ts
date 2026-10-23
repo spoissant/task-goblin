@@ -8,7 +8,7 @@ const request = routeClient(teamChannelRoutes);
 
 beforeAll(() => createTestTables(sqlite));
 
-beforeEach(() => sqlite.exec("DELETE FROM team_channels"));
+beforeEach(() => sqlite.run("DELETE FROM team_channels"));
 
 async function createMapping() {
   const res = await request("POST", "/api/v1/team-channels", { githubTeamSlug: " team-backend ", slackChannel: " #backend-prs " });

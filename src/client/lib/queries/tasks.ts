@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Task, TaskDetail, TaskListItem, ListResponse, PaginatedResponse } from "../types";
+import type { Task, TaskDetail, TaskListItem, ListResponse, PaginatedResponse } from "@/shared/types";
 import { choreKeys } from "./chores";
 
 export const taskKeys = {

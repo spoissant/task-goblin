@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Check, Copy, Mic, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { useGenerateStandup, useJiraConfigQuery, useStandupsQuery } from "@/client/lib/queries";
+import { useGenerateStandup, useStandupsQuery } from "@/client/lib/queries/standups";
+import { useJiraConfigQuery } from "@/client/lib/queries/settings";
 import { linkJiraKeys } from "@/client/lib/standup";
 import { formatCost } from "@/client/lib/sessions";
 import { Button } from "@/client/components/ui/button";

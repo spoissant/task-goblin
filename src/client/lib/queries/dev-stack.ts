@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh } from "../types";
+import type { DevStack, DevStackOverview, DevStackOwner, DevStackRefresh } from "@/shared/types";
 
 const devStackKeys = {
   all: ["dev-stack"] as const,

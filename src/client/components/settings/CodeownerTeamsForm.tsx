@@ -7,7 +7,7 @@ import { Checkbox } from "@/client/components/ui/checkbox";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
 import { toast } from "sonner";
-import type { GitHubTeam } from "@/client/lib/types";
+import type { GitHubTeam } from "@/shared/types";
 import { CODEOWNER_TEAMS_SETTING } from "@/shared/settings-keys";
 import { parseJson, parseStringList } from "@/shared/json";
 

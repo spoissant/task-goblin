@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { parseJson } from "@/shared/json";
-import type { ClaudeSession } from "./types";
+import type { ClaudeSession } from "@/shared/types";
 
 /**
  * Finished sessions whose result has been looked at, kept in localStorage.

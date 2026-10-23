@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { SyncRunResult, Task, TaskSyncResult } from "../types";
+import type { SyncRunResult, Task, TaskSyncResult } from "@/shared/types";
 import { taskKeys } from "./tasks";
 import { choreKeys } from "./chores";
 

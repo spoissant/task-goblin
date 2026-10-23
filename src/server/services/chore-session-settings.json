@@ -13,6 +13,12 @@
       "serverName": "claude.ai Booking.com"
     },
     {
+      "serverName": "claude.ai Claude Docs"
+    },
+    {
+      "serverName": "claude.ai claude_security"
+    },
+    {
       "serverName": "claude.ai Costory"
     },
     {
@@ -73,9 +79,6 @@
       "serverName": "claude.ai Lovable"
     },
     {
-      "serverName": "claude.ai Mermaid Chart"
-    },
-    {
       "serverName": "claude.ai Mesmer"
     },
     {
@@ -89,9 +92,6 @@
     },
     {
       "serverName": "claude.ai ProductBoard (beta)"
-    },
-    {
-      "serverName": "claude.ai Sentry"
     },
     {
       "serverName": "claude.ai Tray AI"

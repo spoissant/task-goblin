@@ -5,7 +5,7 @@ import { getAllSettings, getBoolSetting, getSetting, setSetting } from "./settin
 
 beforeAll(() => createTestTables(sqlite));
 
-beforeEach(() => sqlite.exec("DELETE FROM settings"));
+beforeEach(() => sqlite.run("DELETE FROM settings"));
 
 describe("settings accessors", () => {
   it("reads null for an unset key, then what was last set", async () => {

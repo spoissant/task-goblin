@@ -17,7 +17,7 @@ describe("sync scheduler", () => {
   });
 
   beforeEach(() => {
-    for (const t of ["tasks", "settings"]) sqlite.exec(`DELETE FROM ${t}`);
+    for (const t of ["tasks", "settings"]) sqlite.run(`DELETE FROM ${t}`);
   });
 
   afterEach(() => stopSyncScheduler());

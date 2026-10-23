@@ -29,6 +29,23 @@ export function registerTaskTools(server: McpServer) {
     (lookup) => toolResult(async () => get<TaskDetail>(`/api/v1/tasks/${await resolveTaskId(lookup)}`))
   );
 
+  // create_task
+  server.registerTool(
+    "create_task",
+    {
+      description:
+        "Create a task from a GitHub PR, e.g. a colleague's PR the sync doesn't pull (it only pulls the configured user's PRs). " +
+        "Links it like the sync does (to the Jira task its title names, if any) and returns the task with its repository.",
+      inputSchema: {
+        owner: z.string().describe("GitHub repo owner (user or org)"),
+        repo: z.string().describe("GitHub repo name"),
+        prNumber: z.number().int().describe("GitHub PR number"),
+      },
+    },
+    ({ owner, repo, prNumber }) =>
+      toolResult(() => post<TaskDetail>("/api/v1/tasks/from-pr", { owner, repo, prNumber }))
+  );
+
   // list_tasks
   server.registerTool(
     "list_tasks",

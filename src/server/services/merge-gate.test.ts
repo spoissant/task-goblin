@@ -170,9 +170,9 @@ describe("runMergeGate", () => {
   beforeEach(async () => {
     calls.length = 0;
     files = [];
-    sqlite.exec("DELETE FROM tasks");
-    sqlite.exec("DELETE FROM repositories");
-    sqlite.exec("DELETE FROM status_categories");
+    sqlite.run("DELETE FROM tasks");
+    sqlite.run("DELETE FROM repositories");
+    sqlite.run("DELETE FROM status_categories");
     invalidateStatusConfigCache();
     await db.insert(statusCategories).values([
       { name: "Code Review", color: "y", done: 0, displayOrder: 1, jiraMappings: "[]" },

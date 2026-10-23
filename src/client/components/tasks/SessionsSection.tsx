@@ -3,11 +3,10 @@ import { toast } from "sonner";
 import { ApiError } from "@/client/lib/api";
 import { useTaskSessionsQuery } from "@/client/lib/queries/sessions";
 import { useChoresQuery } from "@/client/lib/queries/chores";
-import type { Task } from "@/client/lib/types";
+import type { Task } from "@/shared/types";
 import { useRemoveTaskWorktree, useTaskWorktreeQuery } from "@/client/lib/queries/worktrees";
 import { Button } from "@/client/components/ui/button";
 import { CopyChip } from "@/client/components/ui/copy-chip";
-import { TooltipProvider } from "@/client/components/ui/tooltip";
 import { SessionsTable } from "./SessionsTable";
 import { formatActive, formatCost } from "@/client/lib/sessions";
 import { AiCell } from "./columns/AiCell";
@@ -52,9 +51,7 @@ export function SessionsSection({ task }: { task: Task }) {
             {formatCost(totalCost)} · {formatActive(totalActive)} active
           </span>
         )}
-        <TooltipProvider>
-          <AiCell task={task} session={items[0]} nextChore={nextChore} />
-        </TooltipProvider>
+        <AiCell task={task} session={items[0]} nextChore={nextChore} />
       </div>
 
       {worktree && (

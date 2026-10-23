@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { ExternalLink, RotateCcw } from "lucide-react";
-import type { ClaudeSession, ClaudeSessionState } from "@/client/lib/types";
+import type { ClaudeSession, ClaudeSessionState } from "@/shared/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
 import { useRespawnSession } from "@/client/lib/queries/sessions";
 import { STATE_UI, canRespawn, formatActive, formatCost, formatTime } from "@/client/lib/sessions";

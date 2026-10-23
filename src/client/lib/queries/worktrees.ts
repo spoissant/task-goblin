@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { RepositoryGuess, Task, TaskWorktreeStatus } from "../types";
+import type { RepositoryGuess, Task, TaskWorktreeStatus } from "@/shared/types";
 import { taskKeys } from "./tasks";
 
 const worktreeKeys = {

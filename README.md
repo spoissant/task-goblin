@@ -122,6 +122,7 @@ Task Goblin exposes an MCP server for AI agents; the chore skills call it. It go
 | Tool | Description |
 |------|-------------|
 | `get_task` | Get a task by ID, Jira key, PR number or branch, with its repository |
+| `create_task` | Import a GitHub PR as a task (e.g. a colleague's PR the sync doesn't pull) |
 | `list_tasks` | List tasks, paginated, filtered by status, title or key search, checks, unresolved comments, or completed |
 | `update_task` | Update a task's title, description, status (not for Jira tasks), repository (only while it has no PR) or chore skips |
 | `delete_task` | Permanently delete a task and tear down its worktree |

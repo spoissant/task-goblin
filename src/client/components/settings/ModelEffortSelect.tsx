@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/client/lib/types";
+import { SESSION_EFFORTS, SESSION_MODELS, type SessionEffort, type SessionModel } from "@/shared/types";
 import {
   Select,
   SelectContent,

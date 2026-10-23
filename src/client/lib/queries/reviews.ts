@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import type { ReviewRequest, ListResponse } from "../types";
+import type { ReviewRequest, ListResponse } from "@/shared/types";
 
 export type ReviewScope = "others" | "mine";
 

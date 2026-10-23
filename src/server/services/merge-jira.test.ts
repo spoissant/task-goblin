@@ -24,8 +24,8 @@ describe("merge jira", () => {
   beforeEach(async () => {
     calls.length = 0;
     issues = {};
-    sqlite.exec("DELETE FROM tasks");
-    sqlite.exec("DELETE FROM status_categories");
+    sqlite.run("DELETE FROM tasks");
+    sqlite.run("DELETE FROM status_categories");
     invalidateStatusConfigCache();
     await db.insert(statusCategories).values([
       { name: "Ready to Merge", color: "g", done: 0, displayOrder: 1, jiraMappings: JSON.stringify(["Ready to Merge"]) },
@@ -46,7 +46,7 @@ describe("merge jira", () => {
 
   afterEach(() => {
     resetMergeJira();
-    sqlite.exec("DELETE FROM tasks"); // the sync scheduler tests run the real step
+    sqlite.run("DELETE FROM tasks"); // the sync scheduler tests run the real step
   });
 
   async function insert(jiraKey: string | null, over: Partial<typeof tasks.$inferInsert> = {}): Promise<number> {

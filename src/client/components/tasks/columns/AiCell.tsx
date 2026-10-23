@@ -12,7 +12,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { ClaudeSession, ClaudeSessionState, Task } from "@/client/lib/types";
+import type { ClaudeSession, ClaudeSessionState, Task } from "@/shared/types";
 import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { resolvePrompt, type ChoreEntry } from "@/shared/chores";
 import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";

@@ -6,7 +6,7 @@ import type {
   StatusSettings,
   StatusCategory,
   ListResponse,
-} from "../types";
+} from "@/shared/types";
 
 const settingsKeys = {
   all: ["settings"] as const,

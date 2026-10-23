@@ -21,13 +21,13 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  for (const t of ["tasks", "repositories", "settings", "status_categories"]) sqlite.exec(`DELETE FROM ${t}`);
-  sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
-  sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key)
+  for (const t of ["tasks", "repositories", "settings", "status_categories"]) sqlite.run(`DELETE FROM ${t}`);
+  sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
+  sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key)
     VALUES (1, 'Jira summary', 'In Progress', ${ts}, ${ts}, 'EV-1')`);
-  sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
+  sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id, pr_number, pr_state)
     VALUES (2, 'ev-1-branch', 'Code Review', ${ts}, ${ts}, 1, 20, 'open')`);
-  sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (3, 'Manual', 'To Do', ${ts}, ${ts})`);
+  sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (3, 'Manual', 'To Do', ${ts}, ${ts})`);
   invalidateStatusConfigCache();
 });
 
@@ -44,7 +44,7 @@ describe("POST /tasks/:id/sync", () => {
   });
 
   it("reports each source's failure on its own and still returns the task", async () => {
-    sqlite.exec(`UPDATE tasks SET jira_key = 'EV-2' WHERE id = 2`);
+    sqlite.run(`UPDATE tasks SET jira_key = 'EV-2' WHERE id = 2`);
 
     const res = await request("POST", "/api/v1/tasks/2/sync");
 
@@ -98,9 +98,9 @@ describe("POST /tasks/:id/merge-pr", () => {
   afterEach(() => resetMergeGitHub());
 
   it("answers GitHub refusing the merge with GitHub's status and reason", async () => {
-    sqlite.exec(`INSERT INTO status_categories (name, color, done, display_order, jira_mappings)
+    sqlite.run(`INSERT INTO status_categories (name, color, done, display_order, jira_mappings)
       VALUES ('Ready to Merge', 'green', 0, 1, '["Ready to Merge"]')`);
-    sqlite.exec(`UPDATE tasks SET jira_key = 'EV-2', status = 'Ready to Merge', checks_status = 'passing',
+    sqlite.run(`UPDATE tasks SET jira_key = 'EV-2', status = 'Ready to Merge', checks_status = 'passing',
       review_status = '{"decision":"APPROVED"}', merge_ready = 1 WHERE id = 2`);
     const refusal = Object.assign(new Error("Pull Request is not mergeable"), { status: 405 });
     const github: MergeGitHub = {
@@ -117,5 +117,18 @@ describe("POST /tasks/:id/merge-pr", () => {
 
     expect(res.status).toBe(405);
     expect((await res.json()).error).toEqual({ code: "MERGE_REFUSED", message: "Pull Request is not mergeable" });
+  });
+});
+
+describe("POST /tasks/from-pr", () => {
+  it("requires owner, repo and a PR number", async () => {
+    const res = await request("POST", "/api/v1/tasks/from-pr", { owner: "hb", repo: "alumni_connect" });
+    expect(res.status).toBe(400);
+  });
+
+  it("reports GitHub's failure instead of creating a task", async () => {
+    const res = await request("POST", "/api/v1/tasks/from-pr", { owner: "hb", repo: "alumni_connect", prNumber: 21 });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(sqlite.query("SELECT COUNT(*) AS n FROM tasks WHERE pr_number = 21").get()).toEqual({ n: 0 });
   });
 });

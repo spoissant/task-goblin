@@ -10,8 +10,8 @@ const request = routeClient(settingsRoutes);
 beforeAll(() => createTestTables(sqlite));
 
 beforeEach(() => {
-  sqlite.exec("DELETE FROM settings");
-  sqlite.exec("DELETE FROM status_categories");
+  sqlite.run("DELETE FROM settings");
+  sqlite.run("DELETE FROM status_categories");
   invalidateStatusConfigCache();
 });
 

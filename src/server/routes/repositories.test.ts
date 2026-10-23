@@ -9,8 +9,8 @@ const request = routeClient(repositoryRoutes);
 beforeAll(() => createTestTables(sqlite));
 
 beforeEach(() => {
-  sqlite.exec("DELETE FROM tasks");
-  sqlite.exec("DELETE FROM repositories");
+  sqlite.run("DELETE FROM tasks");
+  sqlite.run("DELETE FROM repositories");
 });
 
 async function createRepo(body: Record<string, unknown> = {}) {
@@ -79,7 +79,7 @@ describe("PATCH /api/v1/repositories/:id", () => {
 describe("DELETE /api/v1/repositories/:id", () => {
   it("refuses while tasks reference the repository", async () => {
     const { id } = await createRepo();
-    sqlite.exec(`INSERT INTO tasks (title, status, created_at, updated_at, repository_id) VALUES ('t', 'To Do', 'x', 'x', ${id})`);
+    sqlite.run(`INSERT INTO tasks (title, status, created_at, updated_at, repository_id) VALUES ('t', 'To Do', 'x', 'x', ${id})`);
     expect((await request("DELETE", `/api/v1/repositories/${id}`)).status).toBe(409);
   });
 

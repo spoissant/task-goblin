@@ -4,12 +4,23 @@ import { getTaskOrThrow } from "../lib/queries";
 import { getBody } from "../lib/request";
 import { parseId, parsePrUrl } from "../lib/validation";
 import { mergeTaskPr } from "../services/merge-gate";
-import { linkJiraToTask, linkPrToTask, syncTaskDetail } from "../services/task-sync";
+import { importPr, linkJiraToTask, linkPrToTask, syncTaskDetail } from "../services/task-sync";
 import type { Routes } from "../router";
 
 // A task's links to its PR and its Jira issue: attaching one by hand,
 // re-pulling both, and the Merge button.
 export const taskLinkRoutes: Routes = {
+  // Import one PR as a task (the sync only pulls the configured user's PRs)
+  "/api/v1/tasks/from-pr": {
+    async POST(req) {
+      const { owner, repo, prNumber } = await getBody(req);
+      if (typeof owner !== "string" || typeof repo !== "string" || !Number.isInteger(prNumber) || prNumber <= 0) {
+        throw new ValidationError("owner, repo and prNumber are required");
+      }
+      return json(await importPr(owner, repo, prNumber));
+    },
+  },
+
   // Manually attach a PR (by GitHub URL) to an existing task
   "/api/v1/tasks/:id/assign-pr": {
     async POST(req, params) {

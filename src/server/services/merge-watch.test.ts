@@ -49,8 +49,8 @@ describe("merge watch", () => {
     runs = [];
     labels = [];
     releasePrs = [];
-    for (const t of ["tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'Hivebrite', 'alumni_connect', 1), (2, 'Hivebrite', 'front-monorepo', 1)`);
+    for (const t of ["tasks", "repositories"]) sqlite.run(`DELETE FROM ${t}`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'Hivebrite', 'alumni_connect', 1), (2, 'Hivebrite', 'front-monorepo', 1)`);
     setMergeGitHub(stub);
   });
 

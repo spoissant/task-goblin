@@ -9,7 +9,7 @@ import { tasks, repositories } from "../../db/schema";
 import { getGitHubClient, getGitHubConfig, GitHubError, toGitHubError } from "../lib/github-client";
 import { httpStatusOf } from "../lib/errors";
 import { findRepository } from "../lib/queries";
-import { parseDeploymentBranches } from "../lib/validation";
+import { parseStringList } from "@/shared/json";
 import { parseJson } from "@/shared/json";
 import { mapGqlPrToTaskData, type PrTaskData } from "./github-mappers";
 import {
@@ -97,7 +97,7 @@ function labelDetectedBranches(pr: GqlPrCore, deploymentBranches: string[]): str
 function containmentRequest(pr: GqlPrCore, { repo, number }: PrRef, deployed: Map<string, string> = new Map()) {
   if (pr.state !== "OPEN" || !pr.headRefName) return null;
   const targets = [
-    ...parseDeploymentBranches(repo.deploymentBranches).map((b) => ({ label: b, ref: b, kind: "branch" as const })),
+    ...parseStringList(repo.deploymentBranches).map((b) => ({ label: b, ref: b, kind: "branch" as const })),
     ...[...deployed].map(([label, sha]) => ({ label, ref: sha, kind: "deployed" as const })),
   ];
   if (targets.length === 0) return null;
@@ -130,7 +130,7 @@ async function fetchPrs(client: GitHubClient, prs: PrRef[]): Promise<Map<string,
     const pr = core.get(key);
     if (!pr) continue;
     const contained = containment.get(key);
-    const labelled = pr.state === "OPEN" ? labelDetectedBranches(pr, parseDeploymentBranches(ref.repo.deploymentBranches)) : [];
+    const labelled = pr.state === "OPEN" ? labelDetectedBranches(pr, parseStringList(ref.repo.deploymentBranches)) : [];
     result.set(
       key,
       mapGqlPrToTaskData(pr, ref.repo.id, mapChecks(checks.get(key)), contained?.onBranches ?? [], contained?.deployedOn ?? [], labelled)

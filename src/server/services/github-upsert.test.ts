@@ -56,9 +56,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  for (const t of ["tasks", "repositories", "status_categories"]) sqlite.exec(`DELETE FROM ${t}`);
-  sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (10, 'hb', 'hivetests', 1)`);
-  sqlite.exec(`INSERT INTO status_categories (name, color, done, display_order, jira_mappings)
+  for (const t of ["tasks", "repositories", "status_categories"]) sqlite.run(`DELETE FROM ${t}`);
+  sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (10, 'hb', 'hivetests', 1)`);
+  sqlite.run(`INSERT INTO status_categories (name, color, done, display_order, jira_mappings)
     VALUES ('In Progress', 'blue', 0, 1, '[]'), ('Code Review', 'yellow', 0, 2, '[]'), ('Done', 'green', 1, 3, '[]')`);
   invalidateStatusConfigCache();
 });

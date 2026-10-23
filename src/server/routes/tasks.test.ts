@@ -16,10 +16,10 @@ beforeAll(() => {
 
 beforeEach(() => {
   // Clear all tables before each test
-  sqlite.exec("DELETE FROM tasks");
-  sqlite.exec("DELETE FROM repositories");
-  sqlite.exec("DELETE FROM settings");
-  sqlite.exec("DELETE FROM status_categories");
+  sqlite.run("DELETE FROM tasks");
+  sqlite.run("DELETE FROM repositories");
+  sqlite.run("DELETE FROM settings");
+  sqlite.run("DELETE FROM status_categories");
 });
 
 // Helper to make requests
@@ -49,14 +49,14 @@ describe("Tasks endpoints", () => {
     await request("POST", "/api/v1/tasks", { title: "Parent story" });
     await request("POST", "/api/v1/tasks", { title: "Epic" });
     await request("POST", "/api/v1/tasks", { title: "Leaf" });
-    sqlite.exec("UPDATE tasks SET jira_key = 'PS-1' WHERE title = 'Parent story'");
-    sqlite.exec("UPDATE tasks SET jira_key = 'PS-9' WHERE title = 'Epic'");
-    sqlite.exec("UPDATE tasks SET jira_key = 'PS-3' WHERE title = 'Leaf'");
+    sqlite.run("UPDATE tasks SET jira_key = 'PS-1' WHERE title = 'Parent story'");
+    sqlite.run("UPDATE tasks SET jira_key = 'PS-9' WHERE title = 'Epic'");
+    sqlite.run("UPDATE tasks SET jira_key = 'PS-3' WHERE title = 'Leaf'");
     // Children are Done, so they are absent from the default (non-completed) list
-    sqlite.exec(
+    sqlite.run(
       "INSERT INTO tasks (title, status, created_at, updated_at, jira_key, parent_key) VALUES ('Sub', 'Done', '2026-01-01', '2026-01-01', 'PS-2', 'PS-1')"
     );
-    sqlite.exec(
+    sqlite.run(
       "INSERT INTO tasks (title, status, created_at, updated_at, jira_key, epic_key) VALUES ('Child', 'Done', '2026-01-01', '2026-01-01', 'PS-4', 'PS-9')"
     );
 
@@ -146,7 +146,7 @@ describe("Tasks endpoints", () => {
 
 describe("Task repository changes", () => {
   beforeEach(() => {
-    sqlite.exec(
+    sqlite.run(
       `INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`
     );
   });
@@ -171,7 +171,7 @@ describe("Task repository changes", () => {
 
   it("rejects a repository change once the task has a PR", async () => {
     const created = await (await request("POST", "/api/v1/tasks", { title: "Has a PR" })).json();
-    sqlite.exec(`UPDATE tasks SET repository_id = 1, pr_number = 42 WHERE id = ${created.id}`);
+    sqlite.run(`UPDATE tasks SET repository_id = 1, pr_number = 42 WHERE id = ${created.id}`);
 
     const res = await request("PATCH", `/api/v1/tasks/${created.id}`, { repositoryId: 2 });
     expect(res.status).toBe(400);

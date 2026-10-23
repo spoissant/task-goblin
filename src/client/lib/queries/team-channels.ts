@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { TeamChannel, ListResponse } from "../types";
+import type { TeamChannel, ListResponse } from "@/shared/types";
 
 const teamChannelKeys = {
   all: ["team-channels"] as const,

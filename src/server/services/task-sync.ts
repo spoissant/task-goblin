@@ -13,7 +13,7 @@ import { upsertPrTask, writePrFields } from "./github-upsert";
 import { syncJiraItemByKey } from "./jira-sync";
 import { mergeSingleTask } from "./task-merge";
 import { getTaskWorktreeRow, refreshTaskGitStatus } from "./task-worktrees";
-import type { TaskSyncResult } from "@/shared/types";
+import type { TaskDetail, TaskSyncResult } from "@/shared/types";
 
 type TaskRow = typeof tasks.$inferSelect;
 
@@ -118,4 +118,22 @@ export async function syncTaskDetail(taskId: number): Promise<TaskSyncResult> {
   }
   if (!task) throw new NotFoundError("Task", taskId);
   return { task, errors };
+}
+
+/**
+ * Import one PR as a task, e.g. a colleague's PR the sync doesn't pull (it only
+ * pulls the configured user's). Linked like a synced PR; returns the task holding it.
+ */
+export async function importPr(owner: string, repo: string, prNumber: number): Promise<TaskDetail> {
+  const data = await fetchPrTaskData(owner, repo, prNumber);
+  await upsertPrTask(data);
+  const [holder] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.repositoryId, data.repositoryId), eq(tasks.prNumber, data.prNumber)))
+    .orderBy(tasks.id)
+    .limit(1);
+  const task = holder ? await getTaskWithRepository(holder.id) : null;
+  if (!task) throw new AppError(`PR #${prNumber} was not imported`, 500, "IMPORT_FAILED");
+  return task;
 }

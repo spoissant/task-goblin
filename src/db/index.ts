@@ -7,7 +7,7 @@ const dbPath = process.env.DATABASE_URL ?? "task-goblin.db";
 const sqlite = new Database(dbPath);
 
 if (dbPath !== ":memory:") {
-  sqlite.exec("PRAGMA journal_mode = WAL;");
+  sqlite.run("PRAGMA journal_mode = WAL;");
 }
 
 export const db = drizzle(sqlite, { schema: { ...schema, ...relations } });

@@ -88,9 +88,9 @@ describe("session usage", () => {
   beforeEach(() => {
     rmSync(ROOT, { recursive: true, force: true });
     mkdirSync(ARCHIVE, { recursive: true });
-    sqlite.exec("DELETE FROM claude_session_requests");
-    sqlite.exec("DELETE FROM claude_sessions");
-    sqlite.exec(`INSERT INTO claude_sessions (id, chore_key, chore_name, prompt, cwd, name, state, session_id, created_at, updated_at)
+    sqlite.run("DELETE FROM claude_session_requests");
+    sqlite.run("DELETE FROM claude_sessions");
+    sqlite.run(`INSERT INTO claude_sessions (id, chore_key, chore_name, prompt, cwd, name, state, session_id, created_at, updated_at)
       VALUES (1, 'start-task', 'Start Task', 'p', '/Users/me/repo', 'EV-1 · Start Task', 'done', '${SID}', 'x', 'x')`);
     writeTranscript();
   });
@@ -150,7 +150,7 @@ describe("session usage", () => {
     await collectSessionUsage();
     // the process stops after that collection
     const stoppedAt = new Date(Date.parse(session().usage_collected_at as string) + 1).toISOString();
-    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '${stoppedAt}' WHERE id = 1`);
+    sqlite.run(`UPDATE claude_sessions SET process_stopped_at = '${stoppedAt}' WHERE id = 1`);
     await Bun.sleep(5);
 
     // nothing new since: dated after the stop, which settles it
@@ -165,28 +165,28 @@ describe("session usage", () => {
     expect(requests()).toHaveLength(2);
 
     // clearing usage_collected_at recomputes it
-    sqlite.exec("UPDATE claude_sessions SET usage_collected_at = NULL WHERE id = 1");
+    sqlite.run("UPDATE claude_sessions SET usage_collected_at = NULL WHERE id = 1");
     await collectSessionUsage();
     expect(requests()).toHaveLength(3);
   });
 
   it("collects a respawned session again", async () => {
     await collectSessionUsage();
-    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '2000-01-01T00:00:00.000Z' WHERE id = 1`);
+    sqlite.run(`UPDATE claude_sessions SET process_stopped_at = '2000-01-01T00:00:00.000Z' WHERE id = 1`);
     appendFileSync(`${DIR}/${SID}.jsonl`, "\n" + assistant("msg_3", "claude-opus-5-5", usage(0, 0, 0, 0)));
     const later = new Date(Date.now() + 60_000);
     utimesSync(`${DIR}/${SID}.jsonl`, later, later);
     await collectSessionUsage();
     expect(requests()).toHaveLength(2); // stopped before it was collected: settled
 
-    sqlite.exec("UPDATE claude_sessions SET process_stopped_at = NULL WHERE id = 1"); // respawned
+    sqlite.run("UPDATE claude_sessions SET process_stopped_at = NULL WHERE id = 1"); // respawned
     await collectSessionUsage();
     expect(requests()).toHaveLength(3);
   });
 
   it("never marks a session collected that has no transcript to read", async () => {
     rmSync(PROJECTS, { recursive: true, force: true });
-    sqlite.exec(`UPDATE claude_sessions SET process_stopped_at = '2026-01-01T00:00:00.000Z' WHERE id = 1`);
+    sqlite.run(`UPDATE claude_sessions SET process_stopped_at = '2026-01-01T00:00:00.000Z' WHERE id = 1`);
     await collectSessionUsage();
     expect(session().usage_collected_at).toBeNull();
   });

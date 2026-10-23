@@ -1,6 +1,6 @@
 import { Checkbox } from "@/client/components/ui/checkbox";
 import { Label } from "@/client/components/ui/label";
-import { useUpdateTask } from "@/client/lib/queries";
+import { useUpdateTask } from "@/client/lib/queries/tasks";
 import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { parseChoreSkips, setChoreSkip } from "@/shared/chore-skips";
 import { toast } from "sonner";

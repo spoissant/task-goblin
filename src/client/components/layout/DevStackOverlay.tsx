@@ -6,7 +6,7 @@ import { DevStackButtons } from "@/client/components/tasks/DevStackToggle";
 import { RepoBadge } from "@/client/components/tasks/RepoBadge";
 import { getPrUrl } from "@/client/lib/links";
 import { TooltipProvider } from "@/client/components/ui/tooltip";
-import type { DevStack, DevStackOwner } from "@/client/lib/types";
+import type { DevStack, DevStackOwner } from "@/shared/types";
 
 /**
  * Bottom-right controls for the running dev stacks, on every page, so they can

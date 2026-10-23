@@ -20,7 +20,7 @@ import { ArrowUp, ArrowDown, Save, Loader2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { TagInput } from "./TagInput";
 import { ColorSelect, STATUS_COLOR_OPTIONS } from "./ColorSelect";
-import type { StatusCategory } from "@/client/lib/types";
+import type { StatusCategory } from "@/shared/types";
 
 // A category being edited, without id since we're bulk replacing. Its order is
 // its position in the list, numbered on save.

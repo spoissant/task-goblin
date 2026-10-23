@@ -7,10 +7,10 @@ describe("loadOtherTasks", () => {
   beforeAll(() => createTestTables(sqlite));
 
   beforeEach(() => {
-    for (const t of ["tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`);
+    for (const t of ["tasks", "repositories"]) sqlite.run(`DELETE FROM ${t}`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1), (2, 'hb', 'front-monorepo', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id)
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, repository_id)
       VALUES (1, 'a', 'In Progress', ${ts}, ${ts}, 1), (2, 'b', 'In Progress', ${ts}, ${ts}, 1), (3, 'c', 'In Progress', ${ts}, ${ts}, 2)`);
   });
 

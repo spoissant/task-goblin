@@ -14,8 +14,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  sqlite.exec("DELETE FROM tasks");
-  sqlite.exec("DELETE FROM status_categories");
+  sqlite.run("DELETE FROM tasks");
+  sqlite.run("DELETE FROM status_categories");
   invalidateStatusConfigCache();
 });
 
@@ -208,12 +208,12 @@ describe("getChores — chore 7 AI QA on a hivetests sub-task", () => {
   }
 
   beforeEach(() => {
-    sqlite.exec("DELETE FROM repositories");
+    sqlite.run("DELETE FROM repositories");
   });
 
   afterAll(() => {
-    sqlite.exec("DELETE FROM tasks");
-    sqlite.exec("DELETE FROM repositories");
+    sqlite.run("DELETE FROM tasks");
+    sqlite.run("DELETE FROM repositories");
   });
 
   it("waits while the alumni_connect parent has no PR", async () => {

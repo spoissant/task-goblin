@@ -16,12 +16,12 @@ describe("docker stacks", () => {
 
   beforeEach(() => {
     commands.length = 0;
-    for (const t of ["claude_sessions", "task_worktrees", "tasks", "repositories"]) sqlite.exec(`DELETE FROM ${t}`);
-    sqlite.exec(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
+    for (const t of ["claude_sessions", "task_worktrees", "tasks", "repositories"]) sqlite.run(`DELETE FROM ${t}`);
+    sqlite.run(`INSERT INTO repositories (id, owner, repo, enabled) VALUES (1, 'hb', 'alumni_connect', 1)`);
     const ts = "'2026-01-01T00:00:00.000Z'";
     for (const id of [1, 2, 3, 4]) {
-      sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id) VALUES (${id}, 't${id}', 'In Progress', ${ts}, ${ts}, 'EV-${id}', 1)`);
-      sqlite.exec(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at) VALUES (${id}, 1, '${wt(`EV-${id}`)}', 'ready', ${ts}, ${ts})`);
+      sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, repository_id) VALUES (${id}, 't${id}', 'In Progress', ${ts}, ${ts}, 'EV-${id}', 1)`);
+      sqlite.run(`INSERT INTO task_worktrees (task_id, repository_id, path, state, created_at, updated_at) VALUES (${id}, 1, '${wt(`EV-${id}`)}', 'ready', ${ts}, ${ts})`);
     }
     // main stack + three task stacks running
     psOutput = [
@@ -41,7 +41,7 @@ describe("docker stacks", () => {
   afterEach(() => resetCommandRunner());
 
   const session = (taskId: number, state: string, updatedAt: string) =>
-    sqlite.exec(`INSERT INTO claude_sessions (task_id, chore_key, chore_name, prompt, cwd, name, state, created_at, updated_at, claude_updated_at)
+    sqlite.run(`INSERT INTO claude_sessions (task_id, chore_key, chore_name, prompt, cwd, name, state, created_at, updated_at, claude_updated_at)
       VALUES (${taskId}, 'x', 'X', '/x', '${wt(`EV-${taskId}`)}', 'n', '${state}', '${updatedAt}', '${updatedAt}', '${updatedAt}')`);
 
   it("ignores the main checkout and dedupes containers per project", async () => {
@@ -86,7 +86,7 @@ describe("docker stacks", () => {
 
   it("counts a sub-task's sessions toward its parent's stack", async () => {
     const ts = "'2026-01-01T00:00:00.000Z'";
-    sqlite.exec(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, parent_key, repository_id) VALUES (5, 't5', 'In Progress', ${ts}, ${ts}, 'EV-5', 'EV-3', 1)`);
+    sqlite.run(`INSERT INTO tasks (id, title, status, created_at, updated_at, jira_key, parent_key, repository_id) VALUES (5, 't5', 'In Progress', ${ts}, ${ts}, 'EV-5', 'EV-3', 1)`);
     const recent = new Date(Date.now() - 60_000).toISOString();
     const old = new Date(Date.now() - 60 * 60_000).toISOString();
     for (const id of [1, 2, 3]) session(id, "done", old);
@@ -95,7 +95,7 @@ describe("docker stacks", () => {
     expect(stopped.sort()).toEqual(["alumni_connect_ev_1", "alumni_connect_ev_2"]);
 
     commands.length = 0;
-    sqlite.exec(`UPDATE claude_sessions SET state = 'done', updated_at = '${recent}', claude_updated_at = '${recent}' WHERE task_id = 5`);
+    sqlite.run(`UPDATE claude_sessions SET state = 'done', updated_at = '${recent}', claude_updated_at = '${recent}' WHERE task_id = 5`);
     expect(await ensureStackCapacity(wt("EV-4"))).toBe("ok");
     expect(commands).not.toContain("docker compose -p alumni_connect_ev_3 stop");
   });

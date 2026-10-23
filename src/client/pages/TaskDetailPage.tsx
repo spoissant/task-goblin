@@ -1,5 +1,5 @@
 import { Link, useParams, useNavigate } from "react-router";
-import { useTaskQuery, useDeleteTask } from "@/client/lib/queries";
+import { useTaskQuery, useDeleteTask } from "@/client/lib/queries/tasks";
 import { useSettingsQuery } from "@/client/lib/queries/settings";
 import { useSyncTask } from "@/client/lib/queries/sync";
 import { TaskHeader } from "@/client/components/tasks/TaskHeader";

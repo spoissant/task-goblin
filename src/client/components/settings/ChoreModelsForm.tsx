@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import type { SessionEffort, SessionModel } from "@/client/lib/types";
+import type { SessionEffort, SessionModel } from "@/shared/types";
 import { useChoreDefinitionsQuery } from "@/client/lib/queries/chores";
 import { useUpdateSetting } from "@/client/lib/queries/settings";
 import { useChoreModelDefaults } from "@/client/lib/chore-models";
