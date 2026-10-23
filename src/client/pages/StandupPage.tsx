@@ -3,7 +3,7 @@ import { Check, Copy, Mic, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useDraftStandupToSlack, useGenerateStandup, useStandupsQuery } from "@/client/lib/queries/standups";
 import { useJiraConfigQuery } from "@/client/lib/queries/settings";
-import { linkJiraKeys, renderSlackEmoji } from "@/client/lib/standup";
+import { linkJiraKeys } from "@/client/lib/standup";
 import { formatCost } from "@/client/lib/sessions";
 import { Button } from "@/client/components/ui/button";
 import { Markdown } from "@/client/components/ui/markdown";
@@ -155,7 +155,7 @@ export function StandupPage() {
       {selected?.state === "done" && selected.markdown && (
         <>
           <Markdown className="prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-0 prose-li:my-0.5">
-            {linkJiraKeys(renderSlackEmoji(selected.markdown), jiraConfig?.jira_host)}
+            {linkJiraKeys(selected.markdown, jiraConfig?.jira_host)}
           </Markdown>
           <p className="mt-6 text-xs text-muted-foreground">{formatUsage(selected)}</p>
         </>
