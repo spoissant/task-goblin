@@ -11,6 +11,8 @@ import { collectSessionUsage } from "./session-usage";
 import { reconcileStandups } from "./standup";
 import { syncTask } from "./task-sync";
 import { startSyncScheduler } from "./sync-scheduler";
+import { getBoolSetting } from "../lib/settings";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
 import { runSteps, type Step } from "../lib/steps";
@@ -45,7 +47,9 @@ export function startClaudeRuntime(): void {
       })
       .catch((err) => console.error(`[claude] post-session sync of task ${taskId} failed`, err));
   });
-  startSyncScheduler();
+  getBoolSetting(AUTO_CHORES_SETTING, true)
+    .then((enabled) => enabled && startSyncScheduler())
+    .catch((err) => console.error("[sync] scheduler start failed", err));
   reconcileOnStartup().catch((err) => console.error("[claude] reconcile failed", err));
   reconcileDevStack().catch((err) => console.error("[dev-stack] reconcile failed", err));
   reconcileStandups().catch((err) => console.error("[standup] reconcile failed", err));

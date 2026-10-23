@@ -2,18 +2,24 @@ import { Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/client/components/ui/button";
 import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 
 /** Play/stop for the periodic sync pass and the chore scheduler's auto starts. */
 export function AutoChoresToggle() {
   const { data } = useSettingsQuery();
   const update = useUpdateSetting();
+  const queryClient = useQueryClient();
   const enabled = data?.[AUTO_CHORES_SETTING] !== "false";
 
   const toggle = () =>
     update.mutate(
       { key: AUTO_CHORES_SETTING, value: enabled ? "false" : "true" },
-      { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save") },
+      {
+        // The server reset or stopped its sync timer.
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sync", "next"] }),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+      },
     );
 
   return (

@@ -9,6 +9,8 @@ import {
   saveStatusCategories,
   saveDefaultColor,
 } from "../lib/task-status";
+import { setAutoSyncEnabled } from "../services/sync-scheduler";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import type { StatusCategory } from "@/shared/types";
 import type { Routes } from "../router";
 
@@ -40,6 +42,7 @@ export const settingsRoutes: Routes = {
     async PUT(req, params) {
       const value = settingValue(await getBody(req), "value");
       await setSetting(params.key, value);
+      if (params.key === AUTO_CHORES_SETTING) setAutoSyncEnabled(value !== "false");
       return json({ key: params.key, value });
     },
   },
