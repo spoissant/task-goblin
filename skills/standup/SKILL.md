@@ -6,7 +6,7 @@ allowed-tools: "Bash(date:*),ToolSearch,mcp__task-goblin__list_sessions,mcp__tas
 
 # Standup
 
-Prints a summary to paste into the meeting or Slack. Read-only: it sends nothing.
+Prints the update to post in Slack. Read-only: it sends nothing.
 
 ## Steps
 
@@ -14,12 +14,12 @@ Prints a summary to paste into the meeting or Slack. Read-only: it sends nothing
 
 2. **Sessions.** Call `list_sessions(since)` and page with `offset` until you have `total`. A session's `result` is its one-line outcome. `detail` and `needs` say where it stopped and what it is waiting on. `error` is a failure on Task Goblin's side. Skip sessions that are still `queued` or `preparing`.
 
-3. **Group.** Group sessions by `taskId`. Sessions with `taskId` null are PR reviews of teammates' work, keyed by `prUrl`: list them together as one "Reviewed" line. For each task, `get_task` (the server re-syncs the board every 5 minutes) gives the Jira key, title, status, PR state, draft flag, checks, approvals, unresolved comments, conflicts, and the on-ice and high-priority flags.
+3. **Group.** Group sessions by `taskId`. Sessions with `taskId` null are PR reviews of teammates' work, keyed by `prUrl`. For each task, `get_task` (the server re-syncs the board every 5 minutes) gives the Jira key, title, type, epic, status, PR state, draft flag, checks, approvals, unresolved comments, conflicts, and the on-ice and high-priority flags.
 
-4. **Write.** The final message is the summary alone, in Markdown with no preamble. The Standup page in Task Goblin renders it as is. Open with `## Standup, since <weekday date, time>`. Keep one line per task: the bare Jira key in bold (the page links it), a short title, then what changed in plain words, merged from all its sessions without listing chore names. Link PR numbers as `[#N](https://github.com/<owner>/<repo>/pull/N)`, using the repository from `get_task` or the session's `prUrl`. Use these `###` sections:
-   - **Done**: PR merged, or ticket moved to a done status in the window.
-   - **In progress**: everything else touched, with where it stands now (in review with N approvals, deployed to a test env, waiting on QA).
-   - **Blocked / waiting**: failing checks, conflicts, unanswered comments, a session in `blocked` with its `needs`, a task on ice with its reason.
-   - **Reviewed**: teammates' PRs reviewed, if any.
+4. **Write.** The final message is the update alone, in Markdown with no preamble, heading or sign-off: the Standup page renders it and its Slack button drafts it as is in the squad's async-update thread. Match the user's own Slack updates:
+   - Group by project, not by status. Each group opens with its name in bold on a line of its own: a short nickname of one or two words for tasks that share an `epicKey`, taken from what their titles have in common; **Bugfixing** for bugs outside a project; **Other** for the rest; **Reviews** last, for teammates' PRs.
+   - One bullet per task: `- <status> - [<Jira title>](<Jira key>)`, the link target being the bare key (Task Goblin turns it into the Jira URL). A task without a Jira key links its PR title to the PR. Several tasks of one project in the same status can share a bullet that lists their short names. A review is `- :eyes: - [<repo>#<N>](<prUrl>)`.
+   - Status is a Slack emoji: `:merged:` PR merged; `:white_check_mark:` done without a merge (validated, cannot reproduce, closed as duplicate); `:qa:` ready for test or waiting on QA; `:progress_bar:` anything still moving, review included. Order each group's bullets in that order.
+   - Add ` -> <note>` only when the status alone misleads: cannot reproduce, closed as a duplicate of another ticket, already fixed and sent to QA, blocked on failing checks, conflicts, unanswered comments or a session's `needs`, on ice with its reason. A few plain words, no chore names, no PR numbers.
 
-   Leave out empty sections. Don't pad with filler or invent work that the sessions don't show. Close with one line saying that sessions run outside Task Goblin are not covered.
+   Don't pad with filler or invent work that the sessions don't show.

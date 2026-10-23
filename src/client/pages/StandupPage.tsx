@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Check, Copy, Mic, Sparkles } from "lucide-react";
+import { Check, Copy, Mic, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { useGenerateStandup, useStandupsQuery } from "@/client/lib/queries/standups";
+import { useDraftStandupToSlack, useGenerateStandup, useStandupsQuery } from "@/client/lib/queries/standups";
 import { useJiraConfigQuery } from "@/client/lib/queries/settings";
-import { linkJiraKeys } from "@/client/lib/standup";
+import { linkJiraKeys, renderSlackEmoji } from "@/client/lib/standup";
 import { formatCost } from "@/client/lib/sessions";
 import { Button } from "@/client/components/ui/button";
 import { Markdown } from "@/client/components/ui/markdown";
@@ -36,6 +36,7 @@ export function StandupPage() {
   const { data, isPending, isError, error } = useStandupsQuery();
   const { data: jiraConfig } = useJiraConfigQuery();
   const generate = useGenerateStandup();
+  const draft = useDraftStandupToSlack();
 
   const items = data?.items ?? [];
   const selected = items.find((s) => s.id === selectedId) ?? items[0] ?? null;
@@ -55,6 +56,18 @@ export function StandupPage() {
     await navigator.clipboard.writeText(selected.markdown);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const draftToSlack = async () => {
+    if (!selected) return;
+    try {
+      const { link } = await draft.mutateAsync(selected.id);
+      toast.success("Draft saved in today's Slack thread.", {
+        action: { label: "Open Slack", onClick: () => window.open(link, "_blank", "noopener") },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not draft the standup in Slack.");
+    }
   };
 
   return (
@@ -86,6 +99,12 @@ export function StandupPage() {
             <Button variant="outline" size="sm" onClick={copyMarkdown}>
               {copied ? <Check /> : <Copy />}
               {copied ? "Copied" : "Copy"}
+            </Button>
+          )}
+          {selected?.state === "done" && selected.markdown && (
+            <Button variant="outline" size="sm" onClick={draftToSlack} disabled={draft.isPending}>
+              <Send className={draft.isPending ? "animate-pulse" : undefined} />
+              {draft.isPending ? "Drafting…" : "Send draft to Slack"}
             </Button>
           )}
           <Button size="sm" onClick={start} disabled={running || generate.isPending}>
@@ -136,7 +155,7 @@ export function StandupPage() {
       {selected?.state === "done" && selected.markdown && (
         <>
           <Markdown className="prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-0 prose-li:my-0.5">
-            {linkJiraKeys(selected.markdown, jiraConfig?.jira_host)}
+            {linkJiraKeys(renderSlackEmoji(selected.markdown), jiraConfig?.jira_host)}
           </Markdown>
           <p className="mt-6 text-xs text-muted-foreground">{formatUsage(selected)}</p>
         </>

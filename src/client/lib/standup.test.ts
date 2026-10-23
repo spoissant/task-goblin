@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { linkJiraKeys } from "./standup";
+import { linkJiraKeys, renderSlackEmoji } from "./standup";
 
 describe("linkJiraKeys", () => {
   it("links bare keys and leaves markdown links untouched", () => {
@@ -11,5 +11,13 @@ describe("linkJiraKeys", () => {
 
   it("keeps the markdown as is without a Jira host", () => {
     expect(linkJiraKeys("EV-1", null)).toBe("EV-1");
+  });
+});
+
+describe("renderSlackEmoji", () => {
+  it("shows known shortcodes as Unicode and leaves the rest and URLs alone", () => {
+    expect(renderSlackEmoji("- :merged: - [a](https://x/PS-1) :qa: :party_parrot: 10:00:00")).toBe(
+      "- 🟣 - [a](https://x/PS-1) 🧪 :party_parrot: 10:00:00",
+    );
   });
 });

@@ -231,8 +231,18 @@ export function respawnSession(shortId: string): Promise<CommandResult> {
   return runCommand("claude", ["respawn", shortId], { cwd: homedir(), timeoutMs: 30_000 });
 }
 
-/** Run a prompt headless with the chore settings (`claude -p`); its JSON result is on stdout. */
-export function runPrint(opts: { cwd: string; prompt: string; model: string; timeoutMs: number }): Promise<CommandResult> {
+/**
+ * Run a prompt headless with the chore settings (`claude -p`); its JSON result is on stdout.
+ * `allowedTools` pre-approves tools a skill's `allowed-tools` doesn't cover; the rest stay denied.
+ */
+export function runPrint(opts: {
+  cwd: string;
+  prompt: string;
+  model: string;
+  timeoutMs: number;
+  allowedTools?: string[];
+}): Promise<CommandResult> {
   const args = ["-p", opts.prompt, "--output-format", "json", "--model", opts.model, "--settings", CHORE_SESSION_SETTINGS];
+  if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
   return runCommand("claude", args, { cwd: opts.cwd, timeoutMs: opts.timeoutMs });
 }

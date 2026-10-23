@@ -30,6 +30,7 @@ describe("standups", () => {
   beforeEach(() => {
     calls.length = 0;
     sqlite.run("DELETE FROM standups");
+    sqlite.run("DELETE FROM settings");
   });
 
   afterEach(() => resetCommandRunner());
@@ -76,6 +77,50 @@ describe("standups", () => {
     const [session, cli] = await list();
     expect(cli).toMatchObject({ state: "failed", error: "claude -p exited 127: claude: command not found", markdown: null });
     expect(session).toMatchObject({ state: "failed", error: "claude -p exited 1: API overloaded", costUsd: 0.01 });
+  });
+
+  it("points the skill's bare-key links at Jira", async () => {
+    sqlite.run("INSERT INTO settings (key, value) VALUES ('jira_host', 'https://hb.atlassian.net/')");
+    runWith({ stdout: JSON.stringify({ result: "- :merged: - [Fix it](PS-12) and [PR](https://github.com/o/r/pull/1)" }), stderr: "", exitCode: 0 });
+    await request("POST", "/api/v1/standups");
+    await settle();
+
+    const [row] = await list();
+    expect(row.markdown).toBe("- :merged: - [Fix it](https://hb.atlassian.net/browse/PS-12) and [PR](https://github.com/o/r/pull/1)");
+  });
+
+  it("drafts a finished standup in Slack with only the read and draft tools", async () => {
+    sqlite.run("INSERT INTO standups (id, state, markdown, created_at, updated_at) VALUES (5, 'done', '**TipTap**', 'x', 'x')");
+    runWith({ stdout: JSON.stringify({ result: "https://app.slack.com/client/T1/C1\n" }), stderr: "", exitCode: 0 });
+
+    const res = await request("POST", "/api/v1/standups/5/slack-draft");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ link: "https://app.slack.com/client/T1/C1" });
+
+    const args = calls[0];
+    expect(args[2]).toContain("<<<MESSAGE\n**TipTap**\nMESSAGE>>>");
+    expect(args.slice(-2)).toEqual([
+      "--allowedTools",
+      "ToolSearch,mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_send_message_draft",
+    ]);
+  });
+
+  it("reports why a Slack draft failed", async () => {
+    sqlite.run("INSERT INTO standups (id, state, markdown, created_at, updated_at) VALUES (5, 'done', 'x', 'x', 'x')");
+    runWith({ stdout: JSON.stringify({ result: "ERROR: no reminder today" }), stderr: "", exitCode: 0 });
+
+    const res = await request("POST", "/api/v1/standups/5/slack-draft");
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toEqual({ code: "SLACK_DRAFT_FAILED", message: "Slack draft failed: no reminder today" });
+  });
+
+  it("drafts only finished standups", async () => {
+    sqlite.run("INSERT INTO standups (id, state, created_at, updated_at) VALUES (5, 'running', 'x', 'x')");
+    runWith({ stdout: "", stderr: "", exitCode: 0 });
+
+    expect((await request("POST", "/api/v1/standups/5/slack-draft")).status).toBe(409);
+    expect((await request("POST", "/api/v1/standups/6/slack-draft")).status).toBe(404);
+    expect(calls).toEqual([]);
   });
 
   it("fails runs left over from a server restart", async () => {
