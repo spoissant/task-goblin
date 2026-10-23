@@ -233,74 +233,6 @@ describe("getChores — chore 7 AI QA on a hivetests sub-task", () => {
   });
 });
 
-describe("getChores — chore 15 prep-dev-qa", () => {
-  async function seedDeployedTask(repoName: string, overrides: Partial<typeof tasks.$inferInsert> = {}) {
-    await db.insert(statusCategories).values([
-      { name: "Code Review", color: "yellow", done: 0, displayOrder: 1, jiraMappings: "[]" },
-      { name: "Done", color: "green", done: 1, displayOrder: 2, jiraMappings: "[]" },
-    ]);
-    const [repo] = await db
-      .insert(repositories)
-      .values({ owner: "Hivebrite", repo: repoName, enabled: 1, deploymentBranches: '["staging","barney"]' })
-      .returning();
-    const [task] = await db
-      .insert(tasks)
-      .values({
-        title: "Poll deletion",
-        status: "Code Review",
-        createdAt: NOW,
-        updatedAt: NOW,
-        repositoryId: repo.id,
-        prNumber: 42,
-        prState: "open",
-        isDraft: 0,
-        checksStatus: "passing",
-        unresolvedCommentCount: 2,
-        onDeploymentBranches: '["staging"]',
-        deployedOnBranches: '["staging"]',
-        ...overrides,
-      })
-      .returning();
-    return task;
-  }
-
-  beforeEach(() => {
-    sqlite.run("DELETE FROM repositories");
-  });
-
-  afterAll(() => {
-    sqlite.run("DELETE FROM tasks");
-    sqlite.run("DELETE FROM repositories");
-  });
-
-  it("suggests prep-dev-qa for a deployed alumni_connect PR in Code Review with green checks, despite open comments", async () => {
-    const task = await seedDeployedTask("alumni_connect");
-
-    const entry = (await getChores({ taskId: task.id })).find((e) => e.key === "prep-dev-qa");
-
-    expect(entry?.number).toBe(15);
-    expect(entry?.prompt).toBe(`/chore-prep-dev-qa ${task.id}`);
-    expect(getChoreDefinition("prep-dev-qa")?.cwd).toBe("main");
-  });
-
-  it("waits until the env serves the PR (merged is not enough) and its checks pass", async () => {
-    const notDeployed = await seedDeployedTask("alumni_connect", { deployedOnBranches: "[]" });
-    const failing = await db
-      .insert(tasks)
-      .values({ ...notDeployed, id: undefined, deployedOnBranches: '["staging"]', checksStatus: "failing" })
-      .returning();
-
-    expect((await getChores({ taskId: notDeployed.id })).map((e) => e.key)).not.toContain("prep-dev-qa");
-    expect((await getChores({ taskId: failing[0].id })).map((e) => e.key)).not.toContain("prep-dev-qa");
-  });
-
-  it("never suggests it outside alumni_connect", async () => {
-    const task = await seedDeployedTask("front-monorepo");
-
-    expect((await getChores({ taskId: task.id })).map((e) => e.key)).not.toContain("prep-dev-qa");
-  });
-});
-
 describe("getChores — chores 4 and 5 on a merged PR", () => {
   it("no longer suggests fixing checks or comments once the PR is merged", async () => {
     const task = await seedTask();
@@ -352,7 +284,6 @@ describe("auto chores", () => {
       "ai-qa",
       "code-review-pr",
       "deploy-test-env",
-      "prep-dev-qa",
     ]);
   });
 
