@@ -43,6 +43,11 @@ function isOnAnyDeploymentBranch(task: TaskRow, repo: RepoRow | null): boolean {
   return parseStringList(repo.deploymentBranches).some((b) => taskBranches.includes(b));
 }
 
+/** An env serves the PR's code (probed), not just its branch holding the merge: the rollout is done. */
+function isDeployedOnAnyEnv(task: TaskRow): boolean {
+  return parseStringList(task.deployedOnBranches).length > 0;
+}
+
 // A hivetests sub-task's hermetic specs run against its alumni_connect parent's
 // code, so its AI QA waits until the parent has a PR.
 function awaitsParentPr(repo: RepoRow | null, parent: TaskRow | null): boolean {
@@ -210,16 +215,14 @@ const CHORES: Chore[] = [
     number: 15,
     key: "prep-dev-qa",
     name: "Prep Dev QA",
-    condition: "alumni_connect AND status category = Code Review AND prState = open AND checksStatus = passing AND on a deployment branch",
+    condition: "alumni_connect AND status category = Code Review AND prState = open AND checksStatus = passing AND deployed on a test env (served, not just merged)",
     prompt: "/chore-prep-dev-qa {{taskId}}",
     categories: ["Code Review"],
     cwd: "main", // reads git objects and the test env only, no code changes
     // Unresolved comments are ignored: some stay open until the end (e.g. "bump this alpha").
     match: (t, repo) =>
-      repo?.repo === "alumni_connect" &&
-      t.prState === "open" &&
-      t.checksStatus === "passing" &&
-      isOnAnyDeploymentBranch(t, repo),
+      repo?.repo === "alumni_connect" && t.prState === "open" && t.checksStatus === "passing" && isDeployedOnAnyEnv(t),
+    auto: { fields: [] }, // one state per task: auto-starts once, any later run is manual
   },
 ];
 

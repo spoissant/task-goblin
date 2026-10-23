@@ -249,6 +249,27 @@ describe("runChoreScheduler", () => {
     expect(rows[0]).toMatchObject({ taskId: 1, choreKey: "deploy-test-env", prompt: "/chore-deploy-to-test-env 1 2 staging" });
   });
 
+  it("auto-starts prep-dev-qa once per task, whatever changes after or whoever ran it", async () => {
+    const deployed: TaskOverrides = { status: "Code Review", checksStatus: "passing", onDeploymentBranches: JSON.stringify(["staging"]), deployedOnBranches: JSON.stringify(["staging"]) };
+    await seedTask(1, deployed);
+    await seedTask(2, deployed);
+    await startChoreSession(2, "prep-dev-qa");
+    await settle();
+    setState("done");
+
+    expect(await runChoreScheduler({ now: NOON })).toBe(1);
+    await settle();
+    setState("done");
+    sqlite.run("UPDATE tasks SET head_sha = 'bbb'");
+
+    expect(await runChoreScheduler({ now: NOON })).toBe(0);
+    const rows = await sessions();
+    expect(rows.map((r) => [r.taskId, r.choreKey, r.trigger])).toEqual([
+      [2, "prep-dev-qa", "manual"],
+      [1, "prep-dev-qa", "auto"],
+    ]);
+  });
+
   it("never starts a task on its own", async () => {
     await seedTask(1, { status: "Backlog", prNumber: null, prState: null, checksStatus: null });
 

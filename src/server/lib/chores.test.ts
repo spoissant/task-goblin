@@ -257,6 +257,7 @@ describe("getChores — chore 15 prep-dev-qa", () => {
         checksStatus: "passing",
         unresolvedCommentCount: 2,
         onDeploymentBranches: '["staging"]',
+        deployedOnBranches: '["staging"]',
         ...overrides,
       })
       .returning();
@@ -282,11 +283,11 @@ describe("getChores — chore 15 prep-dev-qa", () => {
     expect(getChoreDefinition("prep-dev-qa")?.cwd).toBe("main");
   });
 
-  it("waits until the PR is on a deployment branch and its checks pass", async () => {
-    const notDeployed = await seedDeployedTask("alumni_connect", { onDeploymentBranches: "[]" });
+  it("waits until the env serves the PR (merged is not enough) and its checks pass", async () => {
+    const notDeployed = await seedDeployedTask("alumni_connect", { deployedOnBranches: "[]" });
     const failing = await db
       .insert(tasks)
-      .values({ ...notDeployed, id: undefined, onDeploymentBranches: '["staging"]', checksStatus: "failing" })
+      .values({ ...notDeployed, id: undefined, deployedOnBranches: '["staging"]', checksStatus: "failing" })
       .returning();
 
     expect((await getChores({ taskId: notDeployed.id })).map((e) => e.key)).not.toContain("prep-dev-qa");
@@ -351,6 +352,7 @@ describe("auto chores", () => {
       "ai-qa",
       "code-review-pr",
       "deploy-test-env",
+      "prep-dev-qa",
     ]);
   });
 

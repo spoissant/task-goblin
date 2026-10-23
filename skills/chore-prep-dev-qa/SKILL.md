@@ -12,13 +12,13 @@ Load the MCP tools this skill uses with one `ToolSearch` `select:` query naming 
 
 ## 1. What to show
 
-`get_task(id)` → `jiraKey`, `prNumber`, `headBranch`, `onDeploymentBranches`. `getJiraIssue` (`responseContentFormat: "markdown"`) for the description, acceptance criteria and, for a bug, the steps to reproduce. `gh pr view <pr> --json title,body,headRefOid` and `gh pr diff <pr>` for the screens, roles, flags and data the change touches. Note any LaunchDarkly flag the diff checks.
+`get_task(id)` → `jiraKey`, `prNumber`, `headBranch`, `deployedOnBranches` (the envs that serve the PR's code, probed by Task Goblin). `getJiraIssue` (`responseContentFormat: "markdown"`) for the description, acceptance criteria and, for a bug, the steps to reproduce. `gh pr view <pr> --json title,body,headRefOid` and `gh pr diff <pr>` for the screens, roles, flags and data the change touches. Note any LaunchDarkly flag the diff checks.
 
 Restate in a few lines what QA must see: the flow, the role, and for a bug the broken behaviour the fix removes.
 
 ## 2. The env
 
-Use `staging` when it is in `onDeploymentBranches`, `barney` when it is the only one or the ticket needs real mobile devices. Not deployed: stop and say so. `git fetch origin <env>` and `git merge-base --is-ancestor <headRefOid> origin/<env>`: not an ancestor means the env runs an older commit, so stop and suggest redeploying. Check the env build is green (`https://buildkite.com/hivebrite/alumni-connect/builds?branch=<env>`, through `gh` or ask); a running build is worth saying, not blocking.
+Use `staging` when it is in `deployedOnBranches`, `barney` when it is the only one or the ticket needs real mobile devices. Empty: the env branch may hold the merge while the rollout is still running, so stop and say so. `git fetch origin <env>` and `git merge-base --is-ancestor <headRefOid> origin/<env>`: not an ancestor means the env runs an older commit of the PR, so stop and suggest redeploying.
 
 A flag the change sits behind: `get-flag-status-across-envs` for the env. Off for the demo network is a blocker the user decides on (ask; flags on shared envs are not this session's to toggle).
 
