@@ -206,6 +206,21 @@ const CHORES: Chore[] = [
     cwd: "main", // runs before work starts: no worktree or branch yet
     match: () => false,
   },
+  {
+    number: 15,
+    key: "prep-dev-qa",
+    name: "Prep Dev QA",
+    condition: "alumni_connect AND status category = Code Review AND prState = open AND checksStatus = passing AND on a deployment branch",
+    prompt: "/chore-prep-dev-qa {{taskId}}",
+    categories: ["Code Review"],
+    cwd: "main", // reads git objects and the test env only, no code changes
+    // Unresolved comments are ignored: some stay open until the end (e.g. "bump this alpha").
+    match: (t, repo) =>
+      repo?.repo === "alumni_connect" &&
+      t.prState === "open" &&
+      t.checksStatus === "passing" &&
+      isOnAnyDeploymentBranch(t, repo),
+  },
 ];
 
 /**
