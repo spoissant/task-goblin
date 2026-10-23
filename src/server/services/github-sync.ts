@@ -188,10 +188,15 @@ export async function syncGitHubPullRequests(): Promise<SyncResult> {
     throw toGitHubError(err, "Failed to fetch PRs from GitHub");
   }
 
+  // One PR failing (e.g. a task merged away by a concurrent sync) doesn't stop the others.
   for (const data of prs.values()) {
-    if ((await upsertPrTask(data)) === "new") result.new++;
-    else result.updated++;
-    result.synced++;
+    try {
+      if ((await upsertPrTask(data)) === "new") result.new++;
+      else result.updated++;
+      result.synced++;
+    } catch (err) {
+      console.error(`[github-sync] ${data.repositoryId}#${data.prNumber} failed`, err instanceof Error ? err.message : err);
+    }
   }
   return result;
 }

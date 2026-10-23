@@ -63,10 +63,13 @@ export async function writePrFields(taskId: number, data: PrTaskData, extra: PrO
   await db.update(tasks).set({ ...prFieldsOf(data), ...extra, updatedAt: now() }).where(eq(tasks.id, taskId));
 }
 
-/** A task without a Jira issue shows its PR: the PR's title, and the status of its state once that changes. */
+/**
+ * A task without a Jira issue shows its PR's title, and moves to Done once the
+ * PR merges or closes; a status set by hand stays while the PR is open.
+ */
 function prOnlyFields(task: TaskRow, data: PrTaskData): PrOnlyFields {
-  if (task.prState === data.prState && task.isDraft === data.isDraft) return { title: data.title };
-  return { title: data.title, status: mapPrStateToTaskStatus(data.prState, data.isDraft) };
+  const finished = data.prState !== "open" && task.prState !== data.prState;
+  return finished ? { title: data.title, status: mapPrStateToTaskStatus(data.prState, data.isDraft) } : { title: data.title };
 }
 
 async function insertPrTask(data: PrTaskData): Promise<void> {
