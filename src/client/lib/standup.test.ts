@@ -16,8 +16,8 @@ describe("linkJiraKeys", () => {
 
 describe("renderSlackEmoji", () => {
   it("shows known shortcodes as Unicode and leaves the rest and URLs alone", () => {
-    expect(renderSlackEmoji("- :merged: - [a](https://x/PS-1) :qa: :party_parrot: 10:00:00")).toBe(
-      "- 🟣 - [a](https://x/PS-1) 🧪 :party_parrot: 10:00:00",
+    expect(renderSlackEmoji("- :white_check_mark: Done - [a](https://x/PS-1) :nerd_face: :rotating_light: :party_parrot: 10:00:00")).toBe(
+      "- ✅ Done - [a](https://x/PS-1) 🤓 🚨 :party_parrot: 10:00:00",
     );
   });
 });

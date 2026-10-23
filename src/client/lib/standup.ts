@@ -14,10 +14,13 @@ export function linkJiraKeys(markdown: string, jiraHost: string | null | undefin
 
 // Slack emoji the standup uses as statuses, custom ones included, shown as Unicode on the page.
 const EMOJI: Record<string, string> = {
-  merged: "🟣",
   white_check_mark: "✅",
   qa: "🧪",
+  nerd_face: "🤓",
   progress_bar: "⏳",
+  rotating_light: "🚨",
+  // Older standups still use these.
+  merged: "🟣",
   eyes: "👀",
 };
 
