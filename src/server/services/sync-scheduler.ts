@@ -2,8 +2,8 @@
  * The sync pass, so the pipeline advances without anyone clicking Sync: pull
  * Jira and GitHub, then run the merge watch, the move of merged tickets to
  * Ready to Prod, the merge gate and the chore scheduler on the fresh state.
- * It runs every 5 minutes (started from startClaudeRuntime) and on POST /sync,
- * which then restarts the countdown. One pass at a time: a call while one runs
+ * It runs every 5 minutes (started from startClaudeRuntime; skipped while auto
+ * chores are stopped) and on POST /sync, which then restarts the countdown. One pass at a time: a call while one runs
  * gets that pass's result.
  */
 import { syncJiraItems } from "./jira-sync";
@@ -14,6 +14,8 @@ import { runMergeJira } from "./merge-jira";
 import { runMergeGate } from "./merge-gate";
 import { runChoreScheduler } from "./chore-scheduler";
 import { broadcast } from "../lib/sse";
+import { getBoolSetting } from "../lib/settings";
+import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import { runSteps, type Step } from "../lib/steps";
 import type { SyncRunResult } from "@/shared/types";
 
@@ -65,9 +67,10 @@ function scheduleNext(delayMs: number): void {
   nextRunAt = new Date(Date.now() + delayMs).toISOString();
 }
 
+/** The periodic pass is skipped while the Tasks page's play/stop button has auto chores stopped; POST /sync still runs. */
 function tick(): void {
   scheduleNext(SYNC_INTERVAL_MS);
-  void runSync();
+  void getBoolSetting(AUTO_CHORES_SETTING, true).then((enabled) => (enabled ? runSync() : undefined));
 }
 
 function startInterval(): void {

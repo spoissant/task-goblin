@@ -4,7 +4,7 @@ import { Button } from "@/client/components/ui/button";
 import { AUTO_CHORES_SETTING } from "@/shared/settings-keys";
 import { useSettingsQuery, useUpdateSetting } from "@/client/lib/queries/settings";
 
-/** Play/stop for the chore scheduler's auto starts. */
+/** Play/stop for the periodic sync pass and the chore scheduler's auto starts. */
 export function AutoChoresToggle() {
   const { data } = useSettingsQuery();
   const update = useUpdateSetting();
@@ -22,7 +22,7 @@ export function AutoChoresToggle() {
       size="icon"
       disabled={!data || update.isPending}
       onClick={toggle}
-      title={enabled ? "Auto chores running. Click to stop" : "Auto chores stopped. Click to start"}
+      title={enabled ? "Auto sync and chores running. Click to stop" : "Auto sync and chores stopped. Click to start"}
       aria-label={enabled ? "Stop auto chores" : "Start auto chores"}
     >
       {enabled ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
