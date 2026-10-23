@@ -1,7 +1,8 @@
 /**
- * Pulls PRs from GitHub into tasks: the open PRs the user authored in enabled
- * repositories, plus those of tasks still open here (merged or closed since,
- * or someone else's). A single PR goes through the same batched fetch.
+ * Pulls PRs from GitHub into tasks: the open PRs the user authored or is
+ * assigned to (a bot's PR) in enabled repositories, plus those of tasks still
+ * open here (merged or closed since, or someone else's). A single PR goes
+ * through the same batched fetch.
  */
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../../db";
@@ -139,20 +140,24 @@ async function fetchPrs(client: GitHubClient, prs: PrRef[]): Promise<Map<string,
   return result;
 }
 
-/** The user's open PRs in these repositories, from the search API. */
+/** The open PRs in these repositories the user authored or is assigned to (bots open PRs for them), from the search API. */
 async function searchOpenPrs(client: GitHubClient, username: string, repos: RepoRow[]): Promise<PrRef[]> {
   const byName = new Map(repos.map((r) => [`${r.owner}/${r.repo}`, r]));
-  const q = `is:pr is:open author:${username} ${repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ")}`;
+  const repoFilter = repos.map((r) => `repo:${r.owner}/${r.repo}`).join(" ");
   const found: PrRef[] = [];
-  for (let page = 1; ; page++) {
-    const { data } = await client.request("GET /search/issues", { q, per_page: 100, page });
-    for (const item of data.items) {
-      const match = (item.repository_url || "").match(/repos\/([^/]+)\/([^/]+)$/);
-      const repo = match ? byName.get(`${match[1]}/${match[2]}`) : undefined;
-      if (repo) found.push({ repo, number: item.number });
+  for (const role of ["author", "assignee"]) {
+    const q = `is:pr is:open ${role}:${username} ${repoFilter}`;
+    for (let page = 1; ; page++) {
+      const { data } = await client.request("GET /search/issues", { q, per_page: 100, page });
+      for (const item of data.items) {
+        const match = (item.repository_url || "").match(/repos\/([^/]+)\/([^/]+)$/);
+        const repo = match ? byName.get(`${match[1]}/${match[2]}`) : undefined;
+        if (repo) found.push({ repo, number: item.number });
+      }
+      if (data.items.length < 100) break;
     }
-    if (data.items.length < 100) return found;
   }
+  return found;
 }
 
 /** The PRs of tasks still open here, in these repositories: the search misses them once merged or closed, and someone else's. */
