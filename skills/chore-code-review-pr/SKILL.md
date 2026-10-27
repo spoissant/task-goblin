@@ -42,7 +42,7 @@ The working tree holds whatever branch someone else has checked out, so it is ne
 
 7. **Post a DRAFT review.** Every finding becomes a line-anchored comment in one PENDING review, so the user can polish and submit on GitHub. Only its author sees a draft, so no confirmation is needed. A PR with no findings at all is approved instead, on the user's standing authorization. Read `references/draft-review.md` for the payload rules, the clean-PR case, and recovery when GitHub rejects an anchor.
 
-8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟡 SUGGESTIONs only, 🟢 clean and approved), a header with author, file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, the severity counts, then the index from `references/draft-review.md`.
+8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟡 SUGGESTIONs only, 🟢 clean and approved), a header with author, file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, the severity counts, then the index from `references/draft-review.md`. When the workflow ran, finish with the findings audit from `references/parallel-review.md`: every finding raised, valid or dismissed, with the reasoning.
 
    Severity glyphs everywhere findings appear: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
 

@@ -27,13 +27,28 @@ Workflow({ name: "review-pr", args: {
 
 ```
 {
-  findings: [{ severity, category, path, line, endLine?, summary, consequence, fix, standard?, replacement?, verification }],
+  findings: [{ severity, category, path, line, endLine?, summary, consequence, fix, standard?, replacement?, verification, reported: { severity, line }, checks: { evidence, impact } }],
   praise: [string],            // what the slices do well, for the summary
-  dropped: [{ …finding, reason }],
+  dropped: [{ …finding, reported, checks, reason }],   // refuted, or not worth a comment
+  merged: [{ …finding, reason }],                      // folded into another finding at the same location
   slices: [{ name, files }],
   skipped: [path],             // locale, asset, generated
   failedSlices: [name]         // an agent died: these files were not reviewed
 }
 ```
 
-`findings` is sorted CRITICAL → WARNING → SUGGESTION and already verified: carry on with the calling skill's review step from the de-dup against existing discussion onward, as if the findings came from a single pass, without re-verifying. Say in the summary which `failedSlices` went unreviewed, and leave `dropped` out of what gets posted.
+`findings` is sorted CRITICAL → WARNING → SUGGESTION and already verified: carry on with the calling skill's review step from the de-dup against existing discussion onward, as if the findings came from a single pass, without re-verifying. Say in the summary which `failedSlices` went unreviewed. `dropped` and `merged` stay out of anything posted to GitHub, but they are not hidden from the user: they go in the audit below.
+
+## Findings audit
+
+While the workflow is being validated, the printed report ends with an audit of everything the reviewers raised, so the user can compare what was found with what was submitted. It is terminal output only and never part of the posted review. One table row per entry of `findings`, `dropped` and `merged`, most severe first (by `reported.severity`):
+
+| # | Reported | Location | Finding | Status | Reasoning |
+|---|----------|----------|---------|--------|-----------|
+
+- **Reported**: `reported.severity`, with the glyph.
+- **Location**: `path:line` as reported (`reported.line`).
+- **Status**: `valid` for `findings`, `dismissed` for `dropped` and `merged`. A `valid` row shows the final severity or line when they differ ("valid, now WARNING", "valid, line 45"), and "valid, unverified" when `verification` says a verifier died. Add "(posted)" or "(left out by the de-dup against existing discussion)" once that step has run, so the table also shows what actually went into the draft.
+- **Reasoning**: for `valid`, the evidence checker's and the impact checker's `checks` in a few words each. For `dismissed`, the `reason` (refuted, not worth a comment, merged) with the checker's wording.
+
+Under the table, one line of counts: raised, merged, refuted, not worth a comment, valid, posted.

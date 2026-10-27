@@ -30,7 +30,7 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
 7. **Review.** One coherent pass organised by `REF/checklist.md`, which also defines CRITICAL / WARNING / SUGGESTION. Each finding: bold one-line summary, real-world consequence, `file:line`, concrete fix. Tag findings that echo an existing reviewer comment ("↩ already raised by @X") and default-skip ones already resolved.
 
-8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟢 clean), a header with file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, and the severity counts. Severity glyphs: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
+8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟢 clean), a header with file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, and the severity counts. When the workflow ran, add the findings audit from `REF/parallel-review.md` (every finding raised, valid or dismissed, with the reasoning) before the triage. Severity glyphs: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
 
 9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, bold summary, `file:line`, and the fix. Defaults: every finding → Fix, except those step 7 default-skips as already resolved. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
 

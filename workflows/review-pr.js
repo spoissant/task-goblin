@@ -189,17 +189,21 @@ function rank(f) {
   return SEVERITIES.indexOf(f.severity)
 }
 
+// `checks` carries both verifiers' reasoning on every outcome, and `reported`
+// the severity and line as the reviewer wrote them, for the audit table.
 function judge(f, evidence, impact) {
-  if (!evidence || !impact) return { ...f, verification: 'unverified: a verifier died' }
-  if (!evidence.holds) return { dropped: { ...f, reason: `refuted: ${evidence.reason}` } }
-  if (impact.severity === 'NONE') return { dropped: { ...f, reason: `not worth a comment: ${impact.reason}` } }
+  const reported = { severity: f.severity, line: f.line }
+  if (!evidence || !impact) return { ...f, reported, checks: { evidence: evidence?.reason, impact: impact?.reason }, verification: 'unverified: a verifier died' }
+  const checks = { evidence: evidence.reason, impact: impact.reason }
+  if (!evidence.holds) return { dropped: { ...f, reported, checks, reason: `refuted: ${evidence.reason}` } }
+  if (impact.severity === 'NONE') return { dropped: { ...f, reported, checks, reason: `not worth a comment: ${impact.reason}` } }
   const severity = SEVERITIES[Math.max(rank(f), SEVERITIES.indexOf(impact.severity))]
   const line = evidence.line || f.line
   const notes = [
     severity !== f.severity ? `downgraded from ${f.severity}: ${impact.reason}` : null,
     line !== f.line ? `anchor moved from ${f.line}: ${evidence.reason}` : null,
   ].filter(Boolean)
-  return { ...f, severity, line, verification: notes.length ? notes.join('; ') : 'confirmed' }
+  return { ...f, severity, line, reported, checks, verification: notes.length ? notes.join('; ') : 'confirmed' }
 }
 
 const plan = slice(files)
@@ -218,6 +222,7 @@ if (failedSlices.length) log(`Not reviewed (agent died): ${failedSlices.join(', 
 const raw = reviews.filter((r) => r && r.result).flatMap((r) => r.result.findings || [])
 const praise = reviews.filter((r) => r && r.result).flatMap((r) => r.result.praise || [])
 const unique = dedup(raw)
+const merged = raw.filter((f) => !unique.includes(f)).map((f) => ({ ...f, reason: `merged into the finding at ${f.path}:${f.line}, which was more severe or more precise` }))
 log(`${raw.length} raw findings, ${unique.length} after dedup`)
 
 phase('Verify')
@@ -235,6 +240,7 @@ return {
   findings: kept,
   praise,
   dropped,
+  merged,
   slices: plan.slices.map((s) => ({ name: s.name, files: s.files.length })),
   skipped: plan.skipped,
   failedSlices,
