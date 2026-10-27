@@ -1,7 +1,7 @@
 ---
 name: chore-code-review-pr
-description: Harsh, comprehensive code review of a colleague's GitHub PR against Hivebrite project standards, posted as a DRAFT (pending) GitHub review for you to polish and submit. Reads the PR from git objects without checking it out, so several reviews can run in parallel in the same folder. For your own PRs use /chore-code-review-my-pr. Use when reviewing someone else's PR or running /chore-code-review-pr <PR url or number>.
-allowed-tools: "Agent,Bash(gh:*),Bash(git fetch:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-tree:*),Bash(git cat-file:*),Bash(git remote:*),Read"
+description: Harsh, comprehensive code review of a colleague's GitHub PR against Hivebrite project standards, posted as a DRAFT (pending) GitHub review for you to polish and submit, or auto-approved when it finds nothing at all. Reads the PR from git objects without checking it out, so several reviews can run in parallel in the same folder. For your own PRs use /chore-code-review-my-pr. Use when reviewing someone else's PR or running /chore-code-review-pr <PR url or number>.
+allowed-tools: "Workflow,Bash(gh:*),Bash(git fetch:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-tree:*),Bash(git cat-file:*),Bash(git remote:*),Read"
 ---
 
 # Harsh Review (colleague PR)
@@ -24,9 +24,9 @@ The working tree holds whatever branch someone else has checked out, so it is ne
 
 ## Workflow
 
-1. **Fetch context.** `gh pr view <PR> --json number,title,body,author,baseRefName,headRefName,headRefOid,additions,deletions,changedFiles,url,files` (`files` gives per-file line counts; `gh pr diff` has no `--stat`), then the full `gh pr diff <PR>` unless step 2 runs in parallel. Also fetch existing review discussion with GraphQL (`reviewThreads` with `isResolved`, `isOutdated`, comments' `author`, `path`, `line`, `body`; plus PR-level `comments`). REST does not expose thread resolution state, which is the signal for "already dismissed by the owner". If you already have a PENDING review on the PR (`gh api repos/<owner>/<repo>/pulls/<PR>/reviews --jq '.[]|select(.state=="PENDING")|.html_url'`), stop and say so: GitHub allows one per user and it holds the user's draft. Then fetch the PR objects as above.
+1. **Fetch context.** `gh pr view <PR> --json number,title,body,author,baseRefName,headRefName,headRefOid,additions,deletions,changedFiles,url,files` (`files` gives per-file line counts; `gh pr diff` has no `--stat`), then the full `gh pr diff <PR>` unless step 2 hands the review to the workflow. Also fetch existing review discussion with GraphQL (`reviewThreads` with `isResolved`, `isOutdated`, comments' `author`, `path`, `line`, `body`; plus PR-level `comments`). REST does not expose thread resolution state, which is the signal for "already dismissed by the owner". If you already have a PENDING review on the PR (`gh api repos/<owner>/<repo>/pulls/<PR>/reviews --jq '.[]|select(.state=="PENDING")|.html_url'`), stop and say so: GitHub allows one per user and it holds the user's draft. Then fetch the PR objects as above.
 
-2. **Scope.** Size the review by lines changed and note which domains are touched: Ruby backend, React/TS frontend, specs, migrations, config, feature flags. Skip pure locale, asset, and generated files. Above roughly 300 changed lines, run steps 3–6 in parallel subagents as described in `references/parallel-review.md`, then resume at step 6's de-dup.
+2. **Scope.** Size the review by lines changed and note which domains are touched: Ruby backend, React/TS frontend, specs, migrations, config, feature flags. Skip pure locale, asset, and generated files. Above roughly 300 changed lines, run steps 3–6 through the `review-pr` workflow as described in `references/parallel-review.md` (mode `git-objects`), then resume at step 6's de-dup with its verified findings.
 
 3. **Load standards** listed in `references/standards.md` for the paths in the diff.
 
@@ -40,15 +40,15 @@ The working tree holds whatever branch someone else has checked out, so it is ne
 
    Write logins without `@` in anything you post: `@claude` in a submitted comment starts the Claude workflow on the author's PR.
 
-7. **Post a DRAFT review.** Every finding becomes a line-anchored comment in one PENDING review, so the user can polish and submit on GitHub. Only its author sees a draft, so no confirmation is needed. Read `references/draft-review.md` for the payload rules, the clean-PR case, and recovery when GitHub rejects an anchor.
+7. **Post a DRAFT review.** Every finding becomes a line-anchored comment in one PENDING review, so the user can polish and submit on GitHub. Only its author sees a draft, so no confirmation is needed. A PR with no findings at all is approved instead, on the user's standing authorization. Read `references/draft-review.md` for the payload rules, the clean-PR case, and recovery when GitHub rejects an anchor.
 
-8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟢 clean), a header with author, file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, the severity counts, then the index from `references/draft-review.md`.
+8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟡 SUGGESTIONs only, 🟢 clean and approved), a header with author, file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, the severity counts, then the index from `references/draft-review.md`.
 
    Severity glyphs everywhere findings appear: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
 
 ## After the draft
 
-Follow-ups edit the same draft, keeping tags stable. If a posted comment turns out wrong or unverified, fix or delete it yourself rather than asking the user to. Submitting (APPROVE, COMMENT, REQUEST_CHANGES) makes the review public: do it only when the user names the event in this session. API details are in `references/draft-review.md`.
+Follow-ups edit the same draft, keeping tags stable. If a posted comment turns out wrong or unverified, fix or delete it yourself rather than asking the user to. Submitting a draft (APPROVE, COMMENT, REQUEST_CHANGES) makes the review public: do it only when the user names the event in this session. The one exception is the clean-PR auto-approval. API details are in `references/draft-review.md`.
 
 ## Tone
 

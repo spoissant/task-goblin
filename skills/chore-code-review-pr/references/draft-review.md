@@ -4,7 +4,7 @@ A review posted without an `event` field stays PENDING: only its author sees it 
 
 ## Clean PR
 
-No findings at all: still post a body-only pending review so the PR is distinguishable from one never reviewed. Body is exactly `👍 Reviewed — no issues found.`, nothing else. Print the review URL and stop.
+No findings at all (no CRITICAL, WARNING or SUGGESTION): approve the PR on the user's behalf, standing authorization from the user. POST the review with `event: "APPROVE"`, `commit_id` = `$SHA`, and body exactly `👍 Reviewed — no issues found.`, nothing else. Any finding of any severity means a pending draft instead, never an approval. Print the review URL and stop.
 
 ## Payload
 

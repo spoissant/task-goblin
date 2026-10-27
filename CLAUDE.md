@@ -21,5 +21,5 @@ No drizzle-kit migrations. Change `src/db/schema.ts`, hand-write the next `drizz
 ## MCP Server
 Standalone process (`bun run mcp`) providing programmatic access for AI agents. Consumes the REST API.
 
-## Skills
-The chore skills live in `skills/` and are symlinked into `~/.claude/skills/` by `scripts/link-skills.sh` (sessions run in other repos, so they must be user-level). Editing `~/.claude/skills/<chore>` edits this repo: commit the change here. `hivebrite_settings.sql` (from `scripts/export-hivebrite-settings.sh`) is gitignored because the repo is public.
+## Skills and workflows
+The chore skills live in `skills/` and are symlinked into `~/.claude/skills/` by `scripts/link-skills.sh` (sessions run in other repos, so they must be user-level). The Workflow scripts the skills call by name live in `workflows/` and are symlinked into `~/.claude/workflows/` by the same script. Editing `~/.claude/skills/<chore>` or `~/.claude/workflows/<name>.js` edits this repo: commit the change here. `hivebrite_settings.sql` (from `scripts/export-hivebrite-settings.sh`) is gitignored because the repo is public.
