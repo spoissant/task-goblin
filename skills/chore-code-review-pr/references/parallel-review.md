@@ -21,7 +21,7 @@ Workflow({ name: "review-pr", args: {
 
 1. **Slices** the files by type: Ruby to a Backend reviewer, TypeScript/JavaScript/CSS to a Frontend reviewer, the rest to whichever exists; locale, asset and generated files to no one. A slice above about 60 files splits by its first two path segments. One reviewer agent per slice, told the PR, how to read code, its exact file list, `standards.md`, the `checklist.md` sections for its slice, and the Tone section. Plus one Explore agent for the reinventing-the-wheel audit over `reinvention.md`.
 2. **Dedups** by location, keeping the more severe or more precise finding.
-3. **Verifies** every CRITICAL and WARNING with two independent agents: *evidence* re-reads the cited code and tries to refute the claim (and corrects a wrong anchor line); *impact* applies the severity test from `checklist.md`. Refuted or without a real consequence: dropped. Otherwise the severity is the lower of the two opinions. SUGGESTIONs are not verified.
+3. **Verifies** every finding, SUGGESTIONs included, with two independent agents: *evidence* re-reads the cited code and tries to refute the claim (and corrects a wrong anchor line); *impact* applies the severity test from `checklist.md`, and for a SUGGESTION asks whether the author would act on it. Refuted or not worth a comment: dropped. Otherwise the severity is the lower of the two opinions.
 
 ## What it returns
 

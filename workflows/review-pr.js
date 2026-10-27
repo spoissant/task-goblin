@@ -1,7 +1,7 @@
 // Parallel PR review for /chore-code-review-pr and /chore-code-review-my-pr.
 // Slices the diff by file type, reviews each slice in its own agent, dedups
-// by location, then has two independent agents try to refute every CRITICAL
-// and WARNING before the calling skill posts anything. The skill passes the
+// by location, then has two independent agents try to refute every finding
+// before the calling skill posts anything. The skill passes the
 // PR metadata in `args` and never reads the full diff itself.
 //
 // args: {
@@ -12,11 +12,11 @@
 // }
 export const meta = {
   name: 'review-pr',
-  description: 'Review a PR in parallel slices against the Hivebrite checklist, then adversarially verify every CRITICAL and WARNING',
+  description: 'Review a PR in parallel slices against the Hivebrite checklist, then adversarially verify every finding',
   whenToUse: 'Called by the code-review chores above their size threshold with the PR metadata in args; not meant to be run by hand',
   phases: [
     { title: 'Review', detail: 'one reviewer per slice plus a reinvention audit' },
-    { title: 'Verify', detail: 'evidence and impact check per CRITICAL and WARNING' },
+    { title: 'Verify', detail: 'evidence and impact check per finding' },
   ],
 }
 
@@ -171,7 +171,7 @@ Take this finding as factually accurate about the code:
 - ${f.severity} · ${f.category} · ${f.path}:${f.line} — ${f.summary}
 - Consequence: ${f.consequence}
 
-Apply the severity test from ${refDir}/checklist.md ("Severity" section): who hits it, how often, and is it new in this PR? Behaviour that predates the PR (check \`gh pr diff ${pr.number}\` and the surrounding code), an edge case that needs an unusual sequence, and risk to something that gates nothing are a SUGGESTION at most. Return the severity the test supports: CRITICAL, WARNING, SUGGESTION, or NONE when there is no real consequence worth a comment.`
+Apply the severity test from ${refDir}/checklist.md ("Severity" section): who hits it, how often, and is it new in this PR? Behaviour that predates the PR (check \`gh pr diff ${pr.number}\` and the surrounding code), an edge case that needs an unusual sequence, and risk to something that gates nothing are a SUGGESTION at most. A SUGGESTION earns its comment only if the author would act on it: a simplification that removes real complexity, duplicated logic, a misleading name. Style preferences, what RuboCop, ESLint or TypeScript already catch, and "could also be written as" are NONE. Return the severity the test supports: CRITICAL, WARNING, SUGGESTION, or NONE when the finding is not worth a comment.`
 }
 
 function dedup(findings) {
@@ -192,7 +192,7 @@ function rank(f) {
 function judge(f, evidence, impact) {
   if (!evidence || !impact) return { ...f, verification: 'unverified: a verifier died' }
   if (!evidence.holds) return { dropped: { ...f, reason: `refuted: ${evidence.reason}` } }
-  if (impact.severity === 'NONE') return { dropped: { ...f, reason: `no real consequence: ${impact.reason}` } }
+  if (impact.severity === 'NONE') return { dropped: { ...f, reason: `not worth a comment: ${impact.reason}` } }
   const severity = SEVERITIES[Math.max(rank(f), SEVERITIES.indexOf(impact.severity))]
   const line = evidence.line || f.line
   const notes = [
@@ -218,18 +218,16 @@ if (failedSlices.length) log(`Not reviewed (agent died): ${failedSlices.join(', 
 const raw = reviews.filter((r) => r && r.result).flatMap((r) => r.result.findings || [])
 const praise = reviews.filter((r) => r && r.result).flatMap((r) => r.result.praise || [])
 const unique = dedup(raw)
-const toVerify = unique.filter((f) => f.severity !== 'SUGGESTION')
-const suggestions = unique.filter((f) => f.severity === 'SUGGESTION').map((f) => ({ ...f, verification: 'not verified: SUGGESTION' }))
-log(`${raw.length} raw findings, ${unique.length} after dedup, ${toVerify.length} to verify`)
+log(`${raw.length} raw findings, ${unique.length} after dedup`)
 
 phase('Verify')
-const judged = await parallel(toVerify.map((f) => () =>
+const judged = await parallel(unique.map((f) => () =>
   parallel([
     () => agent(evidencePrompt(f), { label: `evidence:${f.path}:${f.line}`, phase: 'Verify', schema: EVIDENCE_SCHEMA }),
     () => agent(impactPrompt(f), { label: `impact:${f.path}:${f.line}`, phase: 'Verify', schema: IMPACT_SCHEMA }),
   ]).then(([evidence, impact]) => judge(f, evidence, impact))))
 
-const kept = [...judged.filter((j) => j && !j.dropped), ...suggestions].sort((a, b) => rank(a) - rank(b))
+const kept = judged.filter((j) => j && !j.dropped).sort((a, b) => rank(a) - rank(b))
 const dropped = judged.filter((j) => j && j.dropped).map((j) => j.dropped)
 log(`${kept.length} findings kept, ${dropped.length} dropped`)
 
