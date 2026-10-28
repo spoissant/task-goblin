@@ -10,6 +10,26 @@ Organise findings into these categories. Evaluate queries against the largest ne
 
 Before posting, test every CRITICAL and WARNING: who hits it, how often, and is it new in this PR? Behaviour that predates the PR, an edge case that needs an unusual sequence, and risk to something that gates nothing (a local-only suite, an export nobody imports, a pattern the codebase doesn't follow consistently) is a SUGGESTION at most, or a line in the summary.
 
+## Category
+
+Every finding gets exactly one category, for its primary concern (an unscoped query is Security, not Performance):
+
+- **Bug**: wrong or broken behaviour, edge cases, flags read before LaunchDarkly loads, broken Railway chains, bare rescues
+- **Security**: authorization, `network_id` tenancy, injection, mass assignment, missing audit logs
+- **Data Integrity**: races, multi-step writes outside a transaction, non-idempotent jobs, unguarded destructive operations
+- **Performance**: N+1s, missing indexes, Ruby filtering that belongs in SQL, unbounded table growth
+- **Architecture**: logic in the wrong layer, raw services instead of operations, bypassing `contracts.ts`, missing ErrorBoundary, flag setup
+- **Reuse**: reinvented wheels, the same pattern twice in the PR
+- **Design System**: raw HTML over DS components, hardcoded tokens, wrong DS imports
+- **UI/UX**: what the user sees or does: layout, states, flows, copy
+- **a11y**: roles, labels, focus, keyboard, contrast
+- **i18n**: unwrapped strings, wrong `s__` context, template-literal interpolation
+- **Test Coverage**: missing specs or cases, banned test patterns, missing `data-testid`
+- **Conventions**: Ruby/TypeScript idioms, log shape, import order
+- **Simplify**: same behaviour with less code: named predicates, flatter conditionals, extracted repeated logic
+- **Cleanup**: code that shouldn't be there: dead code, unused imports or exports, debug code, stale TODOs
+- **Docs**: comments on non-obvious logic, README/ADR, misleading names
+
 ## 1. Summary
 
 3–5 bullets: what the PR does, what it changes, domains touched, notable risks, what is done well.
@@ -87,7 +107,7 @@ All UI uses `@hivebrite/design-system` components and theme tokens.
 - Missing MSW handlers; `getByRole` where `getByTestId`/`getByText`/`getByLabelText` is faster; `getByLabelText` on required fields without `{ exact: false }`
 - Missing `data-testid` on new interactive components or page sections
 
-## 8. Reusability (WARNING)
+## 8. Reuse (WARNING)
 
 Flag only concrete opportunities: a domain-agnostic hook, util, or component living in a feature directory when `shared/` is the natural home; the same pattern appearing twice in the PR; inline backend logic that is obviously a concern or service. Not speculative "might be useful someday".
 

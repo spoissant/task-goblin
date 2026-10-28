@@ -28,11 +28,11 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
 6. **Reinventing-the-wheel audit** with Grep/Glob, following `REF/reinvention.md`. Flag only clear equivalents.
 
-7. **Review.** One coherent pass organised by `REF/checklist.md`, which also defines CRITICAL / WARNING / SUGGESTION. Each finding: bold one-line summary, real-world consequence, `file:line`, concrete fix. Tag findings that echo an existing reviewer comment ("↩ already raised by @X") and default-skip ones already resolved.
+7. **Review.** One coherent pass organised by `REF/checklist.md`, which also defines CRITICAL / WARNING / SUGGESTION and the categories. Each finding: one category, bold one-line summary, real-world consequence, `file:line`, concrete fix. Tag findings that echo an existing reviewer comment ("↩ already raised by @X") and default-skip ones already resolved.
 
 8. **Output.** Print a one-line verdict banner (🔴 any CRITICAL, 🟠 WARNINGs only, 🟢 clean), a header with file and line counts, base ← head, and the PR URL as a link, a 3–5 bullet summary, and the severity counts. When the workflow ran, add the findings audit from `REF/parallel-review.md` (every finding raised, valid or dismissed, with the reasoning) before the triage. Severity glyphs: 🔴 CRITICAL · 🟠 WARNING · 💡 SUGGESTION.
 
-9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, bold summary, `file:line`, and the fix. Defaults: every finding → Fix, except those step 7 default-skips as already resolved. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
+9. **Triage.** Present every finding numbered sequentially across severity groups, grouped by severity, each with glyph, category, bold summary, `file:line`, and the fix. Defaults: every finding → Fix, except those step 7 default-skips as already resolved. The user replies with exceptions only ("3: skip, 5: fix"), "all" for defaults, or free-text instructions per number.
 
    Prefer a Lavish artifact at `.lavish/review-<prNumber>.html` (`~/.claude/skills/chore-start-task/references/lavish.md`, skipping the playbooks, `--help` and `design`): one card per finding with a Fix/Skip choice and a single submit wired as `lavish.md` describes (the queued prompt lists each finding number with its Fix or Skip), plain inline CSS; annotations on a card are directives for that number. Without `lavish-axi`, use a single AskUserQuestion with the same content and grammar.
 

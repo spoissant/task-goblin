@@ -12,7 +12,7 @@ No findings at all (no CRITICAL, WARNING or SUGGESTION): approve the PR on the u
 
 Order comments CRITICAL → WARNING → SUGGESTION and number per severity in that order: `[CRITICAL 1]`, `[WARNING 1]`, `[WARNING 2]`… These tags are how the user refers to a comment afterwards, so never renumber within a review.
 
-Each comment body starts with `**[SEVERITY N] TL;DR — …**`: one plain-language line about the observable effect, no symbol names or paths. Then a blank line, the mechanism and evidence, the fix, and the standard it violates when there is one. When the fix is an exact replacement of the anchored lines, add a fenced ```` ```suggestion ```` block so GitHub offers one-click commit. The block replaces exactly `start_line`…`line`, so anchor every line it changes; if that's not possible, describe the fix in prose.
+Each comment body starts with `**[SEVERITY N · Category] TL;DR — …**`, the category from `checklist.md`, then one plain-language line about the observable effect, no symbol names or paths. Then a blank line, the mechanism and evidence, the fix, and the standard it violates when there is one. When the fix is an exact replacement of the anchored lines, add a fenced ```` ```suggestion ```` block so GitHub offers one-click commit. The block replaces exactly `start_line`…`line`, so anchor every line it changes; if that's not possible, describe the fix in prose.
 
 Write for a reader who hasn't read the PR. Say where the problem shows up (page or screen, role, flag state), and for CRITICAL and WARNING how to see it. Spell out versions, domain terms and other repos on first use, and write cross-repo references as `owner/repo#N`: a bare `#N` links to this repo.
 
@@ -32,4 +32,4 @@ REST can't edit a pending comment (`PATCH /pulls/comments/<id>` returns 404). Ta
 
 ## Output
 
-Print the count posted, the review `html_url`, and an index of every comment as `<glyph> <SEVERITY N> — <path>:<line> — <TL;DR>` in payload order, followed by one line stating that the review is pending and comments can be discussed by tag. The chore is complete at this point: state the outcome, don't end on an instruction to submit.
+Print the count posted, the review `html_url`, and an index of every comment as `<glyph> <SEVERITY N> · <Category> — <path>:<line> — <TL;DR>` in payload order, followed by one line stating that the review is pending and comments can be discussed by tag. The chore is complete at this point: state the outcome, don't end on an instruction to submit.

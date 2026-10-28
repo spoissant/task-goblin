@@ -34,7 +34,7 @@ The working tree holds whatever branch someone else has checked out, so it is ne
 
 5. **Reinventing-the-wheel audit.** For each non-trivial new hook, component, utility, service, or concern, search for an existing equivalent before flagging. Read `references/reinvention.md` for where to look and the known patterns. Flag only clear equivalents.
 
-6. **Review.** One coherent pass organised by the categories in `references/checklist.md`, which also defines CRITICAL / WARNING / SUGGESTION. Each finding: bold one-line summary, real-world consequence (who hits it, where, how to see it), `file:line`, concrete fix.
+6. **Review.** One coherent pass organised by the categories in `references/checklist.md`, which also defines CRITICAL / WARNING / SUGGESTION and the categories. Each finding: one category, bold one-line summary, real-world consequence (who hits it, where, how to see it), `file:line`, concrete fix.
 
    De-dup against step 1 first. Drop findings a human already made or that were raised and dismissed (resolved thread, or author rejected and nobody reopened) unless you have a concrete new reason, and say so. Where you add a genuinely new angle to an existing thread, lead with "Building on X's comment" and link it. Ignore `isOutdated` threads as a dup source.
 

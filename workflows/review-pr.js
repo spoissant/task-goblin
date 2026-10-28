@@ -23,6 +23,8 @@ export const meta = {
 const SPLIT_ABOVE = 60
 const MIN_GROUP = 5
 const SEVERITIES = ['CRITICAL', 'WARNING', 'SUGGESTION']
+// Keep in sync with the Category section of checklist.md
+const CATEGORIES = ['Bug', 'Security', 'Data Integrity', 'Performance', 'Architecture', 'Reuse', 'Design System', 'UI/UX', 'a11y', 'i18n', 'Test Coverage', 'Conventions', 'Simplify', 'Cleanup', 'Docs']
 
 const SKIP = /(^|\/)(yarn\.lock|package-lock\.json|pnpm-lock\.yaml|Gemfile\.lock|schema\.rb|structure\.sql)$|(^|\/)(locales?|generated|__snapshots__)\/|\.(svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot|snap)$/
 const RUBY = /\.(rb|rake|erb|haml|slim|gemspec)$|(^|\/)(Gemfile|Rakefile)$/
@@ -44,7 +46,7 @@ const FINDINGS_SCHEMA = {
         type: 'object',
         properties: {
           severity: { type: 'string', enum: SEVERITIES },
-          category: { type: 'string', description: 'checklist category name' },
+          category: { type: 'string', enum: CATEGORIES, description: 'primary concern, from the checklist Category section' },
           path: { type: 'string' },
           line: { type: 'integer', description: 'line in the head commit, on an added line whenever one fits' },
           endLine: { type: 'integer', description: 'last line when the finding spans a range' },
@@ -138,10 +140,10 @@ ${s.files.map((f) => `- ${f}`).join('\n')}
 
 1. Read ${refDir}/standards.md and load the standards docs it lists for these paths (skip files the repo does not have).
 2. Read the critical files of the slice in full, not just the diff: operations, models, controllers, anything security-sensitive. N+1s, tenancy scoping, Railway chains and rescue contracts only show with the surrounding class. The diff is enough for specs, locales, schema and generated files.
-3. Review against ${refDir}/checklist.md, sections ${SECTIONS[s.kind]}, with its severity definitions and its severity test (who hits it, how often, is it new in this PR).
+3. Review against ${refDir}/checklist.md, sections ${SECTIONS[s.kind]}, with its severity definitions, its severity test (who hits it, how often, is it new in this PR) and its Category list.
 ${TONE}
 
-Return findings only, no prose review: each with severity, checklist category, path, line in the head commit (on an added line whenever one fits; endLine for a range), a one-line summary, the consequence, the concrete fix, the standard violated if any, and an exact replacement for the anchored lines when the fix is one. No code excerpts beyond the replacement. Up to two praise bullets on what the slice does well.`
+Return findings only, no prose review: each with severity, one category from the checklist Category section, path, line in the head commit (on an added line whenever one fits; endLine for a range), a one-line summary, the consequence, the concrete fix, the standard violated if any, and an exact replacement for the anchored lines when the fix is one. No code excerpts beyond the replacement. Up to two praise bullets on what the slice does well.`
 }
 
 function reinventionPrompt(paths) {
@@ -150,7 +152,7 @@ function reinventionPrompt(paths) {
 Reinventing-the-wheel audit. Using \`gh pr diff ${pr.number}\`, list every non-trivial hook, component, utility, service or concern the PR adds (new files and new exported names) among these files:
 ${paths.map((f) => `- ${f}`).join('\n')}
 
-Then, following ${refDir}/reinvention.md (where to look, known patterns), search the codebase for an existing equivalent of each one. Report only clear existing equivalents, as WARNING findings in category "Reusability": path and line of the new construct's definition, a one-line summary naming the existing equivalent, the consequence (two implementations to maintain, the existing one's behaviour the new one misses), and the fix (use the existing one). Nothing speculative. No praise.`
+Then, following ${refDir}/reinvention.md (where to look, known patterns), search the codebase for an existing equivalent of each one. Report only clear existing equivalents, as WARNING findings in category "Reuse": path and line of the new construct's definition, a one-line summary naming the existing equivalent, the consequence (two implementations to maintain, the existing one's behaviour the new one misses), and the fix (use the existing one). Nothing speculative. No praise.`
 }
 
 function evidencePrompt(f) {
