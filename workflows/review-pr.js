@@ -24,7 +24,7 @@ const SPLIT_ABOVE = 60
 const MIN_GROUP = 5
 const SEVERITIES = ['CRITICAL', 'WARNING', 'SUGGESTION']
 // Keep in sync with the Category section of checklist.md
-const CATEGORIES = ['Bug', 'Security', 'Data Integrity', 'Performance', 'Architecture', 'Reuse', 'Design System', 'UI/UX', 'a11y', 'i18n', 'Test Coverage', 'Conventions', 'Simplify', 'Cleanup', 'Docs']
+const CATEGORIES = ['Bug', 'Security', 'Data Integrity', 'Performance', 'Architecture', 'Reuse', 'Design System', 'UI/UX', 'a11y', 'i18n', 'Test Coverage', 'Flaky Test', 'Invalid Test', 'Conventions', 'Simplify', 'Cleanup', 'Docs']
 
 const SKIP = /(^|\/)(yarn\.lock|package-lock\.json|pnpm-lock\.yaml|Gemfile\.lock|schema\.rb|structure\.sql)$|(^|\/)(locales?|generated|__snapshots__)\/|\.(svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot|snap)$/
 const RUBY = /\.(rb|rake|erb|haml|slim|gemspec)$|(^|\/)(Gemfile|Rakefile)$/

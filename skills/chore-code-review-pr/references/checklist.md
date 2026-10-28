@@ -24,7 +24,9 @@ Every finding gets exactly one category, for its primary concern (an unscoped qu
 - **UI/UX**: what the user sees or does: layout, states, flows, copy
 - **a11y**: roles, labels, focus, keyboard, contrast
 - **i18n**: unwrapped strings, wrong `s__` context, template-literal interpolation
-- **Test Coverage**: missing specs or cases, banned test patterns, missing `data-testid`
+- **Test Coverage**: code no test exercises, so a regression ships green: missing specs or cases, missing `data-testid`
+- **Flaky Test**: passes or fails for reasons other than the code: real clock, test order, unhandled network calls, unawaited async, unseeded random data, slow queries that time out on CI
+- **Invalid Test**: exists and passes but proves nothing: asserts on its own mocks, always-true assertions, snapshots, disabled axe rules, a name promising more than it checks. Flaky and proving nothing is Invalid
 - **Conventions**: Ruby/TypeScript idioms, log shape, import order
 - **Simplify**: same behaviour with less code: named predicates, flatter conditionals, extracted repeated logic
 - **Cleanup**: code that shouldn't be there: dead code, unused imports or exports, debug code, stale TODOs
@@ -96,16 +98,28 @@ All UI uses `@hivebrite/design-system` components and theme tokens.
 - Queries not scoped by `network_id`
 - Monotonically growing tables without cleanup or archival
 
-## 7. Testing gaps
+## 7. Tests
 
+**Test Coverage**
 - Railway operations without both `:success` and `:failure` specs
 - Endpoints without request specs for authenticated, unauthenticated, forbidden
 - React components without Jest tests; components with stories missing `composedStories` + `testA11y`
 - Feature flags not tested both on and off; jobs without retry/idempotency specs
-- `create` where `build_stubbed` suffices; snapshot tests and disabled axe rules (both banned)
-- `fireEvent` instead of `userEvent.setup()` from `@hivebrite/test-utils`; manual `jest.mock` of flags instead of `mockFeatureFlags` via `createTest`; `wrapper` in `optionsRender` (breaks the custom wrappers)
-- Missing MSW handlers; `getByRole` where `getByTestId`/`getByText`/`getByLabelText` is faster; `getByLabelText` on required fields without `{ exact: false }`
 - Missing `data-testid` on new interactive components or page sections
+
+**Flaky Test**
+- Missing MSW handlers
+- `getByRole` where `getByTestId`/`getByText`/`getByLabelText` is faster
+
+**Invalid Test**
+- Snapshot tests and disabled axe rules (both banned)
+- `fireEvent` instead of `userEvent.setup()` from `@hivebrite/test-utils`
+- `wrapper` in `optionsRender` (breaks the custom wrappers)
+
+**Conventions**
+- `create` where `build_stubbed` suffices
+- Manual `jest.mock` of flags instead of `mockFeatureFlags` via `createTest`
+- `getByLabelText` on required fields without `{ exact: false }`
 
 ## 8. Reuse (WARNING)
 
