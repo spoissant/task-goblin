@@ -18,7 +18,7 @@ const PAGE_SIZE = 25;
 
 export function CompletedPage() {
   const [page, setPage] = useState(0);
-  const [showDone, setShowDone] = useState(false);
+  const [hideDone, setHideDone] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [syncProgress, setSyncProgress] = useState<SyncVisibleProgress | null>(null);
@@ -35,7 +35,7 @@ export function CompletedPage() {
   const { data, isLoading, error } = useCompletedTasksQuery({
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-    showDone,
+    showDone: !hideDone,
     title: debouncedQuery,
   });
   const { data: settingsData } = useSettingsQuery();
@@ -74,11 +74,11 @@ export function CompletedPage() {
             </span>
           )}
           <FilterToggle
-            id="show-done"
-            label="Show done"
-            checked={showDone}
+            id="hide-done"
+            label="Hide done"
+            checked={hideDone}
             onCheckedChange={(checked) => {
-              setShowDone(checked);
+              setHideDone(checked);
               setPage(0);
             }}
           />
