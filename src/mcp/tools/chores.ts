@@ -10,7 +10,7 @@ export function registerChoreTools(server: McpServer) {
       description:
         "List every chore: key (start_session's choreKey), number, name, the condition a task must meet, the prompt " +
         "template, and the flags supportsBulk (runs on several tasks in one session), requiresSameRepo, repoPairs " +
-        "(two-repo chores) and auto (the chore scheduler starts it on its own).",
+        "(multi-repo chores) and auto (the chore scheduler starts it on its own).",
       inputSchema: {},
     },
     () => toolResult(() => get<{ items: ChoreDefinition[] }>("/api/v1/chores/definitions"))

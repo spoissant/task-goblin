@@ -26,4 +26,14 @@ describe("orderForRepoPair", () => {
     expect(orderForRepoPair(pairs, [ac, { id: 6, repo: null }])).toBeNull();
     expect(orderForRepoPair(pairs, [ac, { id: 1, repo: "api-contracts" }, { id: 3, repo: "front-monorepo" }])).toBeNull();
   });
+
+  it("orders a three-repo chain as target first, then the upstreams in ship order", () => {
+    const chain: RepoPair[] = [...pairs, ["api-contracts", "front-monorepo", "alumni_connect"]];
+    const ac = { id: 2, repo: "alumni_connect" };
+    const api = { id: 1, repo: "api-contracts" };
+    const fm = { id: 3, repo: "front-monorepo" };
+    expect(orderForRepoPair(chain, [fm, ac, api])).toEqual([2, 1, 3]);
+    expect(orderForRepoPair(chain, [api, ac])).toEqual([2, 1]);
+    expect(orderForRepoPair(chain, [ac, api, { id: 4, repo: "api-contracts" }])).toBeNull();
+  });
 });

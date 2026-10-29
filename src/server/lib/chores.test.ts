@@ -128,7 +128,7 @@ describe("getChores — chore 14 validate-issue (manual only, main checkout)", (
   });
 });
 
-describe("getChores — chores 12 ship-upstream and 13 preview-upstream (two-repo, manual only)", () => {
+describe("getChores — chores 12 ship-upstream and 13 preview-upstream (multi-repo, manual only)", () => {
   it("never suggests them", async () => {
     const task = await seedTask();
 
@@ -144,7 +144,10 @@ describe("getChores — chores 12 ship-upstream and 13 preview-upstream (two-rep
       ["api-contracts", "alumni_connect"],
       ["front-monorepo", "alumni_connect"],
     ];
-    expect(defs.find((d) => d.key === "ship-upstream")?.repoPairs).toEqual(pairs);
+    expect(defs.find((d) => d.key === "ship-upstream")?.repoPairs).toEqual([
+      ...pairs,
+      ["api-contracts", "front-monorepo", "alumni_connect"],
+    ]);
     expect(defs.find((d) => d.key === "preview-upstream")?.repoPairs).toEqual(pairs);
     expect(defs.find((d) => d.key === "ai-qa")?.repoPairs).toBeNull();
   });

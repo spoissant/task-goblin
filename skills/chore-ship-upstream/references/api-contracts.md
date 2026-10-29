@@ -14,10 +14,16 @@ No extra condition.
 
 The SDK gems the alumni_connect PR re-pins: `git diff origin/<base>...HEAD -- Gemfile`, usually a branch or SHA pin on an SDK repo. When it re-pins none, it is the `Gemfile` SDK repos that get a commit carrying the upstream PR's title after the merge; find them while waiting.
 
+Chain: the front-monorepo PR's SDK too: the `@hivebrite/openapi-*` entries of its `pnpm-workspace.yaml` catalog that pin a prerelease (a version carrying `-chore-` or `-feat-`, from the api-contracts branch). Its SDK repo is the package name without `@hivebrite/`.
+
 ## Wait for the release (step 4)
 
-Per SDK repo: `gh release list --repo Hivebrite/<sdk-repo> --limit 5 --json tagName,createdAt`, until a release exists whose tag's commit (`gh api repos/Hivebrite/<sdk-repo>/commits/<tag> --jq .commit.message`) carries the upstream PR's title. A release whose commit does not carry the title is someone else's merge: keep waiting. The target is the newest release, which includes yours.
+Per SDK repo: `gh release list --repo Hivebrite/<sdk-repo> --limit 5 --json tagName,createdAt`, until a release exists whose tag's commit (`gh api repos/Hivebrite/<sdk-repo>/commits/<tag> --jq .commit.message`) carries the upstream PR's title. A release whose commit does not carry the title is someone else's merge: keep waiting. The target is the newest release, which includes yours. Chain: also wait until the front-monorepo SDK's version (the tag without `v`) is listed in `gh api orgs/Hivebrite/packages/npm/<sdk-repo>/versions --jq '.[].name'`.
 
 ## Bump (step 5)
 
 `Skill(hivebrite-engineering:update-internal-sdks)` with `main only=<sdk repos>`. The go-ahead covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore.
+
+## Bump front-monorepo (chain, step 4)
+
+In the front-monorepo worktree, at its PR's `headBranch`: set each prerelease catalog entry to its release version, and any `package.json` range that names the prerelease to the release, keeping the range prefix. Run `pnpm install`, then `git -C <path> commit` with a `chore(deps)` message carrying the PR's ticket, and `git -C <path> push`. Never `--no-verify`: a failing hook stops the chore.

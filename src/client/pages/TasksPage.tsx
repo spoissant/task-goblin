@@ -70,14 +70,14 @@ export function TasksPage() {
 
   const handleRunChoreForSelection = (chore: ChoreDefinition) => {
     // Runs inside a single session attached to the first selected task; no need for a "shared" session.
-    // A two-repo chore runs on its target task (e.g. alumni_connect) whatever the click order.
+    // A multi-repo chore runs on its target task (e.g. alumni_connect) whatever the click order.
     const ids = chore.repoPairs ? orderForRepoPair(chore.repoPairs, selection) : Array.from(selectedIds);
     if (!ids || ids.length === 0) return;
     const prompt = resolvePrompt(chore.prompt, { id: ids[0], jiraKey: null }, ids);
     setBulkPromptTarget({
       taskId: ids[0],
       chore: { number: chore.number, key: chore.key, name: chore.name, prompt },
-      withTaskIds: chore.supportsBulk ? ids.slice(1) : undefined, // a two-repo chore names its tasks in the prompt only
+      withTaskIds: chore.supportsBulk ? ids.slice(1) : undefined, // a multi-repo chore names its tasks in the prompt only
     });
   };
 

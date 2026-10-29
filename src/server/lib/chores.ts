@@ -26,7 +26,7 @@ export interface Chore {
   supportsBulk?: boolean; // can be invoked with multiple task IDs at once
   requiresSameRepo?: boolean; // when supportsBulk, all selected tasks must share a repository
   cwd?: "task" | "main"; // where an AI session runs: the task's worktree (default) or the repo's main checkout
-  repoPairs?: RepoPair[]; // two-repo chore: run on exactly one task per repo of a pair; the session runs on the target task
+  repoPairs?: RepoPair[]; // multi-repo chore: run on exactly one task per repo of a pair; the session runs on the target task
   /**
    * Set when the chore scheduler may start this chore on its own. `fields` are
    * the task columns, or values computed from the row, that define one trigger
@@ -57,6 +57,9 @@ const UPSTREAM_PAIRS: RepoPair[] = [
   ["api-contracts", "alumni_connect"],
   ["front-monorepo", "alumni_connect"],
 ];
+
+// Shipping also takes the chain where front-monorepo pins the api-contracts SDK and alumni_connect pins both.
+const SHIP_UPSTREAM_PAIRS: RepoPair[] = [...UPSTREAM_PAIRS, ["api-contracts", "front-monorepo", "alumni_connect"]];
 
 const CHORES: Chore[] = [
   {
@@ -180,10 +183,11 @@ const CHORES: Chore[] = [
     number: 12,
     key: "ship-upstream",
     name: "Ship Upstream PR",
-    condition: "manual only: an api-contracts or front-monorepo task selected with the alumni_connect task that depends on it",
+    condition:
+      "manual only: an api-contracts or front-monorepo task, or both, selected with the alumni_connect task that depends on them",
     prompt: "/chore-ship-upstream {{taskId}}",
     categories: null,
-    repoPairs: UPSTREAM_PAIRS,
+    repoPairs: SHIP_UPSTREAM_PAIRS,
     match: () => false,
   },
   {
