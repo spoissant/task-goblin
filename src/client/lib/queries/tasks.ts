@@ -104,18 +104,6 @@ export function useAssignJira() {
   });
 }
 
-/** The Dev QA chip: move a task QA'd on its test env to Ready for Test. */
-export function useMoveToReadyForTest() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/ready-for-test`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-    },
-  });
-}
-
 // Squash-merge a PR the merge gate cleared (the Merge button)
 export function useMergePr() {
   const queryClient = useQueryClient();

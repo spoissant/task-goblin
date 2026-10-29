@@ -5,7 +5,7 @@ import { parseStringList } from "./json";
 
 /** The status category the step starts from. */
 export const DEV_QA_CATEGORY = "Code Review";
-/** The Jira status the Dev QA chip moves the ticket to. */
+/** The Jira status the ticket moves to once QA'd. */
 export const READY_FOR_TEST = "Ready for Test";
 
 interface DevQaFields {

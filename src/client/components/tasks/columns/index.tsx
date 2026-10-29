@@ -7,7 +7,7 @@ import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
 import { IconTip, UnresolvedCommentsIcon } from "../StatusIcons";
 import { DeploymentBadges } from "../DeploymentBadges";
-import { DevQaButton } from "../DevQaButton";
+import { DevQaBadge } from "../DevQaBadge";
 import { ChangesSummary } from "../ChangesSummary";
 import { AiCell } from "./AiCell";
 import { SyncCell } from "./SyncCell";
@@ -135,12 +135,7 @@ const COLUMNS = {
     key: "status",
     header: "Status",
     width: "100px",
-    render: (task) => (
-      <div className="flex flex-wrap items-center gap-1">
-        <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />
-        <DevQaButton task={task} />
-      </div>
-    ),
+    render: (task) => <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />,
   },
   mergedIn: {
     key: "mergedIn",
@@ -176,7 +171,12 @@ const COLUMNS = {
     key: "ai",
     header: "AI",
     width: "120px",
-    render: (task, ctx) => <AiCell task={task} session={ctx.session} nextChore={ctx.nextChore} />,
+    render: (task, ctx) => (
+      <div className="flex flex-wrap items-center gap-1">
+        <AiCell task={task} session={ctx.session} nextChore={ctx.nextChore} />
+        <DevQaBadge task={task} />
+      </div>
+    ),
   },
   sync: {
     key: "sync",

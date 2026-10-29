@@ -4,12 +4,11 @@ import { getTaskOrThrow } from "../lib/queries";
 import { getBody } from "../lib/request";
 import { parseId, parsePrUrl } from "../lib/validation";
 import { mergeTaskPr } from "../services/merge-gate";
-import { moveToReadyForTest } from "../services/dev-qa";
 import { importPr, linkJiraToTask, linkPrToTask, syncTaskDetail } from "../services/task-sync";
 import type { Routes } from "../router";
 
 // A task's links to its PR and its Jira issue: attaching one by hand,
-// re-pulling both, the Merge button and the Dev QA chip.
+// re-pulling both, and the Merge button.
 export const taskLinkRoutes: Routes = {
   // Import one PR as a task (the sync only pulls the configured user's PRs)
   "/api/v1/tasks/from-pr": {
@@ -62,13 +61,6 @@ export const taskLinkRoutes: Routes = {
   "/api/v1/tasks/:id/merge-pr": {
     async POST(_req, params) {
       return json(await mergeTaskPr(parseId(params.id)));
-    },
-  },
-
-  // The Dev QA chip: move a task QA'd on its test env to Ready for Test.
-  "/api/v1/tasks/:id/ready-for-test": {
-    async POST(_req, params) {
-      return json(await moveToReadyForTest(parseId(params.id)));
     },
   },
 };
