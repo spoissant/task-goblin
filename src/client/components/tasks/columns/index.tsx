@@ -7,6 +7,7 @@ import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
 import { IconTip, UnresolvedCommentsIcon } from "../StatusIcons";
 import { DeploymentBadges } from "../DeploymentBadges";
+import { DevQaButton } from "../DevQaButton";
 import { ChangesSummary } from "../ChangesSummary";
 import { AiCell } from "./AiCell";
 import { SyncCell } from "./SyncCell";
@@ -134,7 +135,12 @@ const COLUMNS = {
     key: "status",
     header: "Status",
     width: "100px",
-    render: (task) => <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />,
+    render: (task) => (
+      <div className="flex flex-wrap items-center gap-1">
+        <InteractiveStatusBadge taskId={task.id} status={task.status} jiraKey={task.jiraKey} />
+        <DevQaButton task={task} />
+      </div>
+    ),
   },
   mergedIn: {
     key: "mergedIn",

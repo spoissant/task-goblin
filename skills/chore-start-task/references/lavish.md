@@ -7,5 +7,6 @@ Shared by the chores that get a plan or a worklist approved in the browser: `/ch
 - Read the playbooks the skill names (`lavish-axi playbook <id>`) before writing the HTML.
 - Open it with `lavish-axi <file>`, then wait for feedback with `lavish-axi poll <file>` through Bash `run_in_background`.
 - An annotation is a directive for the element it sits on. Apply it, update the HTML (Lavish live-reloads), and answer with `lavish-axi poll <file> --agent-reply "<what changed>"`, which also waits for the next feedback.
+- A form never submits natively: the artifact is sandboxed, so a native submit navigates the frame away and the page says "no longer current". Every `<form>` needs `onsubmit="event.preventDefault(); …"` that collects the answers with `FormData`, calls `window.lavish.queuePrompt(<one summary of every choice>, { tag: '<name>' })` once, then `window.lavish.sendQueuedPrompts()` so the submit button reaches the agent without a second click.
 - Approval can come from the browser or from the terminal.
 - When the work is done, answer with a summary (`lavish-axi reply <file> --agent-reply "<summary>"`) and end the session with `lavish-axi end <file>`.

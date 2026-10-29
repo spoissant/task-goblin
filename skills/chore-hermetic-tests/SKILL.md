@@ -24,7 +24,7 @@ When the parent's worktree already registers every seed the specs call (`Hermeti
 
 ## 4. Ship
 
-From this worktree: `Skill(hivebrite-engineering:github-commit)` (the repo's style is `test(<feature>): <what> [<sub-task key>]`), `git push -u origin <branch>`, then `Skill(hivebrite-engineering:github-pr)` with the sub-task key, as a draft, with its Step 4 quality suggestions skipped. The PR title carries the sub-task key, which is how Task Goblin pairs the PR with the sub-task. The body follows the repo's template, links the parent's PR (or names its branch), and says the two merge together: merging alumni_connect squash-merges this one, so it is never merged by hand. An existing PR: push to it.
+From this worktree: `Skill(hivebrite-engineering:github-commit)` (the repo's style is `test(<feature>): <what> [<sub-task key>]`; a new spec has no `qase.id()` yet, so the `hermetic-qase-ids` pre-commit hook rejects it: commit with `LEFTHOOK_EXCLUDE=hermetic-qase-ids` set, which skips that one hook and keeps prettier and eslint, and the PR's workflow adds the id), `git push -u origin <branch>`, then `Skill(hivebrite-engineering:github-pr)` with the sub-task key, as a draft, with its Step 4 quality suggestions skipped. The PR title carries the sub-task key, which is how Task Goblin pairs the PR with the sub-task. The body follows the repo's template, links the parent's PR (or names its branch), and says the two merge together: merging alumni_connect squash-merges this one, so it is never merged by hand. An existing PR: push to it.
 
 Then `sync_task(id)`, which links the PR opened from this branch to the sub-task: the `task` it returns should carry the PR. If it does not, put its `errors` in the report.
 

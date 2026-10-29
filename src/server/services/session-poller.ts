@@ -13,6 +13,8 @@ import { updateSession, type SessionRow } from "./claude-sessions";
 import { coveredTaskIds } from "./session-tasks";
 
 const POLLED_STATES: ClaudeSessionState[] = ["working", "blocked"];
+// Finished states still polled while their process is alive: chatting or a respawn resumes them.
+const RESUMABLE_STATES: ClaudeSessionState[] = ["done", "stopped"];
 const MISSING_STATE_TOLERANCE = 6; // poll ticks before a missing state.json is treated as a vanished session
 const REAP_IDLE_MS = 10 * 60 * 1000;
 
@@ -48,7 +50,7 @@ const missingStateCounts = new Map<number, number>();
 
 /**
  * Copy state.json into each working/blocked session; broadcast on change.
- * Done sessions with a live process are polled too: chatting with one resumes it.
+ * Done and stopped sessions with a live process are polled too: chatting or a respawn resumes them.
  */
 export async function pollActiveSessions(): Promise<void> {
   const rows = await db
@@ -59,7 +61,7 @@ export async function pollActiveSessions(): Promise<void> {
         isNotNull(claudeSessions.shortId),
         or(
           inArray(claudeSessions.state, POLLED_STATES),
-          and(eq(claudeSessions.state, "done"), isNull(claudeSessions.processStoppedAt)),
+          and(inArray(claudeSessions.state, RESUMABLE_STATES), isNull(claudeSessions.processStoppedAt)),
         ),
       ),
     );
@@ -70,7 +72,7 @@ export async function pollActiveSessions(): Promise<void> {
   for (const row of rows) {
     const job = await readJobState(row.shortId!);
     if (!job) {
-      if (row.state === "done") continue;
+      if (RESUMABLE_STATES.includes(row.state as ClaudeSessionState)) continue;
       const misses = (missingStateCounts.get(row.id) ?? 0) + 1;
       missingStateCounts.set(row.id, misses);
       if (misses < MISSING_STATE_TOLERANCE) continue;
@@ -89,8 +91,8 @@ export async function pollActiveSessions(): Promise<void> {
 /** Copy one job's state into its row; a session that just finished hands each of its tasks to the runtime. */
 async function applyJobState(row: SessionRow, job: JobState): Promise<void> {
   const nextState = effectiveState(job);
-  // A finished run whose idle process dies later (e.g. its worktree was reaped) stays done.
-  if (row.state === "done" && nextState === "failed") {
+  // A finished run whose idle process dies later (e.g. its worktree was reaped) keeps its state.
+  if (RESUMABLE_STATES.includes(row.state as ClaudeSessionState) && nextState === "failed") {
     await updateSession(row.id, { processStoppedAt: now() });
     return;
   }

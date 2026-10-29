@@ -15,8 +15,8 @@ export interface IssueTransitions {
   transitions: { id: string; to: string }[];
 }
 
-/** The Jira calls this step makes, behind a port so tests stub them. */
-interface MergeJira {
+/** The Jira calls this step (and the Dev QA chip) make, behind a port so tests stub them. */
+export interface MergeJira {
   issueTransitions(key: string): Promise<IssueTransitions>;
   transition(key: string, transitionId: string): Promise<void>;
 }
@@ -39,7 +39,7 @@ function createDefault(): MergeJira {
 
 let instance: MergeJira | null = null;
 
-function getMergeJira(): MergeJira {
+export function getMergeJira(): MergeJira {
   if (!instance) instance = createDefault();
   return instance;
 }
