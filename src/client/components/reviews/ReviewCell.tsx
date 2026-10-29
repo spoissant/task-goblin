@@ -1,4 +1,4 @@
-import { CheckCircle, PencilLine, RotateCcw, Sparkles, XCircle } from "lucide-react";
+import { CheckCircle, PencilLine, RotateCcw, Sparkles, Unplug, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { ClaudeSession } from "@/shared/types";
 import { useRespawnSession, useStartReviewSession, type StartReviewInput } from "@/client/lib/queries/sessions";
@@ -63,6 +63,20 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
     </a>
   );
 
+  // Finished sessions whose process is gone can be respawned to follow up.
+  const respawnButton = canRespawn(session) && (
+    <button
+      type="button"
+      aria-label="Respawn session"
+      className={cn(IDLE_PILL, HOVER, "px-1")}
+      onClick={respawn}
+      disabled={respawnSession.isPending}
+    >
+      <Unplug className="h-3 w-3" />
+    </button>
+  );
+  const respawnHint = respawnButton ? "\nSession disconnected: the plug respawns it" : "";
+
   let content: React.ReactNode;
   let tooltip: string;
 
@@ -114,25 +128,40 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
       link(label, DRAFT_PILL, session?.link ?? `${prUrl}/files`)
     );
   } else if (session?.state === "failed") {
-    tooltip = `${session.error ?? session.detail ?? "The review failed"}\nClick to retry`;
+    tooltip = `${session.error ?? session.detail ?? "The review failed"}\nClick to retry${respawnHint}`;
     content = (
-      <button type="button" className={cn(IDLE_PILL, HOVER)} onClick={run} disabled={!start || startReview.isPending}>
-        <XCircle className="h-3.5 w-3.5 text-red-500" />
-        Retry
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button type="button" className={cn(IDLE_PILL, HOVER)} onClick={run} disabled={!start || startReview.isPending}>
+          <XCircle className="h-3.5 w-3.5 text-red-500" />
+          Retry
+        </button>
+        {respawnButton}
+      </span>
     );
   } else if (session?.state === "done" && session.choreKey === "code-review-pr" && session.link) {
     // Own PRs: the review ends in local fixes, not a GitHub draft.
-    tooltip = "Reviewed: open the session";
+    const disconnected = canRespawn(session);
+    const sessionLink = session.link;
+    tooltip = disconnected ? "Reviewed: session disconnected, click to respawn and open it" : "Reviewed: open the session";
+    const label = (
+      <>
+        <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+        Reviewed
+      </>
+    );
     content = (
       <span className="inline-flex items-center gap-1">
-        {link(
-          <>
-            <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-            Reviewed
-          </>,
-          cn(IDLE_PILL, HOVER),
-          session.link,
+        {disconnected ? (
+          <button
+            type="button"
+            className={cn(IDLE_PILL, HOVER)}
+            onClick={() => respawnAndOpen(sessionLink)}
+            disabled={respawnSession.isPending}
+          >
+            {label}
+          </button>
+        ) : (
+          link(label, cn(IDLE_PILL, HOVER), sessionLink)
         )}
         <button
           type="button"
@@ -146,17 +175,20 @@ export function ReviewCell({ session, start, disabledReason, hasDraft, prUrl }: 
       </span>
     );
   } else {
-    tooltip = disabledReason ?? "Start an AI code review in the background";
+    tooltip = (disabledReason ?? "Start an AI code review in the background") + respawnHint;
     content = (
-      <button
-        type="button"
-        className={cn(IDLE_PILL, start && HOVER, !start && "opacity-50")}
-        onClick={run}
-        disabled={!start || startReview.isPending}
-      >
-        <Sparkles className={cn("h-3.5 w-3.5", start ? "text-blue-500" : "text-muted-foreground/50")} />
-        AI
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          className={cn(IDLE_PILL, start && HOVER, !start && "opacity-50")}
+          onClick={run}
+          disabled={!start || startReview.isPending}
+        >
+          <Sparkles className={cn("h-3.5 w-3.5", start ? "text-blue-500" : "text-muted-foreground/50")} />
+          AI
+        </button>
+        {respawnButton}
+      </span>
     );
   }
 
