@@ -104,7 +104,6 @@ export function useAssignJira() {
   });
 }
 
-// Squash-merge a PR the merge gate cleared (the Merge button)
 /** The Dev QA chip: move a task QA'd on its test env to Ready for Test. */
 export function useMoveToReadyForTest() {
   const queryClient = useQueryClient();
@@ -117,6 +116,7 @@ export function useMoveToReadyForTest() {
   });
 }
 
+// Squash-merge a PR the merge gate cleared (the Merge button)
 export function useMergePr() {
   const queryClient = useQueryClient();
 
