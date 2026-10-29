@@ -1,5 +1,6 @@
 import { json } from "../response";
 import { parseId } from "../lib/validation";
+import { getBody } from "../lib/request";
 import { draftToSlack, listStandups, startStandup, toApi } from "../services/standup";
 import type { Routes } from "../router";
 
@@ -17,9 +18,11 @@ export const standupRoutes: Routes = {
   },
 
   // Drafts the standup in today's Slack async-update thread (never sends); returns { link }.
+  // Optional { notes } tell the drafting session what differs today, e.g. where the thread is.
   "/api/v1/standups/:id/slack-draft": {
-    async POST(_req, params) {
-      return json(await draftToSlack(parseId(params.id)));
+    async POST(req, params) {
+      const { notes } = req.body ? await getBody<{ notes?: string }>(req) : {};
+      return json(await draftToSlack(parseId(params.id), notes?.trim() || undefined));
     },
   },
 };

@@ -61,12 +61,12 @@ export function resolveJiraLinks(markdown: string, jiraHost: string | null): str
 }
 
 /** Draft a finished standup as a reply in today's async-update thread; resolves with the Slack link. */
-export async function draftToSlack(id: number): Promise<{ link: string }> {
+export async function draftToSlack(id: number, notes?: string): Promise<{ link: string }> {
   const [row] = await db.select().from(standups).where(eq(standups.id, id));
   if (!row) throw new NotFoundError("Standup", id);
   if (row.state !== "done" || !row.markdown) throw new AppError("Only a finished standup can be drafted", 409, "STANDUP_NOT_DONE");
 
-  const prompt = draftPrompt(row.markdown, new Date());
+  const prompt = draftPrompt(row.markdown, new Date(), notes);
   const res = await runPrint({ cwd: REPO_DIR, prompt, model: "sonnet", timeoutMs: DRAFT_TIMEOUT_MS, allowedTools: DRAFT_TOOLS });
   const out = parsePrint(res.stdout);
   const result = out?.result?.trim() ?? "";
@@ -75,7 +75,7 @@ export async function draftToSlack(id: number): Promise<{ link: string }> {
   throw new AppError(`Slack draft failed: ${reason}`, 502, "SLACK_DRAFT_FAILED");
 }
 
-function draftPrompt(markdown: string, at: Date): string {
+function draftPrompt(markdown: string, at: Date, notes?: string): string {
   const midnight = new Date(at);
   midnight.setHours(0, 0, 0, 0);
   return [
@@ -84,6 +84,7 @@ function draftPrompt(markdown: string, at: Date): string {
     "Create a draft reply in that thread with slack_send_message_draft, thread_ts set to the reminder's ts, and as message the text " +
       "between the markers, exactly as written. Never send a message.",
     "Reply with only the channel_link the tool returns. If there is no reminder today or the draft fails, reply `ERROR: <reason>`.",
+    ...(notes ? [`The user's notes for today take precedence over the steps above:\n${notes}`] : []),
     `<<<MESSAGE\n${markdown}\nMESSAGE>>>`,
   ].join("\n\n");
 }

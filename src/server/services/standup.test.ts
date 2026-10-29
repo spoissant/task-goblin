@@ -12,8 +12,10 @@ describe("standups", () => {
   let router: ReturnType<typeof createRouter>;
   const calls: string[][] = [];
 
-  const request = (method: string, path: string) =>
-    withErrorBoundary(() => router.route(new Request("http://localhost" + path, { method })));
+  const request = (method: string, path: string, body?: unknown) =>
+    withErrorBoundary(() =>
+      router.route(new Request("http://localhost" + path, { method, body: body === undefined ? undefined : JSON.stringify(body) })),
+    );
   const list = async () => (await (await request("GET", "/api/v1/standups")).json()).items;
   const settle = () => new Promise((r) => setTimeout(r, 20));
   const runWith = (res: CommandResult) =>
@@ -103,6 +105,17 @@ describe("standups", () => {
       "--allowedTools",
       "ToolSearch,mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_send_message_draft",
     ]);
+  });
+
+  it("passes the user's notes to the drafting session", async () => {
+    sqlite.run("INSERT INTO standups (id, state, markdown, created_at, updated_at) VALUES (5, 'done', 'x', 'x', 'x')");
+    runWith({ stdout: JSON.stringify({ result: "https://app.slack.com/client/T1/C1" }), stderr: "", exitCode: 0 });
+
+    await request("POST", "/api/v1/standups/5/slack-draft", { notes: "  Reply in the 9:30 thread instead.  " });
+    expect(calls[0][2]).toContain("take precedence over the steps above:\nReply in the 9:30 thread instead.\n\n<<<MESSAGE");
+
+    await request("POST", "/api/v1/standups/5/slack-draft", { notes: " " });
+    expect(calls[1][2]).not.toContain("take precedence");
   });
 
   it("reports why a Slack draft failed", async () => {

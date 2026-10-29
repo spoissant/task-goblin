@@ -29,6 +29,7 @@ export function useGenerateStandup() {
 /** Drafts a finished standup in today's Slack async-update thread; resolves with the Slack link. */
 export function useDraftStandupToSlack() {
   return useMutation({
-    mutationFn: (id: number) => api.post<{ link: string }>(`/standups/${id}/slack-draft`),
+    mutationFn: ({ id, notes }: { id: number; notes: string }) =>
+      api.post<{ link: string }>(`/standups/${id}/slack-draft`, { notes }),
   });
 }

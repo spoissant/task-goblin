@@ -6,6 +6,9 @@ import { useJiraConfigQuery } from "@/client/lib/queries/settings";
 import { linkJiraKeys } from "@/client/lib/standup";
 import { formatCost } from "@/client/lib/sessions";
 import { Button } from "@/client/components/ui/button";
+import { Label } from "@/client/components/ui/label";
+import { ModalDialog } from "@/client/components/ui/modal-dialog";
+import { Textarea } from "@/client/components/ui/textarea";
 import { Markdown } from "@/client/components/ui/markdown";
 import { Skeleton } from "@/client/components/ui/skeleton";
 import { EmptyState } from "@/client/components/ui/empty-state";
@@ -32,6 +35,8 @@ function formatUsage(s: Standup): string {
 export function StandupPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftNotes, setDraftNotes] = useState("");
 
   const { data, isPending, isError, error } = useStandupsQuery();
   const { data: jiraConfig } = useJiraConfigQuery();
@@ -58,10 +63,14 @@ export function StandupPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const draftToSlack = async () => {
+  // The dialog closes right away: drafting can take minutes, the button shows progress.
+  const draftToSlack = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!selected) return;
+    setDraftOpen(false);
     try {
-      const { link } = await draft.mutateAsync(selected.id);
+      const { link } = await draft.mutateAsync({ id: selected.id, notes: draftNotes.trim() });
+      setDraftNotes(""); // kept on failure, for a retry
       toast.success("Draft saved in today's Slack thread.", {
         action: { label: "Open Slack", onClick: () => window.open(link, "_blank", "noopener") },
       });
@@ -102,7 +111,7 @@ export function StandupPage() {
             </Button>
           )}
           {selected?.state === "done" && selected.markdown && (
-            <Button variant="outline" size="sm" onClick={draftToSlack} disabled={draft.isPending}>
+            <Button variant="outline" size="sm" onClick={() => setDraftOpen(true)} disabled={draft.isPending}>
               <Send className={draft.isPending ? "animate-pulse" : undefined} />
               {draft.isPending ? "Drafting…" : "Send draft to Slack"}
             </Button>
@@ -113,6 +122,35 @@ export function StandupPage() {
           </Button>
         </div>
       </div>
+
+      <ModalDialog
+        open={draftOpen}
+        onOpenChange={setDraftOpen}
+        title="Send draft to Slack"
+        description="Drafts the standup in today's async-update thread. It is never sent."
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setDraftOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="slack-draft-form">
+              Draft
+            </Button>
+          </>
+        }
+      >
+        <form id="slack-draft-form" onSubmit={draftToSlack} className="space-y-2 py-4">
+          <Label htmlFor="slack-draft-notes">Notes for the session (optional)</Label>
+          <Textarea
+            id="slack-draft-notes"
+            value={draftNotes}
+            onChange={(e) => setDraftNotes(e.target.value)}
+            placeholder="E.g. no Slackbot reminder today: reply in the 9:30 thread about going async instead."
+            rows={4}
+            autoFocus
+          />
+        </form>
+      </ModalDialog>
 
       {isPending && <Skeleton className="h-40 w-full" />}
 
