@@ -10,7 +10,7 @@ The alumni_connect task (the target) comes first, then the upstream task (ask fo
 
 **Chain** — three task IDs: alumni_connect, api-contracts, front-monorepo. The front-monorepo PR pins a prerelease of the api-contracts SDK, so they ship in order: api-contracts, then the front-monorepo PR is re-pinned to its SDK release and shipped, then alumni_connect takes both releases. Any other set of repos: stop.
 
-Waits happen in the background: a `run_in_background` Bash loop polling `gh` every minute, or Monitor, never a foreground sleep. A wait that has not resolved after 45 minutes stops the chore with a report of where it stalled.
+Waits happen in the background (`run_in_background`), never a foreground sleep. A PR's checks: `bash <this skill's directory>/scripts/wait-checks.sh <owner/repo> <pr> <head sha> <minutes> [<check name>…]`, never a hand-written loop. It settles only once every named check has appeared and nothing was pending for two polls, and its last line is `SETTLED`, `FAILED <checks>`, `HEAD_MOVED <sha>` or `TIMEOUT`. On the alumni_connect PR, name `buildkite/alumni-connect`, which registers late. Other waits: a Bash loop polling `gh` every minute. Caps: 75 minutes for the alumni_connect PR's checks (its Buildkite build alone takes up to 50), 45 for every other wait. A wait that hits its cap stops the chore with a report of where it stalled.
 
 ## 1. Context
 
@@ -18,7 +18,7 @@ Waits happen in the background: a `run_in_background` Bash loop polling `gh` eve
 
 ## 2. Green gate
 
-Every PR must be green all the way; an already merged upstream PR only needs the upstream-specific condition, and a bump-only target has no PR to gate. Per PR, `gh pr view <n> --repo <owner/repo> --json state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid,labels`:
+Every upstream PR must be green all the way; an already merged one only needs the upstream-specific condition. The target is not gated here: it may still be in progress (a draft, awaiting review, checks running or red), and step 6 gates its checks and conflicts. Per upstream PR, `gh pr view <n> --repo <owner/repo> --json state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid,labels`:
 
 - open and not a draft;
 - `mergeable` is `MERGEABLE` (`UNKNOWN` means GitHub is still computing: ask again);
@@ -43,11 +43,13 @@ Chain: do this for api-contracts first. Then bump the front-monorepo PR as `refe
 
 ## 5. Bump the alumni_connect PR
 
-Follow the reference (chain: both references, in one commit), then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
+First bring the target up to date with its base, so the merge and the bump share one CI run: `git fetch origin && git merge --no-ff origin/<baseBranch>`. Conflicts are resolved as `chore-fix-merge-conflicts` step 4 describes (pins: its `references/dependency-pins.md`), without its push.
+
+Follow the reference (chain: both references, in one commit). When a `package.json` pin moved, run `yarn typecheck`: type errors the release brings are fixed in the same commit, following the upstream change. Formatting is left to the commit hook. Then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
 
 ## 6. Green again
 
-Wait for the checks on the new head, then `sync_task(target)` and rerun the step 2 gate on the alumni_connect PR. A PR this chore opened is a draft without approvals: gate only its checks and conflicts.
+Wait for the checks on the new head, then `sync_task(target)` and gate the alumni_connect PR on its checks and conflicts only, by the step 2 rules for those; its draft state and approvals are the user's.
 
 - Failing checks: `Skill(chore-fix-pr-checks)` with the target task ID, wait again, re-gate.
 - Conflicts: `Skill(chore-fix-merge-conflicts)` with the target task ID, wait again, re-gate.

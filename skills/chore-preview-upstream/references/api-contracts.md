@@ -10,4 +10,4 @@ There is nothing to publish. Every push to an api-contracts branch other than `m
 
 ## Bump (step 3)
 
-`Skill(hivebrite-engineering:update-internal-sdks)` with `<headBranch> only=<sdk repos>`. Choosing the chore covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore.
+`Skill(hivebrite-engineering:update-internal-sdks)` with `<headBranch> only=<sdk repos>`. Choosing the chore covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore. Its host `bundle install` is forbidden in alumni_connect: refresh `Gemfile.lock` with `bin/dev update-gems` (webapp container) instead.

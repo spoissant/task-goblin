@@ -14,16 +14,20 @@ No extra condition.
 
 The SDK gems the alumni_connect PR re-pins: `git diff origin/<base>...HEAD -- Gemfile`, usually a branch or SHA pin on an SDK repo. When it re-pins none, it is the `Gemfile` SDK repos that get a commit carrying the upstream PR's title after the merge; find them while waiting.
 
+The TypeScript SDKs too: the `@hivebrite/openapi-*` entries of alumni_connect's root `package.json` whose SDK repo (the package name without `@hivebrite/`) gets a commit carrying the upstream PR's title.
+
 Chain: the front-monorepo PR's SDK too: the `@hivebrite/openapi-*` entries of its `pnpm-workspace.yaml` catalog that pin a prerelease (a version carrying `-chore-` or `-feat-`, from the api-contracts branch). Its SDK repo is the package name without `@hivebrite/`.
 
 ## Wait for the release (step 4)
 
-Per SDK repo: `gh release list --repo Hivebrite/<sdk-repo> --limit 5 --json tagName,createdAt`, until a release exists whose tag's commit (`gh api repos/Hivebrite/<sdk-repo>/commits/<tag> --jq .commit.message`) carries the upstream PR's title. A release whose commit does not carry the title is someone else's merge: keep waiting. The target is the newest release, which includes yours. Chain: also wait until the front-monorepo SDK's version (the tag without `v`) is listed in `gh api orgs/Hivebrite/packages/npm/<sdk-repo>/versions --jq '.[].name'`.
+Per SDK repo: `gh release list --repo Hivebrite/<sdk-repo> --limit 5 --json tagName,createdAt`, until a release exists whose tag's commit (`gh api repos/Hivebrite/<sdk-repo>/commits/<tag> --jq .commit.message`) carries the upstream PR's title. A release whose commit does not carry the title is someone else's merge: keep waiting. The target is the newest release, which includes yours. For each TypeScript SDK (alumni_connect's, and in a chain the front-monorepo one), also wait until its version (the tag without `v`) is listed in `gh api orgs/Hivebrite/packages/npm/<sdk-repo>/versions --jq '.[].name'`.
 
 ## Bump (step 5)
 
-`Skill(hivebrite-engineering:update-internal-sdks)` with `main only=<sdk repos>`. The go-ahead covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore.
+`Skill(hivebrite-engineering:update-internal-sdks)` with `main only=<sdk repos>`. The go-ahead covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore. Its host `bundle install` is forbidden in alumni_connect: refresh `Gemfile.lock` with `bin/dev update-gems` (webapp container) instead.
+
+It reads alumni_connect as Ruby and misses the TypeScript SDKs: set each released one's version in every `package.json` entry that pins it (`resolutions` included), keeping the range prefix, then run `yarn install` once.
 
 ## Bump front-monorepo (chain, step 4)
 
-In the front-monorepo worktree, at its PR's `headBranch`: set each prerelease catalog entry to its release version, and any `package.json` range that names the prerelease to the release, keeping the range prefix. Run `pnpm install`, then `git -C <path> commit` with a `chore(deps)` message carrying the PR's ticket, and `git -C <path> push`. Never `--no-verify`: a failing hook stops the chore.
+In the front-monorepo worktree, at its PR's `headBranch`: set each prerelease catalog entry to its release version, and any `package.json` range that names the prerelease to the release, keeping the range prefix. Run `pnpm install`, then `pnpm exec nx run-many -t typecheck,lint,test -p <project>` for each Nx project the PR changes (its `project.json` name): type errors the release brings are fixed in the same commit, and formatting is left to the commit hook. Then `git -C <path> commit` with a `chore(deps)` message carrying the PR's ticket, and `git -C <path> push`. Never `--no-verify`: a failing hook stops the chore.
