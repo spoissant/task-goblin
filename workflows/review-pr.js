@@ -230,8 +230,8 @@ log(`${raw.length} raw findings, ${unique.length} after dedup`)
 phase('Verify')
 const judged = await parallel(unique.map((f) => () =>
   parallel([
-    () => agent(evidencePrompt(f), { label: `evidence:${f.path}:${f.line}`, phase: 'Verify', schema: EVIDENCE_SCHEMA }),
-    () => agent(impactPrompt(f), { label: `impact:${f.path}:${f.line}`, phase: 'Verify', schema: IMPACT_SCHEMA }),
+    () => agent(evidencePrompt(f), { label: `evidence:${f.path}:${f.line}`, phase: 'Verify', schema: EVIDENCE_SCHEMA, model: 'sonnet' }),
+    () => agent(impactPrompt(f), { label: `impact:${f.path}:${f.line}`, phase: 'Verify', schema: IMPACT_SCHEMA, model: 'sonnet' }),
   ]).then(([evidence, impact]) => judge(f, evidence, impact))))
 
 const kept = judged.filter((j) => j && !j.dropped).sort((a, b) => rank(a) - rank(b))
