@@ -363,6 +363,9 @@ async function runStart(sessionId: number): Promise<void> {
   }
 }
 
+/** Chores that review a PR: the user's own (task) and a colleague's (task-less). */
+const CODE_REVIEW_CHORES = ["code-review-pr", REVIEW_CHORE.key];
+
 async function spawnGated(sessionId: number, cwd: string): Promise<void> {
   const row = await getRow(sessionId);
   if (!row || (row.state !== "preparing" && row.state !== "queued")) return; // stopped meanwhile
@@ -386,6 +389,7 @@ async function spawnGated(sessionId: number, cwd: string): Promise<void> {
     return;
   }
   await updateSession(sessionId, { state: "working", cwd, shortId: spawned.shortId, error: null });
+  if (CODE_REVIEW_CHORES.includes(row.choreKey)) console.log(`[review] started session ${sessionId} (${row.name})`);
 }
 
 export async function stopSession(id: number): Promise<SessionRow> {
