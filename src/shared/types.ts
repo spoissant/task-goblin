@@ -372,3 +372,19 @@ export interface ReviewRequest {
 }
 
 export type PrSize = "small" | "medium" | "large";
+
+// Staging-like environments: is the branch head deployed, and did the Playwright gate pass on it
+export type EnvSignalLevel = "ok" | "pending" | "warn" | "broken" | "unknown";
+
+export interface EnvSignal {
+  level: EnvSignalLevel;
+  label: string;
+  detail: string | null;
+  url: string | null;
+}
+
+export interface EnvironmentStatus {
+  name: string;
+  deploy: EnvSignal;
+  gate: EnvSignal;
+}

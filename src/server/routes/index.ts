@@ -10,6 +10,7 @@ import { sessionRoutes } from "./sessions";
 import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
 import { standupRoutes } from "./standups";
+import { environmentRoutes } from "./environments";
 
 export const routes: Routes = {
   ...taskRoutes,
@@ -23,4 +24,5 @@ export const routes: Routes = {
   ...teamChannelRoutes,
   ...choreRoutes,
   ...standupRoutes,
+  ...environmentRoutes,
 };

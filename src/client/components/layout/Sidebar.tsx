@@ -17,6 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/client/components/ui/tooltip";
+import { EnvironmentStatus } from "./EnvironmentStatus";
 
 const navItems = [
   { to: "/tasks", icon: ListChecks, label: "Tasks" },
@@ -96,6 +97,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             return linkContent;
           })}
         </nav>
+        <div className={cn("absolute bottom-4", isCollapsed ? "inset-x-3" : "inset-x-4")}>
+          <EnvironmentStatus isCollapsed={isCollapsed} />
+        </div>
       </aside>
     </TooltipProvider>
   );

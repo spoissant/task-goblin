@@ -1,26 +1,9 @@
-import { useState, useEffect } from "react";
 import { useNextSyncQuery, useSyncAll } from "@/client/lib/queries/sync";
+import { formatCountdown, useCountdown } from "@/client/lib/countdown";
 import { ApiError } from "@/client/lib/api";
 import { Button } from "@/client/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-
-/** Milliseconds until `at`, ticking every second; null without a time. */
-function useCountdown(at: string | null): number | null {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!at) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [at]);
-  return at ? Math.max(0, Date.parse(at) - now) : null;
-}
-
-function formatCountdown(ms: number): string {
-  const total = Math.ceil(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
 
 export function RefreshButton() {
   const nextSyncAt = useNextSyncQuery().data?.nextSyncAt ?? null;
