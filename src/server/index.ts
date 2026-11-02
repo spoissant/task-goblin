@@ -1,3 +1,4 @@
+import "./lib/log-timestamp";
 import { createRouter } from "./router";
 import { routes } from "./routes";
 import { withErrorBoundary } from "./middleware";
