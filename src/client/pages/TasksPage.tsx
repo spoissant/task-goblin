@@ -151,8 +151,8 @@ export function TasksPage() {
 
       <RepoFilterBar
         titleFilter={titleFilter}
-        selectedRepoId={filters.repo}
-        onSelectedRepoIdChange={(repo) => updateFilters({ repo })}
+        filters={filters}
+        onChange={updateFilters}
       />
 
       <TaskTable

@@ -97,7 +97,8 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
     if (filters.hideParents && t.hasChildren) return false;
     if (filters.hideIdle && !choreMap.has(t.id)) return false;
     if (filters.idleOnly && choreMap.has(t.id)) return false;
-    if (filters.repo != null && t.repositoryId !== filters.repo) return false;
+    if (filters.repo.length && (t.repositoryId === null || !filters.repo.includes(t.repositoryId))) return false;
+    if (t.repositoryId !== null && filters.notRepo.includes(t.repositoryId)) return false;
     return true;
   });
 

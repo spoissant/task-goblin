@@ -15,19 +15,29 @@ export type BoolFilter = keyof typeof BOOL_DEFAULTS;
 
 export interface TaskFilters extends Record<BoolFilter, boolean> {
   q: string;
-  repo: number | null;
+  repo: number[]; // repository ids to include (any of them); empty = all
+  notRepo: number[]; // repository ids to exclude
   saved: string[]; // ids of the active saved searches
+}
+
+const LIST_KEYS = new Set(["repo", "notRepo", "saved"]);
+
+function readIds(params: URLSearchParams, key: string): number[] {
+  return (params.get(key) ?? "")
+    .split(",")
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
 }
 
 export function readFilters(params: URLSearchParams): TaskFilters {
   const bools = Object.fromEntries(
     Object.entries(BOOL_DEFAULTS).map(([key, def]) => [key, params.has(key) ? params.get(key) === "1" : def]),
   ) as Record<BoolFilter, boolean>;
-  const repo = Number(params.get("repo"));
   return {
     ...bools,
     q: params.get("q") ?? "",
-    repo: Number.isInteger(repo) && repo > 0 ? repo : null,
+    repo: readIds(params, "repo"),
+    notRepo: readIds(params, "notRepo"),
     saved: (params.get("saved") ?? "").split(",").filter(Boolean),
   };
 }
@@ -50,8 +60,8 @@ export function writeFilters(params: URLSearchParams, patch: Partial<TaskFilters
     if (key in BOOL_DEFAULTS) {
       if (value === BOOL_DEFAULTS[key as BoolFilter]) next.delete(key);
       else next.set(key, value ? "1" : "0");
-    } else if (key === "saved") {
-      const ids = value as string[];
+    } else if (LIST_KEYS.has(key)) {
+      const ids = value as (string | number)[];
       if (ids.length) next.set(key, ids.join(","));
       else next.delete(key);
     } else if (value === null || value === "") {
@@ -61,6 +71,21 @@ export function writeFilters(params: URLSearchParams, patch: Partial<TaskFilters
     }
   }
   return next;
+}
+
+/** A repo badge click cycles it: off → include → exclude → off. */
+export function cycleRepo(filters: Pick<TaskFilters, "repo" | "notRepo">, id: number): Pick<TaskFilters, "repo" | "notRepo"> {
+  const repo = filters.repo.filter((r) => r !== id);
+  const notRepo = filters.notRepo.filter((r) => r !== id);
+  if (filters.repo.includes(id)) return { repo, notRepo: [...notRepo, id] };
+  if (filters.notRepo.includes(id)) return { repo, notRepo };
+  return { repo: [...repo, id], notRepo };
+}
+
+export function repoState(filters: Pick<TaskFilters, "repo" | "notRepo">, id: number): "include" | "exclude" | "off" {
+  if (filters.repo.includes(id)) return "include";
+  if (filters.notRepo.includes(id)) return "exclude";
+  return "off";
 }
 
 const LAST_SEARCH_KEY = "tasksPage.lastSearch";
