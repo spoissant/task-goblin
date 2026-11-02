@@ -1,7 +1,7 @@
 ---
 name: chore-address-pr-comments
 description: Work through a PR's unresolved review threads and PR-level comments as one worklist, then post replies and resolve threads. Accepts a task ID, auto-detects from the branch, or takes a PR URL. Use when asked to address PR comments or review feedback.
-allowed-tools: "Bash(gh:*),Bash(python*),Bash(git:*),Bash(lavish-axi:*),Read,Grep,Glob,Edit,Write,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:jira-create-ticket),mcp__task-goblin__get_task"
+allowed-tools: "Bash(gh:*),Bash(python*),Bash(git:*),Read,Grep,Glob,Edit,Write,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:jira-create-ticket),mcp__task-goblin__get_task"
 ---
 
 # Address PR Comments
@@ -40,9 +40,9 @@ Classify each item (praise, question, suggestion, issue, nitpick) and decide val
 
 ## Report and confirm
 
-Produce the report described in `references/report-format.md`, preferably as a Lavish artifact at `.lavish/pr-comments-<prNumber>.html` (`~/.claude/skills/chore-start-task/references/lavish.md`; playbook `table`, plus `code` if you show diffs) so the user can annotate items; otherwise print it. List the decisions that need the user first. Keep the one-line banner in the terminal either way.
+Print the report described in `references/report-format.md`; publish it as an Artifact instead only when it is too long to read in the terminal. List the decisions that need the user first. Keep the one-line banner in the terminal either way.
 
-One confirmation covers the whole plan: code changes, commit, push (local commits already on the branch included), PR description, follow-up cards, replies and resolves. Don't ask optional side questions; take the defaults above. Wait for that confirmation ("go", "execute the plan", or an equivalent from the browser) before posting or resolving anything. If the invocation already says what to do, or the only items are threads the user already answered, that counts as confirmation. If the user amends the plan, apply the amendment and execute; ask again only if it opens a new decision.
+One confirmation covers the whole plan: code changes, commit, push (local commits already on the branch included), PR description, follow-up cards, replies and resolves. Don't ask optional side questions; take the defaults above. Wait for that confirmation ("go", "execute the plan", or an equivalent) before posting or resolving anything. If the invocation already says what to do, or the only items are threads the user already answered, that counts as confirmation. If the user amends the plan, apply the amendment and execute; ask again only if it opens a new decision.
 
 ## Execute
 

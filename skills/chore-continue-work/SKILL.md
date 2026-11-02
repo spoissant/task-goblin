@@ -1,7 +1,7 @@
 ---
 name: chore-continue-work
 description: Resume a task QA sent back — reads the QA feedback from Jira, proposes an actionable fix plan, implements it after approval, self-reviews only the new commits, pushes, and moves the ticket back to Code Review. Use for /chore-continue-work <taskId>, "continue working on task", or "QA bounced this task".
-allowed-tools: "ToolSearch,AskUserQuestion,Bash(git:*),Bash(gh:*),Bash(lavish-axi:*),Read,Grep,Glob,Write,Edit,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__executeRead,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__plugin_hivebrite-engineering_atlassian__transitionJiraIssue,Skill(hivebrite-engineering:jira-postmortem-bug)"
+allowed-tools: "ToolSearch,AskUserQuestion,Bash(git:*),Bash(gh:*),Read,Grep,Glob,Write,Edit,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__plugin_hivebrite-engineering_atlassian__getJiraIssue,mcp__plugin_hivebrite-engineering_atlassian__executeRead,mcp__plugin_hivebrite-engineering_atlassian__getAccessibleAtlassianResources,mcp__plugin_hivebrite-engineering_atlassian__transitionJiraIssue,Skill(hivebrite-engineering:jira-postmortem-bug)"
 ---
 
 # Continue After QA
@@ -22,7 +22,7 @@ Unresolved PR comments are not this skill's job (`/chore-address-pr-comments` ha
 
 Investigate each QA issue in the code (the PR diff `gh pr diff <pr>` and the files it touches) and write one numbered item per issue: what QA saw, the cause with `file:line`, the fix, and the spec that covers it. Mark items you could not reproduce from the code or that need a product decision with ❓ and say what you need.
 
-Present the plan and get approval: a Lavish artifact at `.lavish/qa-plan-<taskId>.html` (`~/.claude/skills/chore-start-task/references/lavish.md`), otherwise a single AskUserQuestion. The user replies with exceptions ("2: skip", "3: do X instead") or "go".
+Present the plan and get approval in a single AskUserQuestion. The user replies with exceptions ("2: skip", "3: do X instead") or "go".
 
 ## 4. Fix
 

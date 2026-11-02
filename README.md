@@ -29,7 +29,6 @@ The chores (start task, AI QA, self review, deploy, reviews...) run Claude Code 
   /plugin install hivebrite-engineering@hivebrite-claude-plugins
   ```
 - The Claude in Chrome extension (used by `/chore-ai-qa` and `/chore-validate-issue`)
-- Optional: `lavish-axi` on your `PATH` for browser review of plans and findings (skills fall back to the terminal without it)
 - npm publish rights on `@hivebrite/*` if you publish front-monorepo alphas
 
 **Checkouts** live under `~/Code/hivebrite/`: `alumni_connect/alumni_connect`, `front-monorepo`, and any other repo you track. The shared settings and some skills assume this layout; if yours differs, fix the paths on the Settings page. The dev stack only supports alumni_connect and front-monorepo (hardcoded in `src/server/services/dev-stack.ts`).
