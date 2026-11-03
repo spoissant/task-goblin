@@ -1,9 +1,10 @@
 import { Link } from "react-router";
-import { ExternalLink, RotateCcw } from "lucide-react";
+import { ExternalLink, RotateCcw, Square } from "lucide-react";
+import { toast } from "sonner";
 import type { ClaudeSession, ClaudeSessionState } from "@/shared/types";
 import { CopyChip } from "@/client/components/ui/copy-chip";
-import { useRespawnSession } from "@/client/lib/queries/sessions";
-import { STATE_UI, canRespawn, formatActive, formatCost, formatTime } from "@/client/lib/sessions";
+import { useRespawnSession, useStopSession } from "@/client/lib/queries/sessions";
+import { STATE_UI, canRespawn, formatActive, formatCost, formatTime, isSessionActive } from "@/client/lib/sessions";
 import {
   Table,
   TableBody,
@@ -30,6 +31,13 @@ function StateLabel({ state }: { state: ClaudeSessionState }) {
 /** AI sessions table; `showTask` adds a column linking to each session's task. */
 export function SessionsTable({ sessions, showTask = false }: { sessions: SessionRow[]; showTask?: boolean }) {
   const respawnSession = useRespawnSession();
+  const stopSession = useStopSession();
+
+  const stop = (id: number) =>
+    stopSession.mutate(id, {
+      onSuccess: () => toast.success("Session stopped"),
+      onError: () => toast.error("Failed to stop session"),
+    });
 
   return (
     <div className="rounded-lg border bg-card overflow-x-auto">
@@ -106,6 +114,17 @@ export function SessionsTable({ sessions, showTask = false }: { sessions: Sessio
                     >
                       <RotateCcw className="h-3 w-3" />
                       Respawn
+                    </button>
+                  )}
+                  {isSessionActive(s) && (
+                    <button
+                      type="button"
+                      onClick={() => stop(s.id)}
+                      disabled={stopSession.isPending}
+                      className="text-red-600 hover:underline inline-flex items-center gap-1 text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Square className="h-3 w-3" />
+                      Stop
                     </button>
                   )}
                   {s.shortId && <CopyChip value={`claude attach ${s.shortId}`}>attach {s.shortId}</CopyChip>}
