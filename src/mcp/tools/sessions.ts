@@ -22,7 +22,7 @@ export function registerSessionTools(server: McpServer) {
         "chore's settings. Returns the session row (state starts as preparing).",
       inputSchema: {
         taskId: z.number().int().describe("Task ID"),
-        choreKey: z.string().optional().describe("Chore key, e.g. ai-qa, fix-merge-conflicts, deploy-test-env"),
+        choreKey: z.string().optional().describe("Chore key, e.g. ai-qa, fix-pr-checks, deploy-test-env"),
         prompt: z.string().optional().describe("Custom prompt (required when choreKey is omitted)"),
         withTaskIds: z
           .array(z.number().int())

@@ -1,12 +1,12 @@
 ---
 name: chore-fix-pr-checks
-description: Investigate failed PR checks, classify each failure as caused by this PR or external/flaky, and produce a structured report; fixes and pushes failures this PR caused, and merges the base branch or re-triggers CI when they are not ours. Use for "investigate checks", "why are checks failing", "fix pr checks", or /chore-fix-pr-checks <taskId>.
-allowed-tools: "Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(yarn test*),Bash(yarn typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
+description: Get a PR green again: merge the base branch and resolve conflicts, then classify each failed check as caused by this PR or external/flaky, fix what this PR caused, re-trigger CI for the rest, and push once with a structured report. Use for "fix merge conflicts", "investigate checks", "why are checks failing", "fix pr checks", or /chore-fix-pr-checks <taskId>.
+allowed-tools: "AskUserQuestion,Bash(yarn install*),Bash(bin/dev update-yarn*),Bash(pnpm i*),Bash(npx nx run *:version-alpha*),Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(yarn test*),Bash(yarn typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__task-goblin__update_task,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
 ---
 
 # Fix PR Checks
 
-Classify before changing code. A failing check is often infra (Docker, clone, runner disconnect) or an unrelated flaky spec; for those the fix is merging the latest base branch and re-running CI, not editing code. Touch code only once a failure is confirmed to come from this PR's diff.
+Conflicts first, then checks, one push at the end. Classify before changing code. A failing check is often infra (Docker, clone, runner disconnect) or an unrelated flaky spec; for those the fix is merging the latest base branch and re-running CI, not editing code. Touch code only once a failure is confirmed to come from this PR's diff.
 
 ## Resolve the task
 
@@ -14,10 +14,25 @@ Numeric argument → `get_task(id)`; otherwise `get_task(branch: <current branch
 
 `Skill(checkout-branch)` with `headBranch`; if it fails, stop and tell the user.
 
+## Merge conflicts
+
+Only when the task has `hasConflicts` (otherwise skip to Gather): `git fetch origin <base>` then `git merge --no-ff origin/<base>`, and resolve what conflicts. Don't push yet: the checks below run against the merged tree and one push covers both.
+
+Read each file from `git diff --name-only --diff-filter=U` and resolve hunk by hunk. Taking one side's whole file (`checkout --ours/--theirs`) also drops the other side's clean changes to it, so do that only when you re-apply them. Dependency pins in `package.json` / `yarn.lock`: `references/dependency-pins.md`.
+
+- Unambiguous conflicts only (both pins are stable releases → the higher wins; both sides add independent lines → keep both): apply without asking.
+- Otherwise show a summary (file, one-line proposed resolution) and ask "Apply proposed resolutions?" with Apply / Skip, plus the republish option from the reference when an alpha pin is involved.
+- Apply: resolve, check that `git diff origin/<base> -- package.json` shows only the branch's intended pins and that `yarn install --immutable` passes, `git add`, commit as `chore: merge <base> into <head> (resolve conflicts)`.
+- Skip: `git merge --abort`, `update_task(id, choreSkips: {"fix-pr-checks": true})` merged with existing keys, and stop.
+
+When the merge is done, no check failed and the PR is open: `git push` and report. A PR with no failed checks and no conflicts: nothing to do, say so.
+
+lefthook's `core.hooksPath` hint during commit is a known local setup issue; leave it out of the report. If the PR body names a pin that no longer matches, say so.
+
 ## Gather
 
 1. Head SHA: `gh api repos/<o>/<r>/pulls/<pr> --jq .head.sha`.
-2. Failed check runs (`conclusion` failure or timed_out) from `commits/<sha>/check-runs --paginate`, and failed commit statuses from `commits/<sha>/status`. CI systems use both. Nothing failed: say all checks pass and stop.
+2. Failed check runs (`conclusion` failure or timed_out) from `commits/<sha>/check-runs --paginate`, and failed commit statuses from `commits/<sha>/status`. CI systems use both. Nothing failed: say all checks pass and stop (after pushing a conflict merge, if there was one).
 3. Annotations for each failed run: `check-runs/<id>/annotations` gives file, line, and message.
 4. Buildkite, when a check's `app.slug` is `buildkite` or its URL is on buildkite.com: load `get_build_failure_summary`, `search_logs`, `get_failed_executions`, `list_builds` and `retry_job` in one `ToolSearch` select, then call `get_build_failure_summary`. It returns failed jobs, log tails, annotations and failed tests in one call, which is richer than GitHub annotations. Use `search_logs` / `get_failed_executions` only for a job whose tail doesn't show the cause. `broken` and `waiting_failed` jobs never ran, so they are not failures.
 5. Our changes: `git diff <base>...HEAD --name-only` and `git log <base>...HEAD --oneline`.
@@ -45,11 +60,11 @@ Our Fault or Likely Ours with a clear fix: make it, run the failing test (or typ
 
 ## Merge the base branch
 
-When not every failure is Our Fault: `git fetch origin <base>` then `git merge origin/<base> --no-ff --no-edit`.
+When not every failure is Our Fault, and the conflict step did not already merge: `git fetch origin <base>` then `git merge origin/<base> --no-ff --no-edit`.
 
 - Merge brings in commits and every failure is External or Flaky (no code change needed anywhere): `git push`, so CI re-runs without waiting on the user. Exception: on a repeat (step 6) where the failing specs differ from the previous run's, and the merge brings nothing that touches them, leave the merge unpushed and `retry_job` the failed jobs instead. A push restarts the whole build.
 - Merge succeeds but some failure needs a code fix: push after the fix (see Fix our failures), so one CI run covers both.
-- Conflict: `git merge --abort` and report that the user must resolve it first.
+- Conflict: resolve it as in Merge conflicts.
 - Already up to date: there is nothing to push, so a re-run has to be triggered on the check itself. See below.
 
 The alumni_connect post-merge hook `008_generate-routes-definition` often reports a failure and may rewrite `front/packages/routes/generated/routes.{js,d.ts}`; restore those files with `git checkout -- front/packages/routes/generated` and leave it out of the report.

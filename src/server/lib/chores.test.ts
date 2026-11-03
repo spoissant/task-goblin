@@ -268,7 +268,7 @@ describe("getChores — order", () => {
     const entries = (await getChores()).map((e) => [e.task.id, e.key]);
 
     expect(entries).toEqual([
-      [3, "fix-merge-conflicts"],
+      [3, "fix-pr-checks"],
       [2, "continue-work"],
       [1, "fix-pr-checks"],
       [1, "continue-work"],
@@ -280,7 +280,6 @@ describe("auto chores", () => {
   it("marks the chores the scheduler may start, never start-task or manual ones", () => {
     const auto = getChoreDefinitions().filter((d) => d.auto).map((d) => d.key);
     expect(auto).toEqual([
-      "fix-merge-conflicts",
       "address-pr-comments",
       "fix-pr-checks",
       "continue-work",
@@ -301,6 +300,14 @@ describe("auto chores", () => {
     expect(fingerprintFor("continue-work", row)).toBe(JSON.stringify(["In Progress", 0, "abc123", 0]));
     expect(fingerprintFor("start-task", row)).toBeNull();
     expect(fingerprintFor("request-reviews", row)).toBeNull();
+  });
+
+  it("gives fix-pr-checks a new state when a conflict appears on the same commit", async () => {
+    const task = await seedTask();
+    await db.update(tasks).set({ headSha: "abc123" }).where(eq(tasks.id, task.id));
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+
+    expect(fingerprintFor("fix-pr-checks", { ...row, hasConflicts: 1 })).toBe(JSON.stringify(["abc123", "conflicts"]));
   });
 
   it("gives fix-pr-checks a new state when its failing checks finish again on the same commit", async () => {

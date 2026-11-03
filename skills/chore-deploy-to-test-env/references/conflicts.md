@@ -15,5 +15,5 @@ Check after: `git diff origin/<env> -- package.json Gemfile` shows no downgrade 
 
 ## Ask
 
-- Two different prerelease pins (`-<name>-alpha.N`) of the same package from different devs. Exceptions you may resolve yourself: the env pin is the user's own older alpha (supersede it); the other dev's ticket is Ready to Merge or merged (take sprint). Options: keep the env pin, take ours, or build a combined alpha per `~/.claude/skills/chore-fix-merge-conflicts/references/dependency-pins.md` ("Combined alpha").
+- Two different prerelease pins (`-<name>-alpha.N`) of the same package from different devs. Exceptions you may resolve yourself: the env pin is the user's own older alpha (supersede it); the other dev's ticket is Ready to Merge or merged (take sprint). Options: keep the env pin, take ours, or build a combined alpha per `~/.claude/skills/chore-fix-pr-checks/references/dependency-pins.md` ("Combined alpha").
 - Two different implementations of the same behaviour (both sides changed logic, not just versions or wording).

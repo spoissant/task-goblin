@@ -1,7 +1,7 @@
 ---
 name: chore-ship-upstream
 description: Merge green upstream PRs (api-contracts, front-monorepo, or both as a chain) after a go-ahead, wait for their releases and bump them in the alumni_connect PR that depends on them. Use for /chore-ship-upstream <alumniConnectTaskId> <upstreamTaskId> [<frontMonorepoTaskId>] or "ship the upstream PR".
-allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),Skill(chore-fix-pr-checks),Skill(chore-fix-merge-conflicts),mcp__task-goblin__sync_task,mcp__task-goblin__prepare_task_worktree"
+allowed-tools: "Bash,Read,Edit,Grep,Glob,AskUserQuestion,ToolSearch,Monitor,Skill(checkout-branch),Skill(hivebrite-engineering:update-internal-sdks),Skill(hivebrite-engineering:github-commit),Skill(hivebrite-engineering:github-pr),Skill(chore-fix-pr-checks),mcp__task-goblin__sync_task,mcp__task-goblin__prepare_task_worktree"
 ---
 
 # Ship Upstream PR
@@ -25,7 +25,7 @@ Every upstream PR must be green all the way; an already merged one only needs th
 - `reviewDecision` is `APPROVED`, and `unresolvedCommentCount` is 0;
 - every check concluded success, neutral or skipped. Checks still running: wait for them, then judge.
 
-Plus the upstream-specific condition from the reference. Anything red: stop and list, per PR, what is missing and the chore that fixes it (#3 conflicts, #4 PR comments, #5 checks, #10 reviews).
+Plus the upstream-specific condition from the reference. Anything red: stop and list, per PR, what is missing and the chore that fixes it (#4 PR comments, #5 conflicts and checks, #10 reviews).
 
 ## 3. Go-ahead
 
@@ -43,7 +43,7 @@ Chain: do this for api-contracts first. Then bump the front-monorepo PR as `refe
 
 ## 5. Bump the alumni_connect PR
 
-First bring the target up to date with its base, so the merge and the bump share one CI run: `git fetch origin && git merge --no-ff origin/<baseBranch>`. Conflicts are resolved as `chore-fix-merge-conflicts` step 4 describes (pins: its `references/dependency-pins.md`), without its push.
+First bring the target up to date with its base, so the merge and the bump share one CI run: `git fetch origin && git merge --no-ff origin/<baseBranch>`. Conflicts are resolved as `chore-fix-pr-checks`' Merge conflicts section describes (pins: its `references/dependency-pins.md`), without its push.
 
 Follow the reference (chain: both references, in one commit). When a `package.json` pin moved, run `yarn typecheck`: type errors the release brings are fixed in the same commit, following the upstream change. Formatting is left to the commit hook. Then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
 
@@ -51,9 +51,8 @@ Follow the reference (chain: both references, in one commit). When a `package.js
 
 Wait for the checks on the new head, then `sync_task(target)` and gate the alumni_connect PR on its checks and conflicts only, by the step 2 rules for those; its draft state and approvals are the user's.
 
-- Failing checks: `Skill(chore-fix-pr-checks)` with the target task ID, wait again, re-gate.
-- Conflicts: `Skill(chore-fix-merge-conflicts)` with the target task ID, wait again, re-gate.
-- One repair round per kind; still red after it: report.
+- Failing checks or conflicts: `Skill(chore-fix-pr-checks)` with the target task ID (it handles both), wait again, re-gate.
+- One repair round; still red after it: report.
 - Approvals do not get dismissed by a push on these repos, so a drop in `reviewDecision` means a reviewer acted: report it, don't re-request.
 
 Never merge the alumni_connect PR: the user validates and merges it.

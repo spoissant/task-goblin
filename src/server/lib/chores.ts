@@ -72,16 +72,6 @@ const CHORES: Chore[] = [
     match: () => true,
   },
   {
-    number: 3,
-    key: "fix-merge-conflicts",
-    name: "Fix Merge Conflicts",
-    condition: "hasConflicts = true",
-    prompt: "/chore-fix-merge-conflicts {{taskId}}",
-    categories: null,
-    match: (t) => t.hasConflicts === 1,
-    auto: { fields: ["headSha", "baseBranch"] },
-  },
-  {
     number: 4,
     key: "address-pr-comments",
     name: "Address PR Comments",
@@ -94,13 +84,14 @@ const CHORES: Chore[] = [
   {
     number: 5,
     key: "fix-pr-checks",
-    name: "Fix PR checks",
-    condition: "prState = open AND checksStatus = failing",
+    name: "Fix PR",
+    condition: "hasConflicts = true OR (prState = open AND checksStatus = failing)",
     prompt: "/chore-fix-pr-checks {{taskId}}",
     categories: null,
-    match: (t) => t.prState === "open" && t.checksStatus === "failing",
-    // A CI re-run that fails again on the same commit is a new state.
-    auto: { fields: ["headSha", (t) => checksFailedAt(t.checksDetails)] },
+    match: (t) => t.hasConflicts === 1 || (t.prState === "open" && t.checksStatus === "failing"),
+    // A CI re-run that fails again on the same commit is a new state, and so is a conflict appearing.
+    // Without conflicts the fingerprint stays [headSha, checksFailedAt], as it was before conflicts joined this chore.
+    auto: { fields: ["headSha", (t) => (t.hasConflicts === 1 ? "conflicts" : checksFailedAt(t.checksDetails))] },
   },
   {
     number: 6,

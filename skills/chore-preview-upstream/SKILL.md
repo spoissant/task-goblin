@@ -22,7 +22,7 @@ Follow the reference. It also says which dependencies of the alumni_connect PR t
 
 ## 3. Bump the alumni_connect PR
 
-Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. CI on the alumni_connect PR is left to the usual chores (#5 fix PR checks).
+Follow the reference, then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. CI on the alumni_connect PR is left to the usual chores (#5 fix PR).
 
 ## 4. Report
 
