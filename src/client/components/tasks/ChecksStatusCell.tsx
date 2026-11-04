@@ -64,7 +64,7 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
   const hasRequired = details.some((check) => check.isRequired);
   if (details.length === 0) {
     const content = <span className="inline-flex">{icon}</span>;
-    return prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{content}</a> : content;
+    return prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">{content}</a> : content;
   }
 
   const trigger = (
@@ -77,7 +77,7 @@ export function ChecksStatusCell({ checksStatus, checksDetails, prUrl }: ChecksS
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer">{trigger}</a> : trigger}
+        {prUrl ? <a href={prUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">{trigger}</a> : trigger}
       </TooltipTrigger>
       <TooltipContent side="left" className="max-w-xs">
         <div className="space-y-1">

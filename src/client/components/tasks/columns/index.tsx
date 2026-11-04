@@ -5,7 +5,7 @@ import type { ChoreEntry } from "@/shared/chores";
 import { parseChangesByCategory } from "@/shared/file-categories";
 import { InteractiveStatusBadge } from "../InteractiveStatusBadge";
 import { ChecksStatusCell } from "../ChecksStatusCell";
-import { IconTip, UnresolvedCommentsIcon } from "../StatusIcons";
+import { IconTip, MergeConflictIcon, UnresolvedCommentsIcon } from "../StatusIcons";
 import { DeploymentBadges } from "../DeploymentBadges";
 import { DevQaBadge } from "../DevQaBadge";
 import { ChangesSummary } from "../ChangesSummary";
@@ -152,8 +152,13 @@ const COLUMNS = {
   checks: {
     key: "checks",
     header: "Checks",
-    width: "50px",
-    render: (task, ctx) => <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={ctx.prUrl} />,
+    width: "70px",
+    render: (task, ctx) => (
+      <span className="inline-flex items-center gap-1">
+        {task.hasConflicts === 1 && <MergeConflictIcon />}
+        <ChecksStatusCell checksStatus={task.checksStatus} checksDetails={task.checksDetails} prUrl={ctx.prUrl} />
+      </span>
+    ),
   },
   reviews: {
     key: "reviews",

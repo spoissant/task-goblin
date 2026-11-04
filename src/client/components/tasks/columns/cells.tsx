@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { Badge } from "@/client/components/ui/badge";
-import { ReviewStatusIcon, PrStatusIcon, MergeConflictIcon } from "../StatusIcons";
+import { ReviewStatusIcon, PrStatusIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
 import { AssignDialog } from "../AssignDialog";
@@ -207,7 +207,6 @@ export function PrCell({ task, prUrl, canAssign }: { task: Task; prUrl?: string 
   const content = (
     <>
       <PrStatusIcon prState={task.prState} isDraft={task.isDraft} />
-      {task.hasConflicts === 1 && <MergeConflictIcon />}
       <span>#{task.prNumber}</span>
     </>
   );
