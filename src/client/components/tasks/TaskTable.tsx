@@ -173,6 +173,7 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
     <Table>
       <TableHeader>
         <TableRow>
+          {goals.length > 0 && <TableHead className="w-8 p-0" />}
           <TableHead className="w-[40px]">
             <Checkbox
               checked={tasks.every((t) => selectedIds.has(t.id))}
@@ -201,7 +202,7 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
                   sectionTasks.map(renderRow)
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={columns.length + 2} className="text-sm text-muted-foreground italic pl-12">
+                    <TableCell colSpan={columns.length + 3} className="text-sm text-muted-foreground italic pl-12">
                       No tasks
                     </TableCell>
                   </TableRow>
@@ -249,8 +250,10 @@ function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session
       className={cn(isSelected && "task-selected", (task.onIce || task.openBlockers.length > 0) && "opacity-50")}
       style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
+      {/* Spacer painted over the row tint, so the row looks inset under its section header */}
+      {indented && <TableCell className="w-8 p-0 bg-background border-b border-background" />}
       {/* Checkbox */}
-      <TableCell className={cn(indented && "pl-8")}>
+      <TableCell>
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelectedChange(!!checked)}

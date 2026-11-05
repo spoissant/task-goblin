@@ -34,7 +34,8 @@ export function GoalSectionRow({ goal, visibleIds, selectedIds, onSelectSection,
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   return (
     <TableRow className="bg-muted/40 hover:bg-muted/40">
-      <TableCell>
+      {/* Spans the spacer column too: the header runs flush left, its rows sit inset */}
+      <TableCell colSpan={2}>
         <Checkbox
           checked={allSelected}
           disabled={visibleIds.length === 0}
