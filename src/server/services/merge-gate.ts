@@ -43,7 +43,7 @@ export function evaluateTaskGate(task: TaskRow, readyStatuses: Set<string>): Hol
   return reasons;
 }
 
-const PIN_FILES = /(^|\/)(package\.json|Gemfile|Gemfile\.lock|yarn\.lock)$/;
+const PIN_FILES = /(^|\/)(package\.json|Gemfile|Gemfile\.lock|yarn\.lock|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/;
 const PIN_PATTERNS = [
   /-alpha[.\d]/, // front-monorepo alpha: 1.2.3-spoissant-alpha.4
   /-spoissant/,

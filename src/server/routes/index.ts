@@ -11,9 +11,11 @@ import { teamChannelRoutes } from "./team-channels";
 import { choreRoutes } from "./chores";
 import { standupRoutes } from "./standups";
 import { environmentRoutes } from "./environments";
+import { goalRoutes } from "./goals";
 
 export const routes: Routes = {
   ...taskRoutes,
+  ...goalRoutes,
   ...taskLinkRoutes,
   ...repositoryRoutes,
   ...settingsRoutes,

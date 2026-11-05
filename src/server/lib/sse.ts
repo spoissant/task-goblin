@@ -43,6 +43,7 @@ export function autoBroadcast(pathname: string) {
   else if (pathname.includes("/sessions")) entity = "session";
   else if (pathname.includes("/dev-stack")) entity = "dev-stack";
   else if (pathname.includes("/worktree")) entity = "worktree";
+  else if (pathname.includes("/goals")) entity = "goal";
   else if (pathname.includes("/tasks") || pathname.includes("/sync")) entity = "task";
   if (entity) broadcast(entity);
 }

@@ -1,7 +1,7 @@
 ---
 name: chore-fix-pr-checks
 description: Get a PR green again: merge the base branch and resolve conflicts, then classify each failed check as caused by this PR or external/flaky, fix what this PR caused, re-trigger CI for the rest, and push once with a structured report. Use for "fix merge conflicts", "investigate checks", "why are checks failing", "fix pr checks", or /chore-fix-pr-checks <taskId>.
-allowed-tools: "AskUserQuestion,Bash(yarn install*),Bash(bin/dev update-yarn*),Bash(pnpm i*),Bash(npx nx run *:version-alpha*),Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(yarn test*),Bash(yarn typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__task-goblin__update_task,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
+allowed-tools: "AskUserQuestion,Bash(bin/dev update-pnpm*),Bash(pnpm i*),Bash(npx nx run *:version-alpha*),Bash(gh:*),Bash(git diff*),Bash(git log*),Bash(git rev-parse*),Bash(git fetch*),Bash(git merge*),Bash(git push*),Bash(git status*),Bash(git add*),Bash(git commit*),Bash(git checkout -- *),Bash(pnpm test*),Bash(pnpm typecheck*),Bash(bin/dev*),Read,Grep,Glob,Edit,ToolSearch,Skill(checkout-branch),Skill(hivebrite-engineering:github-commit),mcp__task-goblin__get_task,mcp__task-goblin__list_task_sessions,mcp__task-goblin__update_task,mcp__plugin_hivebrite-engineering_buildkite__get_build_failure_summary,mcp__plugin_hivebrite-engineering_buildkite__search_logs,mcp__plugin_hivebrite-engineering_buildkite__get_failed_executions,mcp__plugin_hivebrite-engineering_buildkite__list_jobs,mcp__plugin_hivebrite-engineering_buildkite__list_annotations,mcp__plugin_hivebrite-engineering_buildkite__list_artifacts_for_build,mcp__plugin_hivebrite-engineering_buildkite__get_test,mcp__plugin_hivebrite-engineering_buildkite__list_builds,mcp__plugin_hivebrite-engineering_buildkite__retry_job"
 ---
 
 # Fix PR Checks
@@ -18,11 +18,11 @@ Numeric argument → `get_task(id)`; otherwise `get_task(branch: <current branch
 
 Only when the task has `hasConflicts` (otherwise skip to Gather): `git fetch origin <base>` then `git merge --no-ff origin/<base>`, and resolve what conflicts. Don't push yet: the checks below run against the merged tree and one push covers both.
 
-Read each file from `git diff --name-only --diff-filter=U` and resolve hunk by hunk. Taking one side's whole file (`checkout --ours/--theirs`) also drops the other side's clean changes to it, so do that only when you re-apply them. Dependency pins in `package.json` / `yarn.lock`: `references/dependency-pins.md`.
+Read each file from `git diff --name-only --diff-filter=U` and resolve hunk by hunk. Taking one side's whole file (`checkout --ours/--theirs`) also drops the other side's clean changes to it, so do that only when you re-apply them. Dependency pins in `package.json` / `pnpm-workspace.yaml` / `pnpm-lock.yaml`: `references/dependency-pins.md`.
 
 - Unambiguous conflicts only (both pins are stable releases → the higher wins; both sides add independent lines → keep both): apply without asking.
 - Otherwise show a summary (file, one-line proposed resolution) and ask "Apply proposed resolutions?" with Apply / Skip, plus the republish option from the reference when an alpha pin is involved.
-- Apply: resolve, check that `git diff origin/<base> -- package.json` shows only the branch's intended pins and that `yarn install --immutable` passes, `git add`, commit as `chore: merge <base> into <head> (resolve conflicts)`.
+- Apply: resolve, check that `git diff origin/<base> -- package.json` shows only the branch's intended pins and that `pnpm install --frozen-lockfile` passes, `git add`, commit as `chore: merge <base> into <head> (resolve conflicts)`.
 - Skip: `git merge --abort`, `update_task(id, choreSkips: {"fix-pr-checks": true})` merged with existing keys, and stop.
 
 When the merge is done, no check failed and the PR is open: `git push` and report. A PR with no failed checks and no conflicts: nothing to do, say so.
@@ -40,7 +40,7 @@ lefthook's `core.hooksPath` hint during commit is a known local setup issue; lea
 
 ## Reproduce locally
 
-When the failures are only unit tests (Jest, RSpec) and there are at most five of them, run them here before classifying: `yarn test <file>` for Jest, `bin/dev dcx test bin/rspec <spec>` for RSpec, from the worktree where the branch is checked out. Start the run in the background as soon as the failing specs are known, and keep gathering and classifying the other checks while it runs. Passing locally is a strong flaky signal; failing locally means the regression is real.
+When the failures are only unit tests (Jest, RSpec) and there are at most five of them, run them here before classifying: `pnpm test <file>` for Jest, `bin/dev dcx test bin/rspec <spec>` for RSpec, from the worktree where the branch is checked out. Start the run in the background as soon as the failing specs are known, and keep gathering and classifying the other checks while it runs. Passing locally is a strong flaky signal; failing locally means the regression is real.
 
 ## Classify
 

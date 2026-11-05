@@ -45,7 +45,7 @@ Chain: do this for api-contracts first. Then bump the front-monorepo PR as `refe
 
 First bring the target up to date with its base, so the merge and the bump share one CI run: `git fetch origin && git merge --no-ff origin/<baseBranch>`. Conflicts are resolved as `chore-fix-pr-checks`' Merge conflicts section describes (pins: its `references/dependency-pins.md`), without its push.
 
-Follow the reference (chain: both references, in one commit). When a `package.json` pin moved, run `yarn typecheck`: type errors the release brings are fixed in the same commit, following the upstream change. Formatting is left to the commit hook. Then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
+Follow the reference (chain: both references, in one commit). When a `package.json` pin moved, run `pnpm typecheck`: type errors the release brings are fixed in the same commit, following the upstream change. Formatting is left to the commit hook. Then run the commit through `Skill(hivebrite-engineering:github-commit)` and `git push`. Bump-only target: open the PR with `Skill(hivebrite-engineering:github-pr)` against `sprint`, as a draft, with its Step 4 quality suggestions skipped and a body saying it only bumps to the upstream release; then `sync_task(target)`.
 
 ## 6. Green again
 

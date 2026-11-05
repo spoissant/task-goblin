@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const ENTITY_TO_QUERY_KEYS: Record<string, string[][]> = {
-  task: [["tasks"], ["chores"]],
+  task: [["tasks"], ["chores"], ["goals"]], // goal progress counts tasks
+  goal: [["goals"], ["tasks"]], // deleting a goal unassigns its tasks
   setting: [["settings"]],
   session: [["sessions"], ["tasks"], ["chores"]],
   worktree: [["worktree"]],

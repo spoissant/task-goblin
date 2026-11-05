@@ -59,7 +59,7 @@ export async function getTaskWithRepository(taskId: number) {
   return (
     (await db.query.tasks.findFirst({
       where: eq(tasks.id, taskId),
-      with: { repository: true },
+      with: { repository: true, goal: true },
     })) ?? null
   );
 }

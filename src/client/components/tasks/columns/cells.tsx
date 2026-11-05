@@ -5,7 +5,7 @@ import { ReviewStatusIcon, PrStatusIcon } from "../StatusIcons";
 import { RepoBadge } from "../RepoBadge";
 import { DevStackToggle } from "../DevStackToggle";
 import { AssignDialog } from "../AssignDialog";
-import { AlertTriangle, CornerDownRight, Flame, ListTree, Zap } from "lucide-react";
+import { AlertTriangle, CornerDownRight, Eye, Flame, ListTree, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Repository } from "@/shared/types";
 import { parseReviewStatus } from "@/shared/review-status";
@@ -65,6 +65,27 @@ export function JiraLink({ jiraKey, jiraHost, children }: { jiraKey: string; jir
     >
       {children ?? jiraKey}
     </a>
+  );
+}
+
+/** The open Jira blockers of a task; empty once they are all done. */
+export function BlockedByCell({ keys, jiraHost, onSearch }: { keys?: string[]; jiraHost?: string | null; onSearch?: (query: string) => void }) {
+  if (!keys?.length) return null;
+  return (
+    <span className="inline-flex flex-wrap gap-x-2">
+      {keys.map((key) => (
+        <span key={key} className="inline-flex items-center gap-1">
+          <JiraLink jiraKey={key} jiraHost={jiraHost} />
+          <SearchIcon
+            icon={<Eye className="h-3.5 w-3.5 text-muted-foreground" />}
+            query={key}
+            label={`Blocked by ${key}`}
+            searchLabel={`Show ${key} in the list`}
+            onSearch={onSearch}
+          />
+        </span>
+      ))}
+    </span>
   );
 }
 

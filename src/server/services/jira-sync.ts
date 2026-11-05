@@ -14,6 +14,20 @@ function extractParent(issue: { fields: Record<string, unknown> }): { key: strin
   return { key: parent.key, isEpic };
 }
 
+interface IssueLink {
+  type?: { name?: string };
+  inwardIssue?: { key?: string; fields?: { status?: { name?: string } } };
+}
+
+/** The issues linked "is blocked by" (a Blocks link's inward side), as JSON; null when there are none. */
+export function extractBlockedBy(fields: IssueFields): string | null {
+  const links = (fields.issuelinks as IssueLink[] | undefined) ?? [];
+  const blockers = links
+    .filter((l) => l.type?.name === "Blocks" && l.inwardIssue?.key)
+    .map((l) => ({ key: l.inwardIssue!.key!, status: l.inwardIssue!.fields?.status?.name ?? "" }));
+  return blockers.length ? JSON.stringify(blockers) : null;
+}
+
 interface Sprint {
   id: number;
   name: string;
@@ -54,6 +68,7 @@ function mapIssueToTaskData(issue: { key?: string; fields: IssueFields }, sprint
     sprint: sprintName,
     epicKey: parent?.isEpic ? parent.key : null,
     parentKey: parent && !parent.isEpic ? parent.key : null,
+    blockedBy: extractBlockedBy(fields),
     updatedAt: timestamp,
   };
 }
@@ -80,6 +95,7 @@ export const JIRA_FIELDS = [
   "sprint",
   "epicKey",
   "parentKey",
+  "blockedBy",
 ] as const;
 
 async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated" | "unchanged"> {
@@ -115,7 +131,7 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
 
 /** The issue fields a sync asks Jira for: the ones mapIssueToTaskData reads. */
 function issueFields(config: JiraConfig): string[] {
-  const fields = ["summary", "status", "issuetype", "assignee", "priority", "parent"];
+  const fields = ["summary", "status", "issuetype", "assignee", "priority", "parent", "issuelinks"];
   return config.sprintField ? [...fields, config.sprintField] : fields;
 }
 

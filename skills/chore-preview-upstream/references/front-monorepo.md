@@ -10,4 +10,4 @@ An alpha is published from a local checkout: the `version-alpha` Nx target build
 
 ## Bump (step 3)
 
-alumni_connect pins `@hivebrite/*` packages in its root `package.json` (yarn). For each published package, find the tracked `package.json` files that pin it (`git ls-files '*package.json' | xargs grep -l '"@hivebrite/<name>"'`) and set the exact alpha version, with no range prefix. Then run `yarn install` once.
+alumni_connect pins `@hivebrite/*` packages in its root `package.json` (pnpm). For each published package, find the tracked `package.json` files that pin it (`git ls-files '*package.json' | xargs grep -l '"@hivebrite/<name>"'`) and set the exact alpha version, with no range prefix. Then run `pnpm install` once (`sh script/hooks/pnpm_sync.sh` with `GITHUB_TOKEN` set does the registry auth).

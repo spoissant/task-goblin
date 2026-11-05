@@ -36,7 +36,7 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
    Use a single AskUserQuestion with that content and grammar.
 
-10. **Fix.** Apply the accepted fixes and run the tests for touched files (plus typecheck for TS). Leave lint and formatting to the lefthook commit hook; `yarn format` rewrites the whole tree. Print what was applied and skipped.
+10. **Fix.** Apply the accepted fixes and run the tests for touched files (plus typecheck for TS). Leave lint and formatting to the lefthook commit hook; `pnpm format` rewrites the whole tree. Print what was applied and skipped.
 
 11. **Ready for review.** Commit applied fixes with `Skill(hivebrite-engineering:github-commit)`. If the PR is a draft, `gh pr ready <pr>` before `git push` (the other order makes Buildkite skip the new head), unless the user skipped a CRITICAL: then ask first. Then `git push`.
 
@@ -44,4 +44,4 @@ A bare number is a Task Goblin task ID, never a PR number: resolve `prNumber`, `
 
 Direct, not diplomatic: "this will break when two requests race", not "consider a lock". Every finding states the consequence. Credit what the PR does well in the summary.
 
-Don't flag what RuboCop, ESLint, or TypeScript catch, generated files (`yarn.lock`, `schema.rb`), or naming preferences with no real-world impact.
+Don't flag what RuboCop, ESLint, or TypeScript catch, generated files (`pnpm-lock.yaml`, `schema.rb`), or naming preferences with no real-world impact.

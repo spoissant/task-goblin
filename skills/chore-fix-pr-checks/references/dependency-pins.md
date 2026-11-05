@@ -1,6 +1,6 @@
 # Dependency pin conflicts
 
-**Lockfile.** When the branch's only changes to `package.json` / `yarn.lock` are pins (`git diff $(git merge-base HEAD origin/<base>) HEAD -- package.json`), take the base's two files, re-apply the branch's pins in `package.json`, and regenerate with `bin/dev update-yarn` (alumni_connect). Otherwise resolve only the conflicting hunks. Either way, finish with `yarn install --immutable`.
+**Lockfile.** When the branch's only changes to `package.json` / `pnpm-workspace.yaml` / `pnpm-lock.yaml` are pins (`git diff $(git merge-base HEAD origin/<base>) HEAD -- package.json`), take the base's two files, re-apply the branch's pins in `package.json`, and regenerate with `bin/dev update-pnpm` (alumni_connect). Otherwise resolve only the conflicting hunks. Either way, finish with `pnpm install --frozen-lockfile`.
 
 **Both stable.** The higher version wins. If it is the base's, the branch's bump is superseded; say so in the report.
 
@@ -16,7 +16,7 @@ Find the front-monorepo task that owns the fix (the PR body or `list_tasks`). In
 
 ## Combined alpha (two devs' changes)
 
-Used when two devs' alpha pins of the same package collide on a shared env branch, and only on request. In `~/Code/hivebrite/front-monorepo`: worktree with a local `tmp/<ticket>-combined-alpha` branch from `origin/main` (hooks off), `merge --no-ff` each PR branch, `pnpm i --frozen-lockfile`, `npx nx run <pkg>:typecheck`, `npx nx run <pkg>:version-alpha` (publishes `<version>-<github-username>-alpha.N`), check with `pnpm view @hivebrite/<pkg> versions --json`. Pin it in the env merge only, regenerate `yarn.lock`, leave the PR branch's pin as is and say so. Remove the worktree and leave the temp branch unpushed.
+Used when two devs' alpha pins of the same package collide on a shared env branch, and only on request. In `~/Code/hivebrite/front-monorepo`: worktree with a local `tmp/<ticket>-combined-alpha` branch from `origin/main` (hooks off), `merge --no-ff` each PR branch, `pnpm i --frozen-lockfile`, `npx nx run <pkg>:typecheck`, `npx nx run <pkg>:version-alpha` (publishes `<version>-<github-username>-alpha.N`), check with `pnpm view @hivebrite/<pkg> versions --json`. Pin it in the env merge only, regenerate `pnpm-lock.yaml`, leave the PR branch's pin as is and say so. Remove the worktree and leave the temp branch unpushed.
 
 Before replacing an env pin, read its commit body: it may already be a combined alpha.
 

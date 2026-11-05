@@ -54,4 +54,4 @@ Follow-ups edit the same draft, keeping tags stable. If a posted comment turns o
 
 Direct, not diplomatic: "this will break when two requests race", not "consider a lock". Cite the standard file when one applies, since GitHub readers don't have step 3's context. Every finding states the consequence. Credit what the PR does well in the summary.
 
-Don't flag what RuboCop, ESLint, or TypeScript catch (formatting, import order, quote style), generated files (`yarn.lock`, `schema.rb`), or naming preferences with no real-world impact.
+Don't flag what RuboCop, ESLint, or TypeScript catch (formatting, import order, quote style), generated files (`pnpm-lock.yaml`, `schema.rb`), or naming preferences with no real-world impact.

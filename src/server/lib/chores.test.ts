@@ -64,6 +64,28 @@ describe("getChores — chore 4 address-pr-comments", () => {
   });
 });
 
+describe("getChores — blocked tasks", () => {
+  async function seedCommentedTask(blockedBy: string | null) {
+    const task = await seedTask();
+    await db.update(tasks).set({ unresolvedCommentCount: 3, blockedBy }).where(eq(tasks.id, task.id));
+    return task;
+  }
+
+  it("gets no chores while a Jira blocker is open", async () => {
+    const task = await seedCommentedTask(JSON.stringify([{ key: "EV-1", status: "In Progress" }]));
+
+    expect(await getChores({ taskId: task.id })).toEqual([]);
+  });
+
+  it("gets its chores once every blocker is done", async () => {
+    const task = await seedCommentedTask(JSON.stringify([{ key: "EV-1", status: "Done" }]));
+
+    const entries = await getChores({ taskId: task.id });
+
+    expect(entries.find((e) => e.key === "address-pr-comments")?.number).toBe(4);
+  });
+});
+
 describe("getChores — chores 6 and 7 (post-QA continue vs AI QA)", () => {
   it("suggests AI QA, not continue-work, for an in-progress draft PR", async () => {
     const task = await seedTask();

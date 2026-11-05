@@ -17,11 +17,13 @@ export const tasks = sqliteTable("tasks", {
   sprint: text("sprint"), // sprint name
   epicKey: text("epic_key"), // parent epic key
   parentKey: text("parent_key"), // non-epic parent key (e.g. sub-task's parent story/bug)
+  blockedBy: text("blocked_by"), // JSON [{key, status}]: Jira "is blocked by" links (see shared/blockers)
 
   // Manual flags (not synced from Jira/GitHub)
   highPriority: integer("high_priority").default(0),
   onIce: integer("on_ice").default(0),
   onIceReason: text("on_ice_reason"),
+  goalId: integer("goal_id").references(() => goals.id, { onDelete: "set null" }), // the goal this task belongs to; null = unassigned
 
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: integer("pr_number"),
@@ -56,7 +58,19 @@ export const tasks = sqliteTable("tasks", {
   mergeVerifiedAt: text("merge_verified_at"), // when the merge watch was done with the merged PR
 }, (table) => [
   index("idx_tasks_repository_id").on(table.repositoryId),
+  index("idx_tasks_goal_id").on(table.goalId),
 ]);
+
+// 1b. Goals - umbrellas grouping tasks on the Tasks page, one section each (see routes/goals.ts)
+export const goals = sqliteTable("goals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  context: text("context"), // shared brief for the AI sessions of the goal's tasks (not injected yet)
+  displayOrder: integer("display_order").notNull(), // section order on the Tasks page
+  archived: integer("archived").notNull().default(0), // SQLite bool: hides the section, keeps the tasks
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
 
 // 2. Repository - GitHub repo configs
 export const repositories = sqliteTable("repositories", {
@@ -70,7 +84,7 @@ export const repositories = sqliteTable("repositories", {
   deploymentBranches: text("deployment_branches"), // JSON array of deployment branch names (e.g., ["staging", "qa"])
   deploymentUrls: text("deployment_urls"), // JSON object mapping branch -> environment URL (e.g., {"staging": "https://staging.hvbrt.com"})
   slackChannel: text("slack_channel"), // Slack channel name for review requests (e.g., "team-backend-prs")
-  setupCommand: text("setup_command"), // shell line run inside a new task worktree (e.g. "bin/dev worktree-setup --copy-volumes --test-only && yarn install")
+  setupCommand: text("setup_command"), // shell line run inside a new task worktree (e.g. "bin/dev worktree-setup --copy-volumes --test-only && pnpm install")
   teardownCommand: text("teardown_command"), // shell line run before removing a task worktree; may use {{composeProject}}
   defaultBaseBranch: text("default_base_branch"), // base for tasks without a branch yet (e.g. "sprint", "main")
 });

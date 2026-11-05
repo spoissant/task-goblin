@@ -24,6 +24,7 @@ import {
   ReviewsCell,
   HighPriorityCell,
   IsParentCell,
+  BlockedByCell,
 } from "./cells";
 
 // Column definition type
@@ -44,6 +45,7 @@ interface ColumnContext {
   nextChore?: ChoreEntry;
   session?: ClaudeSession; // latest AI session for the task
   isParent?: boolean; // task has sub-tasks or child issues
+  openBlockers?: string[]; // Jira keys blocking the task that are not done yet
   onSearch?: (query: string) => void; // replace the page's search query
 }
 
@@ -60,6 +62,12 @@ const COLUMNS = {
     header: <IconTip icon={Snowflake} tip="On Ice (blocked)" />,
     width: "40px",
     render: (task) => <OnIceCell task={task} />,
+  },
+  blockedBy: {
+    key: "blockedBy",
+    header: "Blocked by",
+    width: "110px",
+    render: (task, ctx) => <BlockedByCell keys={ctx.openBlockers} jiraHost={ctx.jiraHost} onSearch={ctx.onSearch} />,
   },
   isParent: {
     key: "isParent",
@@ -240,6 +248,7 @@ export const TABLE_COLUMNS: ColumnKey[] = [
   "onIce",
   "isParent",
   "status",
+  "blockedBy",
   "title",
   "ai",
   "sync",

@@ -5,7 +5,7 @@ Classify each conflicted file before touching it; there is no per-merge default.
 ## Resolve without asking
 
 - Dependency pins (`package.json`, `Gemfile`): keep the higher version; never downgrade either side. Keep env-only pins on the env side: an SDK on `branch: "deploy/<env>"` or a SHA commented STAGING ONLY. Its lock version can read lower than sprint's tag while being content-ahead: `gh api repos/Hivebrite/<sdk>/compare/<tag>...deploy/<env>`.
-- Lockfiles: resolve `package.json` first, then start `yarn.lock` from the env side and run `yarn install --mode=update-lockfile`; for `Gemfile.lock`, edit hunk-wise. Don't `checkout --ours/--theirs` a whole pin or generated file: it drops the cleanly merged hunks outside the conflict.
+- Lockfiles: resolve `package.json` and `pnpm-workspace.yaml` (`overrides`) first, then start `pnpm-lock.yaml` from the env side and run `pnpm install --lockfile-only`; for `Gemfile.lock`, edit hunk-wise. Don't `checkout --ours/--theirs` a whole pin or generated file: it drops the cleanly merged hunks outside the conflict.
 - `db/schema.rb` `version:`: the newer one.
 - Additive on both sides (specs, CODEOWNERS lines, generated doc rows): keep both.
 - The env holds an older revision of work that has since merged to sprint: take sprint for every file of that work together.

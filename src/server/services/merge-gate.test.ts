@@ -111,11 +111,11 @@ describe("findPrereleasePins", () => {
   it("flags a user-suffixed prerelease and a git ref in nested manifests", () => {
     const files = [
       file("apps/web/package.json", '+    "@hivebrite/sdk": "2.0.0-spoissant.1",'),
-      file("yarn.lock", '+  resolved "github:Hivebrite/front-monorepo#feat/x"'),
+      file("pnpm-lock.yaml", '+      specifier: github:Hivebrite/front-monorepo#feat/x'),
     ];
     expect(findPrereleasePins(files)).toEqual([
       'apps/web/package.json: "@hivebrite/sdk": "2.0.0-spoissant.1",',
-      'yarn.lock: resolved "github:Hivebrite/front-monorepo#feat/x"',
+      'pnpm-lock.yaml: specifier: github:Hivebrite/front-monorepo#feat/x',
     ]);
   });
 

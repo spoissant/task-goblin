@@ -1,6 +1,6 @@
 import { eq, and, sql, or } from "drizzle-orm";
 import { db } from "../../db";
-import { tasks, repositories } from "../../db/schema";
+import { tasks, repositories, goals } from "../../db/schema";
 import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow, getTaskWithRepository } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
@@ -15,6 +15,7 @@ import {
   getTaskOrderExprsAsync,
   isStatusValid,
 } from "../lib/task-status";
+import { openBlockerKeys } from "@/shared/blockers";
 import { teardownBeforeTaskDelete } from "../services/task-worktrees";
 import type { Routes } from "../router";
 
@@ -109,8 +110,10 @@ export const taskRoutes: Routes = {
         }
       }
 
+      const doneStatuses = new Set(await getCompletedStatusNames());
       const items = taskList.map((task) => ({
         ...task,
+        openBlockers: openBlockerKeys(task.blockedBy, doneStatuses),
         repository: task.repositoryId ? repoMap.get(task.repositoryId) || null : null,
         hasChildren: !!task.jiraKey && parentKeys.has(task.jiraKey),
       }));
@@ -182,6 +185,18 @@ export const taskRoutes: Routes = {
       if ("onIce" in body) updates.onIce = body.onIce ? 1 : 0;
       if ("onIceReason" in body) updates.onIceReason = body.onIceReason ?? null;
       if ("choreSkips" in body) updates.choreSkips = body.choreSkips;
+      if ("goalId" in body) {
+        if (body.goalId === null) {
+          updates.goalId = null;
+        } else {
+          const goalId = Number(body.goalId);
+          const goal = Number.isInteger(goalId)
+            ? await db.select({ id: goals.id }).from(goals).where(eq(goals.id, goalId))
+            : [];
+          if (goal.length === 0) throw new ValidationError("Unknown goalId");
+          updates.goalId = goalId;
+        }
+      }
       if ("repositoryId" in body) {
         // The repository of a PR-backed task is owned by the GitHub sync.
         if (existing.prNumber !== null) {

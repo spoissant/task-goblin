@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { useTasksQuery } from "@/client/lib/queries/tasks";
 import { useSettingsQuery, useStatusSettingsQuery } from "@/client/lib/queries/settings";
 import { cn, findStatusCategory } from "@/client/lib/utils";
@@ -21,6 +21,8 @@ import { useChoresQuery } from "@/client/lib/queries/chores";
 import type { ChoreEntry } from "@/shared/chores";
 import { useLatestSessionsQuery } from "@/client/lib/queries/sessions";
 import { CopyChip } from "@/client/components/ui/copy-chip";
+import { useGoalsQuery, useReorderGoals } from "@/client/lib/queries/goals";
+import { GoalSectionRow } from "./GoalSectionRow";
 
 // Map Tailwind bg class to rgba for faint row tinting
 const STATUS_ROW_COLORS: Record<string, string> = {
@@ -62,6 +64,9 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
   const { data: statusSettings } = useStatusSettingsQuery();
   const { data: choresData } = useChoresQuery();
   const { data: sessionsData } = useLatestSessionsQuery();
+  const { data: goalsData } = useGoalsQuery();
+  const reorderGoals = useReorderGoals();
+  const goals = goalsData?.items ?? [];
 
   // Latest AI session per task, a bulk run's linked tasks included (items come newest first)
   const sessionMap = useMemo(() => {
@@ -86,12 +91,16 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
     return map;
   }, [choresData?.items]);
 
-  const columns = compactMode ? TABLE_COLUMNS.filter((key) => !COMPACT_HIDDEN_COLUMNS.has(key)) : TABLE_COLUMNS;
+  // With blocked tasks hidden every visible row has no open blocker, so the column would be empty
+  const columns = TABLE_COLUMNS.filter(
+    (key) => !(compactMode && COMPACT_HIDDEN_COLUMNS.has(key)) && !(key === "blockedBy" && !filters.showBlocked),
+  );
 
   const tasks = (data?.items ?? []).filter((t) => {
     if (filters.sprint && !t.sprint && !t.highPriority) return false;
     if (filters.backlog && t.sprint) return false;
     if (filters.hideOnIce && t.onIce) return false;
+    if (!filters.showBlocked && t.openBlockers.length) return false;
     // Same flag the "has sub-tasks" column shows, so what "Hide parents" removes
     // is exactly what carries the parent icon.
     if (filters.hideParents && t.hasChildren) return false;
@@ -116,19 +125,48 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
     return <EmptyState message="Failed to load tasks" />;
   }
 
-  if (!tasks.length) {
+  if (!tasks.length && !goals.length) {
     return <EmptyState message="No tasks found" />;
   }
 
-  const setSelected = (id: number, selected: boolean) => {
+  const setSelected = (ids: number[], selected: boolean) => {
     const next = new Set(selectedIds);
-    if (selected) {
-      next.add(id);
-    } else {
-      next.delete(id);
+    for (const id of ids) {
+      if (selected) next.add(id);
+      else next.delete(id);
     }
     onSelectionChange(next);
   };
+
+  // One section per active goal, then Unassigned (tasks without a goal, or on an archived one).
+  // Without any goal the table is flat, as before.
+  const activeGoalIds = new Set(goals.map((g) => g.id));
+  const sections = goals.length
+    ? [
+        ...goals.map((goal) => ({ goal, tasks: tasks.filter((t) => t.goalId === goal.id) })),
+        { goal: null, tasks: tasks.filter((t) => t.goalId === null || !activeGoalIds.has(t.goalId)) },
+      ]
+    : [{ goal: null, tasks }];
+  const moveGoal = (from: number, to: number) => {
+    const ids = goals.map((g) => g.id);
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    reorderGoals.mutate(ids);
+  };
+
+  const renderRow = (task: TaskListItem) => (
+    <TaskRow
+      key={task.id}
+      task={task}
+      columns={columns}
+      jiraHost={jiraHost}
+      statusCategories={statusSettings?.categories}
+      nextChore={choreMap.get(task.id)}
+      session={sessionMap.get(task.id)}
+      onSearch={onSearch}
+      isSelected={selectedIds.has(task.id)}
+      onSelectedChange={(selected) => setSelected([task.id], selected)}
+    />
+  );
 
   return (
     <Table>
@@ -145,20 +183,30 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
         </TableRow>
       </TableHeader>
       <TableBody>
-        {tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            columns={columns}
-            jiraHost={jiraHost}
-            statusCategories={statusSettings?.categories}
-            nextChore={choreMap.get(task.id)}
-            session={sessionMap.get(task.id)}
-            onSearch={onSearch}
-            isSelected={selectedIds.has(task.id)}
-            onSelectedChange={(selected) => setSelected(task.id, selected)}
-          />
-        ))}
+        {goals.length === 0
+          ? tasks.map(renderRow)
+          : sections.map(({ goal, tasks: sectionTasks }, index) => (
+              <Fragment key={goal?.id ?? "unassigned"}>
+                <GoalSectionRow
+                  goal={goal}
+                  visibleIds={sectionTasks.map((t) => t.id)}
+                  selectedIds={selectedIds}
+                  onSelectSection={setSelected}
+                  colSpan={columns.length + 1}
+                  onMoveUp={goal && index > 0 ? () => moveGoal(index, index - 1) : undefined}
+                  onMoveDown={goal && index < goals.length - 1 ? () => moveGoal(index, index + 1) : undefined}
+                />
+                {sectionTasks.length ? (
+                  sectionTasks.map(renderRow)
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length + 2} className="text-sm text-muted-foreground italic pl-12">
+                      No tasks
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
       </TableBody>
     </Table>
   );
@@ -186,6 +234,7 @@ function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session
     nextChore,
     session,
     isParent: task.hasChildren,
+    openBlockers: task.openBlockers,
     onSearch,
   };
 
@@ -194,7 +243,7 @@ function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
-      className={cn(isSelected && "task-selected", task.onIce && "opacity-50")}
+      className={cn(isSelected && "task-selected", (task.onIce || task.openBlockers.length > 0) && "opacity-50")}
       style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
       {/* Checkbox */}

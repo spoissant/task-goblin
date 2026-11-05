@@ -7,6 +7,7 @@ describe("readFilters", () => {
       sprint: true,
       backlog: false,
       hideOnIce: true,
+      showBlocked: false,
       hideParents: false,
       hideIdle: false,
       idleOnly: false,

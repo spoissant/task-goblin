@@ -68,7 +68,7 @@ export function runCommand(cmd: string, args: string[], opts: CommandOptions): P
 }
 
 /**
- * Run a shell command line through a login zsh so user tooling (yarn, pnpm,
+ * Run a shell command line through a login zsh so user tooling (pnpm,
  * bin/dev, docker) resolves via the same PATH as an interactive terminal.
  * `args` reach the command line as "$@", so they need no shell quoting.
  */

@@ -57,12 +57,13 @@ export function useUpdateTask() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; title?: string; description?: string; status?: string; highPriority?: boolean; onIce?: boolean; onIceReason?: string | null; choreSkips?: string; repositoryId?: number | null }) =>
+    mutationFn: ({ id, ...data }: { id: number; title?: string; description?: string; status?: string; highPriority?: boolean; onIce?: boolean; onIceReason?: string | null; choreSkips?: string; repositoryId?: number | null; goalId?: number | null }) =>
       api.patch<Task>(`/tasks/${id}`, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: choreKeys.all });
+      if (variables.goalId !== undefined) queryClient.invalidateQueries({ queryKey: ["goals"] });
     },
   });
 }

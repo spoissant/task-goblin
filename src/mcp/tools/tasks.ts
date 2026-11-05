@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { get, post, patch, del, resolveTaskId, resolveRepositoryId, taskLookup, toolResult } from "../client.js";
-import type { ListResponse, SyncRunResult, Task, TaskDetail, TaskSyncResult, TaskWorktreeStatus } from "@/shared/types";
+import type { GoalListItem, ListResponse, SyncRunResult, Task, TaskDetail, TaskSyncResult, TaskWorktreeStatus } from "@/shared/types";
 
 const WORKTREE_POLL_MS = 3_000;
 const WORKTREE_MAX_WAIT_SECONDS = 300;
@@ -23,10 +23,25 @@ export function registerTaskTools(server: McpServer) {
     "get_task",
     {
       description:
-        "Get a single task by ID, Jira key, PR number, or branch name. Returns task with its repository.",
+        "Get a single task by ID, Jira key, PR number, or branch name. Returns the task with its repository and its goal " +
+        "(the umbrella it is grouped under, with a shared context to follow; null when unassigned).",
       inputSchema: taskLookup,
     },
     (lookup) => toolResult(async () => get<TaskDetail>(`/api/v1/tasks/${await resolveTaskId(lookup)}`))
+  );
+
+  // list_goals
+  server.registerTool(
+    "list_goals",
+    {
+      description:
+        "List the goals tasks are grouped under on the Tasks page, in display order, each with its shared context and " +
+        "progress (taskCount, doneCount). Active goals by default; archived=true lists the archived ones instead.",
+      inputSchema: {
+        archived: z.boolean().optional().describe("When true, list archived goals instead of active ones"),
+      },
+    },
+    ({ archived }) => toolResult(() => get<ListResponse<GoalListItem>>(`/api/v1/goals${archived ? "?archived=true" : ""}`))
   );
 
   // create_task
@@ -157,9 +172,10 @@ export function registerTaskTools(server: McpServer) {
             "Move the task to this repository: 'owner/repo', bare repo name, or alias. null clears it. Only works while the task has no PR - once a PR exists its repository wins."
           ),
         choreSkips: z.string().optional().describe("JSON chore skip flags, e.g. '{\"fix-pr-checks\": true}'"),
+        goalId: z.number().int().nullable().optional().describe("Move the task under this goal (see list_goals); null makes it unassigned"),
       },
     },
-    ({ title, description, status, repository, choreSkips, ...lookup }) =>
+    ({ title, description, status, repository, choreSkips, goalId, ...lookup }) =>
       toolResult(async () => {
         const taskId = await resolveTaskId(lookup);
 
@@ -171,6 +187,7 @@ export function registerTaskTools(server: McpServer) {
           updates.repositoryId = repository === null ? null : await resolveRepositoryId(repository);
         }
         if (choreSkips !== undefined) updates.choreSkips = choreSkips;
+        if (goalId !== undefined) updates.goalId = goalId;
 
         if (Object.keys(updates).length > 0) {
           await patch(`/api/v1/tasks/${taskId}`, updates);

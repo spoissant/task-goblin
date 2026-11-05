@@ -141,7 +141,7 @@ function RepositoryRow({ repo }: { repo: Repository }) {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-14 shrink-0">Setup</span>
-            {textField("setupCommand", "yarn install", "w-64")}
+            {textField("setupCommand", "pnpm install", "w-64")}
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-14 shrink-0">Teardown</span>

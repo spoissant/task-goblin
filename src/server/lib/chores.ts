@@ -1,7 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories } from "../../db/schema";
-import { getNotCompletedCondition, getStatusCategories, statusNamesOf } from "./task-status";
+import { openBlockerKeys } from "@/shared/blockers";
+import { getCompletedStatusNames, getNotCompletedCondition, getStatusCategories, statusNamesOf } from "./task-status";
 import { buildRepoMap } from "./queries";
 import { checksFailedAt } from "./checks";
 import type { RepoPair } from "@/shared/chore-pairs";
@@ -275,7 +276,11 @@ export async function matchChores(opts: { taskId?: number } = {}): Promise<Chore
 
   const conditions = [await getNotCompletedCondition(), sql`COALESCE(${tasks.onIce}, 0) = 0`];
   if (opts.taskId !== undefined) conditions.push(eq(tasks.id, opts.taskId));
-  const rows = await db.select().from(tasks).where(and(...conditions));
+  // A task waiting on a Jira blocker gets no chores until the blocker is done
+  const doneStatuses = new Set(await getCompletedStatusNames());
+  const rows = (await db.select().from(tasks).where(and(...conditions))).filter(
+    (task) => openBlockerKeys(task.blockedBy, doneStatuses).length === 0,
+  );
   const repoMap = await buildRepoMap(rows);
   const parentMap = await buildParentMap(rows);
 

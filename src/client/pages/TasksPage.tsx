@@ -4,6 +4,7 @@ import { useTaskFilters, type BoolFilter } from "@/client/lib/taskFilters";
 import { TaskTable } from "@/client/components/tasks/TaskTable";
 import { RepoFilterBar } from "@/client/components/tasks/RepoFilterBar";
 import { CreateTaskModal } from "@/client/components/tasks/CreateTaskModal";
+import { GoalDialog } from "@/client/components/tasks/GoalDialog";
 import { RefreshButton } from "@/client/components/tasks/RefreshButton";
 import { AutoChoresToggle } from "@/client/components/tasks/AutoChoresToggle";
 import { BulkActionsBar } from "@/client/components/tasks/BulkActionsBar";
@@ -15,13 +16,14 @@ import { orderForRepoPair } from "@/shared/chore-pairs";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
 import { FilterToggle } from "@/client/components/ui/filter-toggle";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, Target, X } from "lucide-react";
 
 // The URL filters' checkboxes, in display order
 const FILTER_TOGGLES: { key: BoolFilter; label: string }[] = [
   { key: "sprint", label: "Sprint view" },
   { key: "backlog", label: "Backlog" },
   { key: "hideOnIce", label: "Hide on ice" },
+  { key: "showBlocked", label: "Show blocked" },
   { key: "hideParents", label: "Hide parents" },
   { key: "hideIdle", label: "Hide idle" },
   { key: "idleOnly", label: "Show idle" },
@@ -29,6 +31,7 @@ const FILTER_TOGGLES: { key: BoolFilter; label: string }[] = [
 
 export function TasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [filters, updateFilters] = useTaskFilters();
   const [searchQuery, setSearchQuery] = useState(filters.q);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -142,10 +145,16 @@ export function TasksPage() {
         <AutoChoresToggle />
         <RefreshButton />
         {selectedIds.size === 0 && (
-          <Button onClick={() => setCreateModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setGoalDialogOpen(true)}>
+              <Target className="h-4 w-4 mr-2" />
+              New Goal
+            </Button>
+            <Button onClick={() => setCreateModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Task
+            </Button>
+          </>
         )}
       </div>
 
@@ -165,6 +174,7 @@ export function TasksPage() {
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
+      <GoalDialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen} />
       <CustomPromptDialog
         open={bulkPromptTarget !== undefined}
         onOpenChange={(open) => !open && setBulkPromptTarget(undefined)}

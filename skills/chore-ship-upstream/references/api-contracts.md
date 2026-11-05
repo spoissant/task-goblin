@@ -26,7 +26,7 @@ Per SDK repo: `gh release list --repo Hivebrite/<sdk-repo> --limit 5 --json tagN
 
 `Skill(hivebrite-engineering:update-internal-sdks)` with `main only=<sdk repos>`. The go-ahead covers its confirmation gates: pick its apply-all option yourself, except its breaking-change gate, which goes to the user. It leaves the commit to this chore. Its host `bundle install` is forbidden in alumni_connect: refresh `Gemfile.lock` with `bin/dev update-gems` (webapp container) instead.
 
-It reads alumni_connect as Ruby and misses the TypeScript SDKs: set each released one's version in every `package.json` entry that pins it (`resolutions` included), keeping the range prefix, then run `yarn install` once.
+It reads alumni_connect as Ruby and misses the TypeScript SDKs: set each released one's version in every `package.json` entry that pins it and in the `overrides` of `pnpm-workspace.yaml` (they replaced `resolutions`), keeping the range prefix, then run `pnpm install` once (`sh script/hooks/pnpm_sync.sh` with `GITHUB_TOKEN` set does the registry auth).
 
 ## Bump front-monorepo (chain, step 4)
 

@@ -29,11 +29,13 @@ export interface Task {
   sprint: string | null;
   epicKey: string | null;
   parentKey: string | null;
+  blockedBy: string | null; // JSON [{key, status}], see shared/blockers
 
   // Manual flags
   highPriority: number | null;
   onIce: number | null;
   onIceReason: string | null;
+  goalId: number | null; // the goal this task belongs to; null = unassigned
 
   // GitHub/PR fields (nullable - set when prNumber present)
   prNumber: number | null;
@@ -66,14 +68,33 @@ export interface Task {
   mergeVerifiedAt: string | null; // when the merge watch was done with the merged PR
 }
 
+// Goal: an umbrella grouping tasks into one section of the Tasks page
+export interface Goal {
+  id: number;
+  name: string;
+  context: string | null; // shared brief for the goal's AI sessions
+  displayOrder: number;
+  archived: number; // SQLite bool: the section is hidden, its tasks stay assigned
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Goal row for the Tasks page, with its progress (completed tasks included)
+export interface GoalListItem extends Goal {
+  taskCount: number;
+  doneCount: number;
+}
+
 // Task detail with relations
 export interface TaskDetail extends Task {
   repository: Repository | null;
+  goal: Goal | null;
 }
 
 // Task row for dashboard lists
 export interface TaskListItem extends Task {
   repository: Repository | null;
+  openBlockers: string[]; // keys of the Jira issues blocking this task that aren't done yet
   hasChildren: boolean; // another task points at this one via parentKey or epicKey
 }
 

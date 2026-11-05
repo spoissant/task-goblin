@@ -11,7 +11,8 @@ import type { ChoreDefinition } from "@/shared/chores";
 import { orderForRepoPair } from "@/shared/chore-pairs";
 import { useBootDevStack, useDevStackOverviewQuery } from "@/client/lib/queries/dev-stack";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/client/components/ui/tooltip";
-import { X, Sparkles, ChevronDown, CirclePlay, PenLine } from "lucide-react";
+import { useAssignTasksToGoal, useGoalsQuery } from "@/client/lib/queries/goals";
+import { X, Sparkles, ChevronDown, CirclePlay, PenLine, Target, Inbox } from "lucide-react";
 import { toast } from "sonner";
 
 interface BulkActionsBarProps {
@@ -79,10 +80,55 @@ export function BulkActionsBar({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <MoveToGoalMenu selectedIds={selectedIds} onDone={onClearSelection} />
       {isMulti && sameRepo && repositoryId !== null && (
         <StartMergedStackButton selectedIds={selectedIds} repositoryId={repositoryId} />
       )}
     </div>
+  );
+}
+
+/** Puts the selected tasks under a goal, or back in Unassigned. Hidden until a goal exists. */
+function MoveToGoalMenu({ selectedIds, onDone }: { selectedIds: number[]; onDone: () => void }) {
+  const { data } = useGoalsQuery();
+  const assign = useAssignTasksToGoal();
+  const goals = data?.items ?? [];
+  if (goals.length === 0) return null;
+
+  const move = (goalId: number | null, label: string) =>
+    assign.mutate(
+      { taskIds: selectedIds, goalId },
+      {
+        onSuccess: () => {
+          toast.success(`Moved ${selectedIds.length} task${selectedIds.length > 1 ? "s" : ""} to ${label}`);
+          onDone();
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to move tasks"),
+      },
+    );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" disabled={assign.isPending}>
+          <Target className="h-4 w-4 mr-2" />
+          Move to goal
+          <ChevronDown className="h-4 w-4 ml-2" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {goals.map((goal) => (
+          <DropdownMenuItem key={goal.id} onClick={() => move(goal.id, goal.name)}>
+            {goal.name}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => move(null, "Unassigned")} className="flex items-center gap-2">
+          <Inbox className="h-3.5 w-3.5 text-muted-foreground" />
+          Unassigned
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
