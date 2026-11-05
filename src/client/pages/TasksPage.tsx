@@ -144,17 +144,15 @@ export function TasksPage() {
         )}
         <AutoChoresToggle />
         <RefreshButton />
+        <Button variant="outline" onClick={() => setGoalDialogOpen(true)}>
+          <Target className="h-4 w-4 mr-2" />
+          New Goal
+        </Button>
         {selectedIds.size === 0 && (
-          <>
-            <Button variant="outline" onClick={() => setGoalDialogOpen(true)}>
-              <Target className="h-4 w-4 mr-2" />
-              New Goal
-            </Button>
-            <Button onClick={() => setCreateModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Task
-            </Button>
-          </>
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Task
+          </Button>
         )}
       </div>
 
@@ -174,7 +172,13 @@ export function TasksPage() {
       />
 
       <CreateTaskModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
-      <GoalDialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen} />
+      {/* With tasks selected, the new goal takes them */}
+      <GoalDialog
+        open={goalDialogOpen}
+        onOpenChange={setGoalDialogOpen}
+        assignTaskIds={Array.from(selectedIds)}
+        onAssigned={() => setSelectedIds(new Set())}
+      />
       <CustomPromptDialog
         open={bulkPromptTarget !== undefined}
         onOpenChange={(open) => !open && setBulkPromptTarget(undefined)}

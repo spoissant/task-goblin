@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useCreateGoal, useUpdateGoal } from "@/client/lib/queries/goals";
+import { useAssignTasksToGoal, useCreateGoal, useUpdateGoal } from "@/client/lib/queries/goals";
 import { ModalDialog } from "@/client/components/ui/modal-dialog";
 import { Button } from "@/client/components/ui/button";
 import { Input } from "@/client/components/ui/input";
@@ -13,15 +13,20 @@ interface GoalDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The goal to edit; omitted to create one. */
   goal?: Goal;
+  /** Tasks moved into the goal once created (the current selection). */
+  assignTaskIds?: number[];
+  /** Called after the tasks were moved, so the page can clear its selection. */
+  onAssigned?: () => void;
 }
 
-/** Create a goal, or edit one's name and shared context. */
-export function GoalDialog({ open, onOpenChange, goal }: GoalDialogProps) {
+/** Create a goal (optionally with tasks moved into it), or edit one's name and shared context. */
+export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAssigned }: GoalDialogProps) {
   const [name, setName] = useState(goal?.name ?? "");
   const [context, setContext] = useState(goal?.context ?? "");
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
-  const isPending = createGoal.isPending || updateGoal.isPending;
+  const assignTasks = useAssignTasksToGoal();
+  const isPending = createGoal.isPending || updateGoal.isPending || assignTasks.isPending;
 
   // Reset the fields each time the dialog opens
   useEffect(() => {
@@ -36,15 +41,36 @@ export function GoalDialog({ open, onOpenChange, goal }: GoalDialogProps) {
     const trimmed = name.trim();
     if (!trimmed) return;
     const data = { name: trimmed, context: context.trim() || null };
-    const options = {
-      onSuccess: () => {
-        toast.success(goal ? "Goal updated" : "Goal created");
+    if (goal) {
+      updateGoal.mutate(
+        { id: goal.id, ...data },
+        {
+          onSuccess: () => {
+            toast.success("Goal updated");
+            onOpenChange(false);
+          },
+          onError: () => toast.error("Failed to update goal"),
+        },
+      );
+      return;
+    }
+    createGoal.mutate(data, {
+      onSuccess: async (createdGoal) => {
+        if (assignTaskIds.length) {
+          try {
+            await assignTasks.mutateAsync({ taskIds: assignTaskIds, goalId: createdGoal.id });
+            toast.success(`Goal created with ${assignTaskIds.length} task${assignTaskIds.length > 1 ? "s" : ""}`);
+            onAssigned?.();
+          } catch {
+            toast.error("Goal created, but moving the tasks failed");
+          }
+        } else {
+          toast.success("Goal created");
+        }
         onOpenChange(false);
       },
-      onError: () => toast.error(goal ? "Failed to update goal" : "Failed to create goal"),
-    };
-    if (goal) updateGoal.mutate({ id: goal.id, ...data }, options);
-    else createGoal.mutate(data, options);
+      onError: () => toast.error("Failed to create goal"),
+    });
   };
 
   const footer = (
@@ -59,7 +85,17 @@ export function GoalDialog({ open, onOpenChange, goal }: GoalDialogProps) {
   );
 
   return (
-    <ModalDialog open={open} onOpenChange={onOpenChange} title={goal ? "Edit goal" : "New goal"} footer={footer}>
+    <ModalDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={goal ? "Edit goal" : "New goal"}
+      description={
+        !goal && assignTaskIds.length
+          ? `The ${assignTaskIds.length} selected task${assignTaskIds.length > 1 ? "s" : ""} will move into this goal.`
+          : undefined
+      }
+      footer={footer}
+    >
       <form id="goal-form" onSubmit={handleSubmit}>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
