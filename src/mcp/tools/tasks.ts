@@ -54,7 +54,7 @@ export function registerTaskTools(server: McpServer) {
       description:
         "List tasks, paginated. Returns { items, total }; page with offset until you have total. " +
         "Completed tasks are excluded unless completed=true. status and statuses match the raw task status name " +
-        "(case-insensitive), not a status category. With completed=true only title, goalId, limit and offset apply; " +
+        "(case-insensitive), not a status category. With completed=true only title, goalId, epic, limit and offset apply; " +
         "the other filters are ignored.",
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
@@ -62,19 +62,21 @@ export function registerTaskTools(server: McpServer) {
         title: z.string().optional().describe("Substring search on title, Jira key, or branch name. Combine terms with | (OR) and & (AND, binds tighter); prefix a term with ~ to negate (e.g. 'tiptap | editor & ~bug')"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
         goalId: z.union([z.number().int(), z.literal("none")]).optional().describe("Only the tasks of this goal (see list_goals); \"none\" for tasks without a goal. Applies to completed=true too"),
+        epic: z.string().optional().describe("Only the tasks of this Jira epic key, e.g. PS-123; sub-tasks count as in their parent's epic. Applies to completed=true too"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
         hasComments: z.boolean().optional().describe("Filter by unresolved comments presence"),
         limit: z.number().int().optional().default(25).describe("Page size (default 25)"),
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    ({ status, statuses, title, completed, goalId, checks, hasComments, limit, offset }) =>
+    ({ status, statuses, title, completed, goalId, epic, checks, hasComments, limit, offset }) =>
       toolResult(async () => {
         const params = new URLSearchParams();
         if (status) params.set("status", status);
         if (statuses) params.set("statuses", statuses);
         if (title) params.set("title", title);
         if (goalId !== undefined) params.set("goalId", String(goalId));
+        if (epic) params.set("epic", epic);
         if (checks) params.set("checks", checks);
         if (hasComments !== undefined) params.set("hasComments", String(hasComments));
         if (limit !== undefined) params.set("limit", String(limit));

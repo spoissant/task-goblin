@@ -18,6 +18,13 @@ async function assignTasks(taskIds: number[], goalId: number | null): Promise<nu
   return moved;
 }
 
+const epicKeysSchema = z
+  .array(z.string())
+  .describe(
+    "Jira epic keys (e.g. PS-123) tied to the goal: unassigned tasks in these epics join it now and whenever they sync. " +
+      "An epic belongs to one goal. Tasks already in a goal are never moved by this."
+  );
+
 export function registerGoalTools(server: McpServer) {
   // list_goals
   server.registerTool(
@@ -48,11 +55,12 @@ export function registerGoalTools(server: McpServer) {
           .optional()
           .describe("Shared brief for the AI sessions of the goal's tasks (stored; not injected into prompts yet)"),
         taskIds: z.array(z.number().int()).optional().describe("Tasks to move into the new goal"),
+        epicKeys: epicKeysSchema.optional(),
       },
     },
-    ({ name, context, taskIds }) =>
+    ({ name, context, taskIds, epicKeys }) =>
       toolResult(async () => {
-        const goal = await post<Goal>("/api/v1/goals", { name, context });
+        const goal = await post<Goal>("/api/v1/goals", { name, context, epicKeys });
         const moved = taskIds?.length ? await assignTasks(taskIds, goal.id) : [];
         return { goal, moved };
       })
@@ -70,14 +78,16 @@ export function registerGoalTools(server: McpServer) {
         name: z.string().optional().describe("New goal name"),
         context: z.string().nullable().optional().describe("New shared context; null clears it"),
         archived: z.boolean().optional().describe("Archive or restore the goal"),
+        epicKeys: epicKeysSchema.optional().describe("Replaces the goal's whole epic list; [] unties every epic"),
       },
     },
-    ({ id, name, context, archived }) =>
+    ({ id, name, context, archived, epicKeys }) =>
       toolResult(() => {
         const updates: Record<string, unknown> = {};
         if (name !== undefined) updates.name = name;
         if (context !== undefined) updates.context = context;
         if (archived !== undefined) updates.archived = archived;
+        if (epicKeys !== undefined) updates.epicKeys = epicKeys;
         return patch<Goal>(`/api/v1/goals/${id}`, updates);
       })
   );

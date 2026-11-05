@@ -5,6 +5,7 @@ import { tasks } from "../../db/schema";
 import { getJiraClient, getJiraConfig, toJiraError, type JiraConfig } from "../lib/jira-client";
 import { getSetting, setSetting } from "../lib/settings";
 import { now } from "../lib/timestamp";
+import { findGoalIdForIssue, pullSubtasksIntoGoal } from "./goal-epics";
 import type { SyncResult } from "@/shared/types";
 
 function extractParent(issue: { fields: Record<string, unknown> }): { key: string; isEpic: boolean } | null {
@@ -98,7 +99,14 @@ export const JIRA_FIELDS = [
   "blockedBy",
 ] as const;
 
-async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated" | "unchanged"> {
+/** A task in an epic tied to a goal brings its unassigned sub-tasks along (they may have synced first). */
+async function followEpicGoal(taskData: { jiraKey: string; epicKey: string | null; parentKey: string | null }): Promise<void> {
+  if (!taskData.epicKey) return;
+  const goalId = await findGoalIdForIssue(taskData);
+  if (goalId !== null) await pullSubtasksIntoGoal(taskData.jiraKey, goalId);
+}
+
+export async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Promise<"new" | "updated" | "unchanged"> {
   const existing = await db
     .select()
     .from(tasks)
@@ -111,19 +119,29 @@ async function upsertTask(taskData: ReturnType<typeof mapIssueToTaskData>): Prom
       return "unchanged";
     }
 
-    // Only the Jira fields: a linked PR's stay as they are
-    await db.update(tasks).set(taskData).where(eq(tasks.id, oldTask.id));
+    // Only the Jira fields: a linked PR's stay as they are. A task that just moved into an
+    // epic tied to a goal joins it, unless it already sits in one.
+    const moved = oldTask.epicKey !== taskData.epicKey || oldTask.parentKey !== taskData.parentKey;
+    const joinedGoalId = oldTask.goalId === null && moved ? await findGoalIdForIssue(taskData) : null;
+    await db
+      .update(tasks)
+      .set(joinedGoalId === null ? taskData : { ...taskData, goalId: joinedGoalId })
+      .where(eq(tasks.id, oldTask.id));
+    if (moved) await followEpicGoal(taskData);
 
     return "updated";
   } else {
     // Create new Jira-only task
     const timestamp = now();
+    const goalId = await findGoalIdForIssue(taskData);
     await db
       .insert(tasks)
       .values({
         ...taskData,
+        goalId,
         createdAt: timestamp,
       });
+    await followEpicGoal(taskData);
 
     return "new";
   }

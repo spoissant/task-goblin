@@ -112,4 +112,39 @@ describe("Goal endpoints", () => {
     expect(await ids(`/api/v1/tasks/completed?goalId=${goal.id}&showDone=true`)).toEqual([done.id]);
     expect((await request("GET", "/api/v1/tasks?goalId=abc")).status).toBe(400);
   });
+
+  it("ties epics to a goal, normalised, and pulls in the unassigned tasks of those epics", async () => {
+    const taken = await createTask("Already placed");
+    const other = await createGoal("Other");
+    const loose = await createTask("Loose");
+    const elsewhere = await createTask("Elsewhere");
+    const subtask = await createTask("Sub-task");
+    sqlite.run(`UPDATE tasks SET epic_key = 'PS-9', jira_key = 'PS-10' WHERE id = ${loose.id}`);
+    sqlite.run(`UPDATE tasks SET parent_key = 'PS-10' WHERE id = ${subtask.id}`);
+    sqlite.run(`UPDATE tasks SET epic_key = 'PS-9' WHERE id IN (${elsewhere.id}, ${taken.id})`);
+    await request("PATCH", `/api/v1/tasks/${elsewhere.id}`, { goalId: other.id });
+
+    const goal = await createGoal("Editor");
+    const res = await request("PATCH", `/api/v1/goals/${goal.id}`, { epicKeys: [" ps-9 ", "PS-9", "ev-2"] });
+    expect(JSON.parse((await res.json()).epicKeys)).toEqual(["PS-9", "EV-2"]);
+
+    const goalOf = async (id: number) => (await (await request("GET", `/api/v1/tasks/${id}`)).json()).goalId;
+    expect(await goalOf(loose.id)).toBe(goal.id);
+    expect(await goalOf(taken.id)).toBe(goal.id);
+    expect(await goalOf(subtask.id)).toBe(goal.id);
+    expect(await goalOf(elsewhere.id)).toBe(other.id);
+  });
+
+  it("ties epics on creation, defaults to none, and ties an epic to one goal only", async () => {
+    expect((await createGoal("Plain")).epicKeys).toBe("[]");
+    const goal = await (await request("POST", "/api/v1/goals", { name: "Editor", epicKeys: ["PS-1"] })).json();
+    expect(goal.epicKeys).toBe('["PS-1"]');
+
+    const clash = await request("POST", "/api/v1/goals", { name: "Other", epicKeys: ["PS-1"] });
+    expect(clash.status).toBe(400);
+    expect((await clash.json()).error.message).toContain('"Editor"');
+    expect((await request("PATCH", `/api/v1/goals/${goal.id}`, { epicKeys: ["PS-1", "PS-2"] })).status).toBe(200);
+    expect((await request("PATCH", `/api/v1/goals/${goal.id}`, { epicKeys: ["nope"] })).status).toBe(400);
+    expect((await request("PATCH", `/api/v1/goals/${goal.id}`, { epicKeys: "PS-1" })).status).toBe(400);
+  });
 });

@@ -68,6 +68,28 @@ describe("Tasks endpoints", () => {
     expect(byKey.get("PS-3")).toBe(false);
   });
 
+  it("gives sub-tasks their parent's epic: in the list, the epic filter and the search", async () => {
+    const insert = (key: string, epic: string | null, parent: string | null) =>
+      sqlite.run(
+        `INSERT INTO tasks (title, status, created_at, updated_at, jira_key, epic_key, parent_key) VALUES ('${key}', 'To Do', 'x', 'x', '${key}', ${epic ? `'${epic}'` : "NULL"}, ${parent ? `'${parent}'` : "NULL"})`,
+      );
+    insert("PS-1", "PS-9", null); // story in the epic
+    insert("PS-2", null, "PS-1"); // its sub-task
+    insert("PS-3", null, "PS-404"); // sub-task of an untracked parent
+    insert("PS-4", "PS-8", null); // other epic
+    sqlite.run("UPDATE tasks SET epic_key = 'PS-7' WHERE jira_key = 'PS-1'"); // the parent moves epic: its sub-task follows
+
+    const keys = async (path: string) =>
+      (await (await request("GET", path)).json()).items.map((t: { jiraKey: string }) => t.jiraKey).sort();
+    expect(await keys("/api/v1/tasks?epic=ps-7")).toEqual(["PS-1", "PS-2"]);
+    expect(await keys("/api/v1/tasks?epic=PS-9")).toEqual([]);
+    expect(await keys("/api/v1/tasks?title=PS-7")).toEqual(["PS-1", "PS-2"]);
+
+    const items = (await (await request("GET", "/api/v1/tasks")).json()).items;
+    const effective = Object.fromEntries(items.map((t: { jiraKey: string; effectiveEpicKey: string | null }) => [t.jiraKey, t.effectiveEpicKey]));
+    expect(effective).toEqual({ "PS-1": "PS-7", "PS-2": "PS-7", "PS-3": null, "PS-4": "PS-8" });
+  });
+
   it("creates a task", async () => {
     const res = await request("POST", "/api/v1/tasks", {
       title: "Test task",

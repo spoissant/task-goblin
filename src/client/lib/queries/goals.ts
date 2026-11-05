@@ -24,7 +24,7 @@ function useInvalidateGoals() {
 export function useCreateGoal() {
   const invalidate = useInvalidateGoals();
   return useMutation({
-    mutationFn: (data: { name: string; context?: string | null }) => api.post<Goal>("/goals", data),
+    mutationFn: (data: { name: string; context?: string | null; epicKeys?: string[] }) => api.post<Goal>("/goals", data),
     onSuccess: invalidate,
   });
 }
@@ -32,7 +32,7 @@ export function useCreateGoal() {
 export function useUpdateGoal() {
   const invalidate = useInvalidateGoals();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number; name?: string; context?: string | null; archived?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id: number; name?: string; context?: string | null; archived?: boolean; epicKeys?: string[] }) =>
       api.patch<Goal>(`/goals/${id}`, data),
     onSuccess: invalidate,
   });

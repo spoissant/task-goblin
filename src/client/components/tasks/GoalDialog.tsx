@@ -19,10 +19,20 @@ interface GoalDialogProps {
   onAssigned?: () => void;
 }
 
+/** The goal's epic keys as the comma-separated text of the epics field. */
+function goalEpics(goal?: Goal): string {
+  try {
+    return (JSON.parse(goal?.epicKeys ?? "[]") as string[]).join(", ");
+  } catch {
+    return "";
+  }
+}
+
 /** Create a goal (optionally with tasks moved into it), or edit one's name and shared context. */
 export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAssigned }: GoalDialogProps) {
   const [name, setName] = useState(goal?.name ?? "");
   const [context, setContext] = useState(goal?.context ?? "");
+  const [epics, setEpics] = useState(goalEpics(goal));
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
   const assignTasks = useAssignTasksToGoal();
@@ -33,6 +43,7 @@ export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAss
     if (open) {
       setName(goal?.name ?? "");
       setContext(goal?.context ?? "");
+      setEpics(goalEpics(goal));
     }
   }, [open, goal]);
 
@@ -40,7 +51,7 @@ export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAss
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const data = { name: trimmed, context: context.trim() || null };
+    const data = { name: trimmed, context: context.trim() || null, epicKeys: epics.split(/[\s,]+/).filter(Boolean) };
     if (goal) {
       updateGoal.mutate(
         { id: goal.id, ...data },
@@ -49,7 +60,7 @@ export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAss
             toast.success("Goal updated");
             onOpenChange(false);
           },
-          onError: () => toast.error("Failed to update goal"),
+          onError: (error) => toast.error(error.message || "Failed to update goal"),
         },
       );
       return;
@@ -69,7 +80,7 @@ export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAss
         }
         onOpenChange(false);
       },
-      onError: () => toast.error("Failed to create goal"),
+      onError: (error) => toast.error(error.message || "Failed to create goal"),
     });
   };
 
@@ -111,6 +122,11 @@ export function GoalDialog({ open, onOpenChange, goal, assignTaskIds = [], onAss
               placeholder="What every AI session on this goal's tasks should know (optional)"
               rows={6}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="goal-epics">Jira epics</Label>
+            <Input id="goal-epics" value={epics} onChange={(e) => setEpics(e.target.value)} placeholder="PS-123, PS-456 (optional)" />
+            <p className="text-xs text-muted-foreground">Unassigned tasks in these epics join the goal when they sync.</p>
           </div>
         </div>
       </form>

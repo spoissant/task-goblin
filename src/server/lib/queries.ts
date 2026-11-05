@@ -4,6 +4,17 @@ import { tasks, repositories } from "../../db/schema";
 import { NotFoundError } from "./errors";
 
 /**
+ * A task's epic: its own, or its parent's when it is a sub-task (Jira gives sub-tasks no epic).
+ * Computed in SQL rather than stored, so it can't go stale when the parent moves to another epic.
+ */
+export const effectiveEpicKey = sql<string | null>`COALESCE("tasks"."epic_key", (SELECT p.epic_key FROM tasks p WHERE p.jira_key = "tasks"."parent_key"))`;
+
+/** The ?epic= filter: tasks in that epic, sub-tasks included. */
+export function buildEpicCondition(epicKey: string) {
+  return sql`${effectiveEpicKey} = ${epicKey.trim().toUpperCase()}`;
+}
+
+/**
  * Build a search condition for the `title` query param. Terms combine with
  * `|` (OR) and `&` (AND, binds tighter), e.g. "tiptap | editor & ~bug" means
  * tiptap OR (editor AND NOT bug). A leading `~` negates a term. Terms are
@@ -38,7 +49,7 @@ function buildTermCondition(raw: string) {
   const orConditions = [
     sql`COALESCE(${tasks.title}, '') LIKE ${pattern}`,
     sql`COALESCE(${tasks.jiraKey}, '') LIKE ${pattern}`,
-    sql`COALESCE(${tasks.epicKey}, '') LIKE ${pattern}`,
+    sql`COALESCE(${effectiveEpicKey}, '') LIKE ${pattern}`,
     sql`COALESCE(${tasks.parentKey}, '') LIKE ${pattern}`,
     sql`COALESCE(${tasks.headBranch}, '') LIKE ${pattern}`,
   ];

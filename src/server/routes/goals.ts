@@ -7,6 +7,7 @@ import { now } from "../lib/timestamp";
 import { getBody } from "../lib/request";
 import { parseId } from "../lib/validation";
 import { getCompletedCondition } from "../lib/task-status";
+import { parseEpicKeys, pullEpicTasksIntoGoal } from "../services/goal-epics";
 import type { Routes } from "../router";
 
 function requiredName(value: unknown): string {
@@ -18,6 +19,22 @@ function optionalContext(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new ValidationError("context must be a string");
   return value.trim() || null;
+}
+
+const EPIC_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
+
+/** Validated, upper-cased, de-duplicated epic keys as the JSON stored on the goal. An epic can be tied to one goal only. */
+async function epicKeysJson(value: unknown, goalId?: number): Promise<string> {
+  if (!Array.isArray(value) || !value.every((key) => typeof key === "string" && EPIC_KEY_PATTERN.test(key.trim().toUpperCase()))) {
+    throw new ValidationError("epicKeys must be an array of Jira keys like PS-123");
+  }
+  const keys = [...new Set((value as string[]).map((key) => key.trim().toUpperCase()))];
+  const others = await db.select({ id: goals.id, name: goals.name, epicKeys: goals.epicKeys }).from(goals);
+  for (const other of others) {
+    const taken = goalId !== other.id && parseEpicKeys(other.epicKeys).find((key) => keys.includes(key));
+    if (taken) throw new ValidationError(`${taken} is already tied to the goal "${other.name}"`);
+  }
+  return JSON.stringify(keys);
 }
 
 async function getGoalOrThrow(id: number) {
@@ -65,12 +82,14 @@ export const goalRoutes: Routes = {
       const body = await getBody(req);
       const name = requiredName(body.name);
       const context = optionalContext(body.context);
+      const epicKeys = "epicKeys" in body ? await epicKeysJson(body.epicKeys) : "[]";
       const last = await db.select({ max: sql<number | null>`max(${goals.displayOrder})` }).from(goals);
       const timestamp = now();
       const result = await db
         .insert(goals)
-        .values({ name, context, displayOrder: (last[0]?.max ?? -1) + 1, createdAt: timestamp, updatedAt: timestamp })
+        .values({ name, context, epicKeys, displayOrder: (last[0]?.max ?? -1) + 1, createdAt: timestamp, updatedAt: timestamp })
         .returning();
+      await pullEpicTasksIntoGoal(result[0].id, parseEpicKeys(epicKeys));
       return created(result[0]);
     },
   },
@@ -101,10 +120,12 @@ export const goalRoutes: Routes = {
       if ("name" in body) updates.name = requiredName(body.name);
       if ("context" in body) updates.context = optionalContext(body.context);
       if ("archived" in body) updates.archived = body.archived ? 1 : 0;
+      if ("epicKeys" in body) updates.epicKeys = await epicKeysJson(body.epicKeys, id);
       if (Object.keys(updates).length === 0) return json(existing);
 
       updates.updatedAt = now();
       const result = await db.update(goals).set(updates).where(eq(goals.id, id)).returning();
+      if (updates.epicKeys) await pullEpicTasksIntoGoal(id, parseEpicKeys(updates.epicKeys));
       return json(result[0]);
     },
 

@@ -73,6 +73,7 @@ export interface Goal {
   id: number;
   name: string;
   context: string | null; // shared brief for the goal's AI sessions
+  epicKeys: string; // JSON array of Jira epic keys whose tasks join the goal on sync
   displayOrder: number;
   archived: number; // SQLite bool: the section is hidden, its tasks stay assigned
   createdAt: string;
@@ -93,6 +94,7 @@ export interface TaskDetail extends Task {
 
 // Task row for dashboard lists
 export interface TaskListItem extends Task {
+  effectiveEpicKey: string | null; // epicKey, or the parent task's epic for a sub-task
   repository: Repository | null;
   openBlockers: string[]; // keys of the Jira issues blocking this task that aren't done yet
   hasChildren: boolean; // another task points at this one via parentKey or epicKey

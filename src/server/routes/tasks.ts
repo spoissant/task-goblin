@@ -1,7 +1,7 @@
-import { eq, and, sql, or } from "drizzle-orm";
+import { eq, and, sql, or, getTableColumns } from "drizzle-orm";
 import { db } from "../../db";
 import { tasks, repositories, goals } from "../../db/schema";
-import { buildRepoMap, buildTitleSearchCondition, getTaskOrThrow, getTaskWithRepository } from "../lib/queries";
+import { buildEpicCondition, buildRepoMap, buildTitleSearchCondition, effectiveEpicKey, getTaskOrThrow, getTaskWithRepository } from "../lib/queries";
 import { json, created, noContent } from "../response";
 import { NotFoundError, ValidationError } from "../lib/errors";
 import { now } from "../lib/timestamp";
@@ -34,6 +34,14 @@ function goalFilter(url: URL) {
   if (!value) return undefined;
   if (value === "none") return sql`${tasks.goalId} IS NULL`;
   return eq(tasks.goalId, parseId(value, "goalId"));
+}
+
+const listColumns = { ...getTableColumns(tasks), effectiveEpicKey };
+
+/** The ?epic= filter: an epic key. Undefined when absent. */
+function epicFilter(url: URL) {
+  const value = url.searchParams.get("epic");
+  return value ? buildEpicCondition(value) : undefined;
 }
 
 export const taskRoutes: Routes = {
@@ -72,6 +80,8 @@ export const taskRoutes: Routes = {
 
       const goal = goalFilter(url);
       if (goal) conditions.push(goal);
+      const epic = epicFilter(url);
+      if (epic) conditions.push(epic);
 
       // Filter by checks status (passing / failing)
       const checks = url.searchParams.get("checks");
@@ -90,7 +100,7 @@ export const taskRoutes: Routes = {
       const whereCondition = and(...conditions);
 
       const taskList = await db
-        .select()
+        .select(listColumns)
         .from(tasks)
         .where(whereCondition)
         .orderBy(...(await getTaskOrderExprsAsync()))
@@ -274,11 +284,13 @@ export const taskRoutes: Routes = {
       }
       const goal = goalFilter(url);
       if (goal) conditions.push(goal);
+      const epic = epicFilter(url);
+      if (epic) conditions.push(epic);
       const whereCondition = and(...conditions);
 
       // Get paginated completed tasks
       const taskList = await db
-        .select()
+        .select(listColumns)
         .from(tasks)
         .where(whereCondition)
         .orderBy(...(await getTaskOrderExprsAsync()))

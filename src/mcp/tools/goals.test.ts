@@ -85,6 +85,13 @@ describe("update_goal", () => {
     expect(calls[0]).toEqual({ call: "PATCH /api/v1/goals/7", body: { context: null, archived: true } });
   });
 
+  it("sends the epic list, empty to untie every epic", async () => {
+    const calls = stubApi({ "PATCH /api/v1/goals/7": [200, goal] });
+    await call("update_goal", { id: 7, epicKeys: ["PS-1"] });
+    await call("update_goal", { id: 7, epicKeys: [] });
+    expect(calls.map((c) => c.body)).toEqual([{ epicKeys: ["PS-1"] }, { epicKeys: [] }]);
+  });
+
   it("returns the API's error", async () => {
     stubApi({ "PATCH /api/v1/goals/9": [404, { error: { code: "NOT_FOUND", message: "Goal 9 not found" } }] });
     const result = await call("update_goal", { id: 9, name: "x" });

@@ -89,19 +89,23 @@ export function BlockedByCell({ keys, jiraHost, onSearch }: { keys?: string[]; j
   );
 }
 
-export function ParentCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
-  const key = task.epicKey ?? task.parentKey;
-  if (!key) {
-    return <span className="text-muted-foreground">—</span>;
-  }
+/** The task's epic; a sub-task shows its parent's (effectiveEpicKey, set by the task lists). */
+export function EpicCell({ task, jiraHost }: { task: Task & { effectiveEpicKey?: string | null }; jiraHost?: string | null }) {
+  const epicKey = task.effectiveEpicKey ?? task.epicKey;
+  if (!epicKey) return <span className="text-muted-foreground">—</span>;
   return (
-    <JiraLink jiraKey={key} jiraHost={jiraHost}>
+    <JiraLink jiraKey={epicKey} jiraHost={jiraHost}>
       <span className="inline-flex items-center gap-1">
-        {task.epicKey != null && <Zap className="h-3 w-3 text-purple-600 shrink-0" />}
-        {key}
+        <Zap className="h-3 w-3 text-purple-600 shrink-0" />
+        {epicKey}
       </span>
     </JiraLink>
   );
+}
+
+export function ParentCell({ task, jiraHost }: { task: Task; jiraHost?: string | null }) {
+  if (!task.parentKey) return <span className="text-muted-foreground">—</span>;
+  return <JiraLink jiraKey={task.parentKey} jiraHost={jiraHost} />;
 }
 
 /** Opens the dialog that gives the task its Jira key or PR. */

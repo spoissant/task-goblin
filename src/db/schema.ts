@@ -66,6 +66,7 @@ export const goals = sqliteTable("goals", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   context: text("context"), // shared brief for the AI sessions of the goal's tasks (not injected yet)
+  epicKeys: text("epic_keys").notNull().default("[]"), // JSON array of Jira epic keys: unassigned tasks in these epics join the goal on sync
   displayOrder: integer("display_order").notNull(), // section order on the Tasks page
   archived: integer("archived").notNull().default(0), // SQLite bool: hides the section, keeps the tasks
   createdAt: text("created_at").notNull(),
