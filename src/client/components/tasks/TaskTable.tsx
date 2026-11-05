@@ -165,6 +165,7 @@ export function TaskTable({ filters, titleFilter, compactMode, selectedIds, onSe
       onSearch={onSearch}
       isSelected={selectedIds.has(task.id)}
       onSelectedChange={(selected) => setSelected([task.id], selected)}
+      indented={goals.length > 0}
     />
   );
 
@@ -222,9 +223,11 @@ interface TaskRowProps {
   onSearch: (query: string) => void;
   isSelected: boolean;
   onSelectedChange: (selected: boolean) => void;
+  /** Inset under a section header, so the goal's rows read as a block. */
+  indented?: boolean;
 }
 
-function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session, onSearch, isSelected, onSelectedChange }: TaskRowProps) {
+function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session, onSearch, isSelected, onSelectedChange, indented }: TaskRowProps) {
   // Context for column renderers
   const columnContext = {
     repo: task.repository,
@@ -247,7 +250,7 @@ function TaskRow({ task, columns, jiraHost, statusCategories, nextChore, session
       style={rowBg ? { backgroundColor: rowBg } : undefined}
     >
       {/* Checkbox */}
-      <TableCell>
+      <TableCell className={cn(indented && "pl-8")}>
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelectedChange(!!checked)}
