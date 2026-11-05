@@ -33,19 +33,20 @@ interface GoalSectionRowProps {
 export function GoalSectionRow({ goal, visibleIds, selectedIds, onSelectSection, colSpan, onMoveUp, onMoveDown }: GoalSectionRowProps) {
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   return (
-    <TableRow className="bg-muted/40 hover:bg-muted/40">
+    // A heading, not a row: space above, no fill, a heavier rule below
+    <TableRow className="hover:bg-transparent border-b-2 border-foreground/20">
       {/* Spans the spacer column too: the header runs flush left, its rows sit inset */}
-      <TableCell colSpan={2}>
+      <TableCell colSpan={2} className="pt-8 pb-2 align-bottom">
         <Checkbox
           checked={allSelected}
           disabled={visibleIds.length === 0}
           onCheckedChange={(checked) => onSelectSection(visibleIds, !!checked)}
         />
       </TableCell>
-      <TableCell colSpan={colSpan}>
+      <TableCell colSpan={colSpan} className="pt-8 pb-2 align-bottom">
         <div className="flex items-center gap-3 h-7">
-          {goal ? <Target className="h-4 w-4 text-muted-foreground" /> : <Inbox className="h-4 w-4 text-muted-foreground" />}
-          <span className="font-semibold">{goal?.name ?? "Unassigned"}</span>
+          {goal ? <Target className="h-5 w-5 text-primary" /> : <Inbox className="h-5 w-5 text-muted-foreground" />}
+          <span className="text-base font-semibold">{goal?.name ?? "Unassigned"}</span>
           {goal?.context && <ScrollText className="h-3.5 w-3.5 text-muted-foreground" aria-label="Has shared context" />}
           {goal ? <GoalProgress goal={goal} /> : <span className="text-sm text-muted-foreground tabular-nums">{visibleIds.length}</span>}
           <span className="flex-1" />
