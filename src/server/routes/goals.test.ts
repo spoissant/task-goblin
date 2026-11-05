@@ -98,4 +98,18 @@ describe("Goal endpoints", () => {
     const cleared = await request("PATCH", `/api/v1/tasks/${task.id}`, { goalId: null });
     expect((await cleared.json()).goalId).toBeNull();
   });
+
+  it("filters task lists by goal, or by none", async () => {
+    const goal = await createGoal("Editor");
+    const inGoal = await createTask("In goal", goal.id);
+    const loose = await createTask("Loose");
+    const done = await createTask("Done in goal", goal.id);
+    sqlite.run(`UPDATE tasks SET status = 'Done', jira_key = 'PS-1' WHERE id = ${done.id}`);
+
+    const ids = async (path: string) => (await (await request("GET", path)).json()).items.map((t: { id: number }) => t.id);
+    expect(await ids(`/api/v1/tasks?goalId=${goal.id}`)).toEqual([inGoal.id]);
+    expect(await ids("/api/v1/tasks?goalId=none")).toEqual([loose.id]);
+    expect(await ids(`/api/v1/tasks/completed?goalId=${goal.id}&showDone=true`)).toEqual([done.id]);
+    expect((await request("GET", "/api/v1/tasks?goalId=abc")).status).toBe(400);
+  });
 });

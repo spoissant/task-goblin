@@ -28,6 +28,14 @@ async function validateManualStatus(status: string) {
   }
 }
 
+/** The ?goalId= filter: a goal's ID, or "none" for tasks without a goal. Undefined when absent. */
+function goalFilter(url: URL) {
+  const value = url.searchParams.get("goalId");
+  if (!value) return undefined;
+  if (value === "none") return sql`${tasks.goalId} IS NULL`;
+  return eq(tasks.goalId, parseId(value, "goalId"));
+}
+
 export const taskRoutes: Routes = {
   "/api/v1/tasks": {
     async GET(req) {
@@ -61,6 +69,9 @@ export const taskRoutes: Routes = {
         const condition = buildTitleSearchCondition(title);
         if (condition) conditions.push(condition);
       }
+
+      const goal = goalFilter(url);
+      if (goal) conditions.push(goal);
 
       // Filter by checks status (passing / failing)
       const checks = url.searchParams.get("checks");
@@ -261,6 +272,8 @@ export const taskRoutes: Routes = {
         const condition = buildTitleSearchCondition(title);
         if (condition) conditions.push(condition);
       }
+      const goal = goalFilter(url);
+      if (goal) conditions.push(goal);
       const whereCondition = and(...conditions);
 
       // Get paginated completed tasks

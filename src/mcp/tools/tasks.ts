@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { get, post, patch, del, resolveTaskId, resolveRepositoryId, taskLookup, toolResult } from "../client.js";
-import type { GoalListItem, ListResponse, SyncRunResult, Task, TaskDetail, TaskSyncResult, TaskWorktreeStatus } from "@/shared/types";
+import type { ListResponse, SyncRunResult, Task, TaskDetail, TaskSyncResult, TaskWorktreeStatus } from "@/shared/types";
 
 const WORKTREE_POLL_MS = 3_000;
 const WORKTREE_MAX_WAIT_SECONDS = 300;
@@ -30,20 +30,6 @@ export function registerTaskTools(server: McpServer) {
     (lookup) => toolResult(async () => get<TaskDetail>(`/api/v1/tasks/${await resolveTaskId(lookup)}`))
   );
 
-  // list_goals
-  server.registerTool(
-    "list_goals",
-    {
-      description:
-        "List the goals tasks are grouped under on the Tasks page, in display order, each with its shared context and " +
-        "progress (taskCount, doneCount). Active goals by default; archived=true lists the archived ones instead.",
-      inputSchema: {
-        archived: z.boolean().optional().describe("When true, list archived goals instead of active ones"),
-      },
-    },
-    ({ archived }) => toolResult(() => get<ListResponse<GoalListItem>>(`/api/v1/goals${archived ? "?archived=true" : ""}`))
-  );
-
   // create_task
   server.registerTool(
     "create_task",
@@ -68,25 +54,27 @@ export function registerTaskTools(server: McpServer) {
       description:
         "List tasks, paginated. Returns { items, total }; page with offset until you have total. " +
         "Completed tasks are excluded unless completed=true. status and statuses match the raw task status name " +
-        "(case-insensitive), not a status category. With completed=true only title, limit and offset apply; " +
+        "(case-insensitive), not a status category. With completed=true only title, goalId, limit and offset apply; " +
         "the other filters are ignored.",
       inputSchema: {
         status: z.string().optional().describe("Filter by status name"),
         statuses: z.string().optional().describe("Comma-separated list of status names to filter by (e.g. 'Code Review,Ready to Merge')"),
         title: z.string().optional().describe("Substring search on title, Jira key, or branch name. Combine terms with | (OR) and & (AND, binds tighter); prefix a term with ~ to negate (e.g. 'tiptap | editor & ~bug')"),
         completed: z.boolean().optional().describe("When true, fetch completed tasks instead"),
+        goalId: z.union([z.number().int(), z.literal("none")]).optional().describe("Only the tasks of this goal (see list_goals); \"none\" for tasks without a goal. Applies to completed=true too"),
         checks: z.enum(["passing", "failing"]).optional().describe("Filter by CI checks status"),
         hasComments: z.boolean().optional().describe("Filter by unresolved comments presence"),
         limit: z.number().int().optional().default(25).describe("Page size (default 25)"),
         offset: z.number().int().optional().default(0).describe("Offset for pagination"),
       },
     },
-    ({ status, statuses, title, completed, checks, hasComments, limit, offset }) =>
+    ({ status, statuses, title, completed, goalId, checks, hasComments, limit, offset }) =>
       toolResult(async () => {
         const params = new URLSearchParams();
         if (status) params.set("status", status);
         if (statuses) params.set("statuses", statuses);
         if (title) params.set("title", title);
+        if (goalId !== undefined) params.set("goalId", String(goalId));
         if (checks) params.set("checks", checks);
         if (hasComments !== undefined) params.set("hasComments", String(hasComments));
         if (limit !== undefined) params.set("limit", String(limit));
